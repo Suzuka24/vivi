@@ -14,3 +14,22 @@
 .viewer footer #region{flex:1;min-width:0}
 .viewer footer #imageSummary{flex:0 1 auto;max-width:45%;text-align:right}
 @media(max-width:850px){.viewer footer #imageSummary{display:block}}
+
+.viewer .tool-bar{display:block;overflow:visible;height:auto;min-height:66px;white-space:nowrap;position:relative;z-index:4}
+.viewer #tool-slices{display:flex;align-items:center;gap:6px;min-width:0;width:100%;height:28px;border-top:1px solid #66778833;overflow-x:auto}
+.viewer #viewerAxis{height:25px;padding:2px 4px;max-width:145px}
+.viewer #viewerSliceRange{padding:0;border:0;margin:0;background:transparent;flex:none}
+.viewer #cacheStatus{margin-left:auto}
+.viewer .transfer-panel{position:absolute;right:10px;bottom:10px;z-index:6;width:194px;padding:5px;border-radius:4px;background:var(--vscode-editorWidget-background,#242b35);border:1px solid #66778877;box-shadow:0 4px 15px #0007}
+.viewer .transfer-head{display:flex;align-items:center;justify-content:space-between;font-size:11px}
+.viewer .transfer-head button{border:0;background:transparent;padding:0 5px}
+.viewer #transferCurve{display:block;width:180px;height:94px;margin-top:3px}
+.viewer .transfer-panel.minimized{width:80px}
+.viewer .transfer-panel.minimized canvas{display:none}
+.viewer #analysisPane{max-width:calc(100% - 20px);z-index:7}
+.viewer .floating-dialog[data-dialog="histogram-result"]{width:480px;max-width:calc(100vw - 24px)}
+.viewer .hist-plot,.viewer .stack-plot{display:block;max-width:100%;height:auto}
+.viewer .hist-range{display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
+.viewer .hist-stats{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.5}
+.viewer .floating-dialog .dialog-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viewer .floating-dialog{max-height:min(75vh,calc(100vh - 50px))}

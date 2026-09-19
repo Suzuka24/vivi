@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 (development build; not published)
+- Split Explorer, Layout, and Adjust into native collapsible sidebar sections; compact the file filter into a toolbar button.
+- Move series and slice controls to a second viewer toolbar row; select the third or fourth FITS axis while preserving the other coordinate.
+- Align fixed-width B&C sliders, keep their values in sync with ImageJ-style brightness/contrast mapping, and show a collapsible histogram/transfer curve on the canvas.
+- Correct range slider padding, constrain histogram windows and format results, and keep errors visible for at least two seconds.
+- Add a fixed four-axis FITS fixture and regression test.
+
 ## 0.6.1
 - Prepare the public `Suzuka24.vivi` identity, marketplace icon, and listing metadata. The former `local-science.vivi` development ID is a separate installation.
 - Add bilingual README, installation and usage guides, plus privacy, support, security, contribution, and publishing documentation.

@@ -22,3 +22,6 @@ large = ((large_x // 40 + large_y // 40) % 2 * 160 + large_x // 200 + large_y //
 tifffile.imwrite(out / 'pan-large.tif', large, compression='deflate', tile=(256, 256))
 fits.HDUList([fits.PrimaryHDU(base.astype('int16')), fits.ImageHDU((base + 100).astype('int16'), name='SECOND')]).writeto(out / 'multi-hdu.fits', overwrite=True)
 fits.PrimaryHDU(np.stack([base.astype('float32') + i * 100 for i in range(4)])).writeto(out / 'cube.fits', overwrite=True)
+
+# Four-dimensional FITS: flattening must preserve the other non-spatial axis.
+fits.PrimaryHDU(np.stack([np.stack([base.astype("float32") + 1000*t + 100*z for z in range(3)]) for t in range(2)])).writeto(out / "four-axis.fits", overwrite=True)

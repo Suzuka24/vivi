@@ -34,7 +34,8 @@ function activate(context) {
   const menuItems = () => config().get('explorerContextMenu', []);
   const sessions = [];
   let activeSession = null;
-  const publishSidebar = session => explorer.view?.webview.postMessage(session?.sidebarState ? {type:'sidebarState',state:session.sidebarState}:{type:'sidebarClear'});
+  const sidebarViews = [];
+  const publishSidebar = session => { for (const provider of sidebarViews) provider.view?.webview.postMessage(session?.sidebarState ? {type:'sidebarState',state:session.sidebarState}:{type:'sidebarClear'}); };
   const newBackend = () => {
     const c = config();
     // python3 is the portable Linux default; Windows installations commonly use python.exe.
@@ -72,22 +73,22 @@ function activate(context) {
   const report = error => vscode.window.showErrorMessage(`vivi: ${error.message}`);
 
   class Explorer {
-    constructor() { this.listSerial = 0; }
+    constructor(kind = 'explorer') { this.kind = kind; this.listSerial = 0; }
     async resolveWebviewView(view) {
       this.view = view;
       view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] };
       view.webview.onDidReceiveMessage(async msg => {
         try {
-          if (msg.type === 'ready') await this.list(context.workspaceState.get('explorerPath', config().get('defaultPath', '~')),
+          if (msg.type === 'ready' && this.kind === 'explorer') await this.list(context.workspaceState.get('explorerPath', config().get('defaultPath', '~')),
             0, context.workspaceState.get('explorerSort', 'nameAsc'), context.workspaceState.get('explorerShowHidden', true));
           if (msg.type === 'ready') publishSidebar(activeSession);
-          if (msg.type === 'list') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
+          if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
           if (msg.type === 'action') await this.action(msg);
           if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
         } catch (error) { view.webview.postMessage({ type: 'error', message: error.message }); }
       }, undefined, context.subscriptions);
-      view.webview.html = await html(view.webview, context, 'explorer');
+      view.webview.html = (await html(view.webview, context, 'explorer')).replace('{{viewKind}}', this.kind);
     }
     async action(msg) {
       const action = msg.action;
@@ -156,7 +157,10 @@ function activate(context) {
     }
   }
   const explorer = new Explorer();
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('vivi.explorer', explorer, { webviewOptions: { retainContextWhenHidden: true } }));
+  const layout = new Explorer('layout');
+  const adjust = new Explorer('adjust');
+  sidebarViews.push(explorer, layout, adjust);
+  for (const provider of sidebarViews) context.subscriptions.push(vscode.window.registerWebviewViewProvider(`vivi.${provider.kind}`, provider, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('vivi.browse', async () => {
     await vscode.commands.executeCommand('vivi.explorer.focus');
   }));
@@ -218,11 +222,11 @@ function activate(context) {
           session.sidebarState=msg.state;
           if(activeSession===session)publishSidebar(session);
         } else if (msg.type === 'focusAdjust') {
-          await vscode.commands.executeCommand('vivi.explorer.focus');
-          explorer.view?.webview.postMessage({type:'focusAdjust'});
+          await vscode.commands.executeCommand('vivi.adjust.focus');
+          adjust.view?.webview.postMessage({type:'focusAdjust'});
         } else if (msg.type === 'focusLayout') {
-          await vscode.commands.executeCommand('vivi.explorer.focus');
-          explorer.view?.webview.postMessage({type:'focusLayout'});
+          await vscode.commands.executeCommand('vivi.layout.focus');
+          layout.view?.webview.postMessage({type:'focusLayout'});
         } else if (msg.type === 'imageAction') {
           const frame=frames.get(msg.frameId||activeId);
           if(!frame)throw new Error('Select a frame first.');

@@ -1,12 +1,14 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
+const formatValue = value => typeof value==='number'&&Number.isFinite(value)?Number(value.toPrecision(6)).toString():String(value);
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
 lutOptions.push(...[["ij-isocontour","Isocontour"],["ij-gem-16","Gem 16"],["ij-cmy","Cmy"],["ij-cells","Cells"],["ij-neon-blue","Neon Blue"],["ij-cti_ras","Cti Ras"],["ij-hue_ramps_08","Hue Ramps 08"],["ij-neon-red","Neon Red"],["ij-hue_ramps_16","Hue Ramps 16"],["ij-amber","Amber"],["ij-split_blackwhite_warmmetal","Split Blackwhite Warmmetal"],["ij-5_ramps","5 Ramps"],["ij-split_bluered_warmmetal","Split Bluered Warmmetal"],["ij-auxctq","Auxctq"],["ij-003-ice","003 Ice"],["ij-6_shades","6 Shades"],["ij-002-spectrum","002 Spectrum"],["ij-thal_16","Thal 16"],["ij-split_blackwhite_ge","Split Blackwhite Ge"],["ij-split_blackblue_redwhite","Split Blackblue Redwhite"],["ij-cmy-magneta","Cmy Magneta"],["ij-rgb-blue","Rgb Blue"],["ij-gem-256","Gem 256"],["ij-heart","Heart"],["ij-royal","Royal"],["ij-16_colors","16 Colors"],["ij-warhol","Warhol"],["ij-001-fire","001 Fire"],["ij-siemens","Siemens"],["ij-topography","Topography"],["ij-32_colors","32 Colors"],["ij-cold","Cold"],["ij-cool","Cool"],["ij-smart","Smart"],["ij-004-phase","004 Phase"],["ij-blue_orange_icb","Blue Orange Icb"],["ij-cmy-yellow","Cmy Yellow"],["ij-blue_orange","Blue Orange"],["ij-invert_gray","Invert Gray"],["ij-iman","Iman"],["ij-brgbcmyw","Brgbcmyw"],["ij-rgb-red","Rgb Red"],["ij-log_up","Log Up"],["ij-cmy-cyan","Cmy Cyan"],["ij-neon-magenta","Neon Magenta"],["ij-brain","Brain"],["ij-6_reserved_colors","6 Reserved Colors"],["ij-log_down","Log Down"],["ij-cequal","Cequal"],["ij-vivid","Vivid"],["ij-mixed","Mixed"],["ij-sepia","Sepia"],["ij-edges","Edges"],["ij-thallium","Thallium"],["ij-system_lut","System Lut"],["ij-unionjack","Unionjack"],["ij-16_ramps","16 Ramps"],["ij-gold","Gold"],["ij-hue","Hue"],["ij-pastel","Pastel"],["ij-000-gray","000 Gray"],["ij-rgb-green","Rgb Green"],["ij-neon-green","Neon Green"],["ij-gyr_centre","Gyr Centre"],["ij-16_equal","16 Equal"],["ij-20_colors","20 Colors"],["ij-005-random","005 Random"],["ij-thal_256","Thal 256"]]);
 lutOptions.sort((a,b)=>a[1].localeCompare(b[1],undefined,{numeric:true,sensitivity:'base'}));
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
+let sliceAxis = null, errorUntil = 0, errorTimer;
 let metadata, dataset, scale = 1, cx = 0, cy = 0, preview, previewBox;
 const fileFrames = new Map();
 let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVariant = '';
@@ -20,7 +22,7 @@ let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelR
 let playing = false, playbackTimer, analysisRunning = false, blinking = false, blinkTimer;
 const pending = new Map();
 let cacheSignature = '', cacheGeneration = 0, cacheBytes = 0, preloadRunning = false, preloadRestartWanted = false, preloadTimer, activePng = '';
-const overviewCache = new Map();
+const overviewCache = new Map(), transferHistograms = new Map();
 let overviewBytes = 0, overviewRunning = false;
 const fullBox = () => [0, 0, dataset.width, dataset.height];
 const fullPreview = () => Math.max(dataset.width, dataset.height) <= metadata.maxSize;
@@ -140,7 +142,7 @@ async function decodePreview(result) {
 function showPreview(entry, ticket) {
   if (ticket !== revision) return;
   preview = entry.image; previewBox = entry.result.box; activePng = entry.result.png;
-  renderedRevision = ticket; $('empty').hidden = true; $('error').textContent = '';
+  renderedRevision = ticket; $('empty').hidden = true; clearExpiredError();
   if ($('cuts').value !== 'manual') {
     $('low').value = entry.result.low; $('high').value = entry.result.high;
     $('cuts').value='manual';
@@ -151,7 +153,7 @@ function showPreview(entry, ticket) {
     frameCache.set(key,entry);cacheBytes+=entry.bytes;updateCacheStatus();
   }
   $('busy').textContent = ''; draw();
-  publishSidebar();
+  loadTransferHistogram();publishSidebar();
 }
 function scheduleOverview() {
   if(fullPreview()||overviewRunning||renderRunning||renderWanted)return;
@@ -221,7 +223,8 @@ function trimFrameCache(){
   const limit=Math.max(32,Number(metadata.preloadMaxMiB)||512)*1024*1024;
   while(cacheBytes>limit&&frameCache.size>1){const oldest=frameCache.keys().next().value;cacheBytes-=frameCache.get(oldest).bytes;frameCache.delete(oldest);}
 }
-function showError(error){$('error').textContent=error.message;$('busy').textContent='Error';}
+function clearExpiredError(){if(Date.now()>=errorUntil)$('error').textContent='';}
+function showError(error){$('error').textContent=error.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
 function fit(){if(!dataset)return;const {w,h}=size();scale=Math.min(w/dataset.width,h/dataset.height)*.96;cx=dataset.width/2;cy=dataset.height/2;commitFrameChange('view');commitFrameChange('scale');scheduleRender(0);}
 const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32];
 let lastPointer=null;
@@ -248,25 +251,49 @@ function frameLabel(){
   syncViewerToolbar();
   publishSidebar();
 }
+function sliceAxes(){return dataset?.extra||[];}
+function axisIndex(){const axes=sliceAxes();return axes.includes(sliceAxis)?axes.indexOf(sliceAxis):Math.max(0,axes.length-1);}
+function axisStride(index){return sliceAxes().slice(index+1).reduce((product,axis)=>product*dataset.shape[axis],1);}
+function slicePosition(){const index=axisIndex(),axis=sliceAxes()[index];return axis===undefined?Number($('frame').value):Math.floor((Number($('frame').value)-1)/axisStride(index))%dataset.shape[axis]+1;}
+function setAxisSlice(value){const index=axisIndex(),axis=sliceAxes()[index];if(axis===undefined){$('frame').value=value;return;}const stride=axisStride(index),length=dataset.shape[axis],flat=Number($('frame').value)-1,current=Math.floor(flat/stride)%length,next=Math.max(0,Math.min(length-1,Math.round(value)-1));$('frame').value=flat+(next-current)*stride+1;}
 function syncViewerToolbar(){
   if(!dataset)return;
   const select=$('viewerDataset');
   if(select){if(select.options.length!==metadata.datasets.length||[...select.options].some((option,index)=>Number(option.value)!==metadata.datasets[index].id)){select.replaceChildren();for(const item of metadata.datasets){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;select.append(option);}}select.value=String(dataset.id);}
-  if($('viewerSliceRange')){$('viewerSliceRange').max=String(dataset.frames);$('viewerSliceRange').value=$('frame').value;$('viewerSliceRange').disabled=dataset.frames<2;}
-  if($('viewerSliceNumber')){$('viewerSliceNumber').max=String(dataset.frames);$('viewerSliceNumber').value=$('frame').value;}
-  if($('viewerSliceCount'))$('viewerSliceCount').textContent=`/ ${dataset.frames}`;
-  for(const id of ['viewerSlicePrev','viewerSliceNext','viewerSlicePlay'])if($(id))$(id).disabled=dataset.frames<2;
-  if($('viewerSlicePlay'))$('viewerSlicePlay').textContent=playing?'Ⅱ':'▶';
-  if($('viewerSliceFps')&&document.activeElement!==$('viewerSliceFps'))$('viewerSliceFps').value=$('fps').value;
-  const dtype=String(dataset.dtype||'');const bits=Number(dtype.match(/\d+/)?.[0])||8;const channels=String(dataset.axes||'').endsWith('S')?dataset.shape.at(-1):1;
+  const axis=$('viewerAxis'),axes=sliceAxes();axis.hidden=axes.length<2;
+  if(!axis.hidden){if(axis.options.length!==axes.length||[...axis.options].some((option,index)=>Number(option.value)!==[...axes].reverse()[index])){axis.replaceChildren();for(const index of [...axes].reverse()){const option=document.createElement('option');option.value=index;option.textContent=`Axis ${dataset.shape.length-index} · ${dataset.axes?.[index]||'D'} (${dataset.shape[index]})`;axis.append(option);}}axis.value=String(axes[axisIndex()]);}
+  const length=axes.length?dataset.shape[axes[axisIndex()]]:dataset.frames,position=slicePosition();
+  $('viewerSliceRange').max=String(length);$('viewerSliceRange').value=position;$('viewerSliceRange').disabled=length<2;
+  $('viewerSliceNumber').max=String(length);$('viewerSliceNumber').value=position;
+  $('viewerSliceCount').textContent=`/ ${length}`;
+  for(const id of ['viewerSlicePrev','viewerSliceNext','viewerSlicePlay'])$(id).disabled=length<2;
+  $('viewerSlicePlay').textContent=playing?'Ⅱ':'▶';
+  if(document.activeElement!==$('viewerSliceFps'))$('viewerSliceFps').value=$('fps').value;
+  const dtype=String(dataset.dtype||''),bits=Number(dtype.match(/\d+/)?.[0])||8,channels=String(dataset.axes||'').endsWith('S')?dataset.shape.at(-1):1;
   const bytes=dataset.width*dataset.height*channels*bits/8,sizeLabel=bytes<1048576?`${(bytes/1024).toFixed(1)}KB`:`${(bytes/1048576).toFixed(1)}MB`;
-  if($('imageSummary'))$('imageSummary').textContent=`${dataset.width}×${dataset.height} (${dataset.width}×${dataset.height}); ${channels===3?'RGB':bits+'-bit'}; ${sizeLabel}`;
+  $('imageSummary').textContent=`${dataset.width}×${dataset.height} (${dataset.width}×${dataset.height}); ${channels===3?'RGB':bits+'-bit'}; ${sizeLabel}`;
+  drawTransferCurve();
 }
-function changeFrame(delta, automatic=false){if(!dataset)return;let n=Number($('frame').value)-1+delta;if(automatic)n%=dataset.frames;else n=Math.max(0,Math.min(dataset.frames-1,n));$('frame').value=n+1;frameLabel();$('pixel').textContent='';commitFrameChange('slice');scheduleRender(0);}
-function selectDataset(){dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;fit();}
+function changeFrame(delta, automatic=false){if(!dataset)return;const total=sliceAxes().length?dataset.shape[sliceAxes()[axisIndex()]]:dataset.frames;let position=slicePosition()-1+delta;if(automatic)position=(position+total)%total;else position=Math.max(0,Math.min(total-1,position));setAxisSlice(position+1);frameLabel();$('pixel').textContent='';commitFrameChange('slice');scheduleRender(0);}
+function loadTransferHistogram(){
+  if(!dataset)return;
+  const key=`${activeFileFrame}:${dataset.id}:${Number($('frame').value)-1}`;
+  if(transferHistograms.has(key))return;
+  transferHistograms.set(key,null);
+  request('histogram',{...base(),bins:128},true).then(result=>{transferHistograms.set(key,result);if(key===`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`)drawTransferCurve();}).catch(()=>transferHistograms.delete(key));
+}
+function drawTransferCurve(){
+  const canvas=$('transferCurve'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,low=Number($('low').value),high=Number($('high').value);if(!Number.isFinite(low)||!Number.isFinite(high))return;
+  const histogram=transferHistograms.get(`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`);
+  const span=Math.max(1e-12,high-low),start=histogram?.edges?.[0]??low-span,end=histogram?.edges?.at(-1)??high+span,extent=Math.max(1e-12,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
+  g.fillStyle='#1a2028';g.fillRect(0,0,w,h);
+  if(histogram){const peak=Math.max(1,...histogram.counts);g.fillStyle='#55626d';for(let i=0;i<histogram.counts.length;i++){const height=Math.min(h-4,histogram.counts[i]/peak*(h-4));g.fillRect(i*w/histogram.counts.length,h-height,Math.max(1,w/histogram.counts.length),height);}}
+  g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();g.moveTo(0,h);g.lineTo(x(low),h);g.lineTo(x(high),0);g.lineTo(w,0);g.stroke();
+}
+function selectDataset(){dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;fit();}
 function saveFileFrame() {
   if (!activeFileFrame || !fileFrames.has(activeFileFrame)) return;
-  Object.assign(fileFrames.get(activeFileFrame), {metadata,datasetId:dataset?.id,plane:Number($('frame').value),scale,cx,cy,preview,previewBox,activePng,frameCache,cacheSignature,cacheBytes,
+  Object.assign(fileFrames.get(activeFileFrame), {metadata,datasetId:dataset?.id,plane:Number($('frame').value),sliceAxis,scale,cx,cy,preview,previewBox,activePng,frameCache,cacheSignature,cacheBytes,
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,roi,line,selection,annotations,overlays,roiManager,calibration});
 }
 function scheduleTileRefresh(delay=80){if(!tileMode)return;clearTimeout(tileRefreshTimer);tileRefreshTimer=setTimeout(refreshTilePreviews,delay);}
@@ -357,7 +384,7 @@ function selectFileFrame(id) {
   $('warning').textContent=metadata.warning; $('dataset').replaceChildren();
   for(const d of metadata.datasets){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('dataset').append(option);}
   $('dataset').value=String(state.datasetId??metadata.datasets[0].id);
-  dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));
+  dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=state.sliceAxis??dataset.extra?.at(-1)??null;
   $('frame').value=state.plane||1; $('frame').max=dataset.frames; frameLabel(); $('play').disabled=dataset.frames<2;
   scale=state.scale??1; cx=state.cx??dataset.width/2; cy=state.cy??dataset.height/2;
   preview=state.preview||null; previewBox=state.previewBox||null; activePng=state.activePng||'';
@@ -368,7 +395,7 @@ function selectFileFrame(id) {
   $('invert').checked=!!state.invert; $('threshold').checked=!!state.threshold;
   $('frame').value=Math.max(1,Math.min(dataset.frames,Number($('frame').value)));frameLabel();clampCenter();
   $('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;
-  $('empty').hidden=!!preview; $('error').textContent=''; $('busy').textContent='';
+  $('empty').hidden=!!preview; clearExpiredError(); $('busy').textContent='';
   frameList(); updateCacheStatus();
   if(!state.preview&&!state.scale){const {w,h}=size();scale=Math.min(w/dataset.width,h/dataset.height)*.96;if(!frameLocks.has('view')){cx=dataset.width/2;cy=dataset.height/2;}saveFileFrame();}
   draw();scheduleRender(0);
@@ -386,7 +413,7 @@ function chart(values){const c=$('chart'),g=c.getContext('2d'),w=c.width,h=c.hei
 const measurementHistory=[];
 let measurementFields=new Set(["Area","Mean","Std","Min","Max","Sum"]);
 let calibration={factor:1,unit:"px"};
-async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI).toFixed(3)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);$('error').textContent='';if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${r.area*calibration.factor*calibration.factor} ${calibration.unit}²\nFinite pixels: ${r.count}\nMean: ${r.mean}\nStd (population): ${r.std}\nMin: ${r.min}\nMax: ${r.max}\nSum: ${r.sum}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${r.samples} samples\n${r.sampled?'Sampled; stride '+r.step:'All pixels'}\nX: ${r.edges[0]} … ${r.edges.at(-1)}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${r.values.length} points\nLength: ${r.distance.at(-1).toFixed(3)} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
+async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI).toFixed(3)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);clearExpiredError();if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${formatValue(r.area*calibration.factor*calibration.factor)} ${calibration.unit}²\nFinite pixels: ${r.count}\nMean: ${formatValue(r.mean)}\nStd (population): ${formatValue(r.std)}\nMin: ${formatValue(r.min)}\nMax: ${formatValue(r.max)}\nSum: ${formatValue(r.sum)}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${r.samples} samples\n${r.sampled?'Sampled; stride '+r.step:'All pixels'}\nX: ${r.edges[0]} … ${r.edges.at(-1)}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${r.values.length} points\nLength: ${r.distance.at(-1).toFixed(3)} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
 canvas.addEventListener('wheel',e=>{e.preventDefault();lastPointer=position(e);zoom(e.deltaY<0?1:-1);},{passive:false});
 function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.disabled=!run;if(run)button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
 canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;if($('tool').value==='zoom'){e.preventDefault();lastPointer=position(e);zoom(-1);return;}const point=position(e);const selected=selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
@@ -838,12 +865,14 @@ if($('processEqualize'))$('processEqualize').onclick=()=>derive('equalizeHistogr
 if($('editUndo'))$('editUndo').onclick=()=>vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'undo',args:base()});
 if($('editRedo'))$('editRedo').onclick=()=>vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'redo',args:base()});
 if($('viewerDataset'))$('viewerDataset').onchange=()=>{$('dataset').value=$('viewerDataset').value;selectDataset();};
-if($('viewerSliceRange'))$('viewerSliceRange').oninput=()=>{$('frame').value=$('viewerSliceRange').value;$('frame').onchange();};
-if($('viewerSliceNumber'))$('viewerSliceNumber').onchange=()=>{$('frame').value=$('viewerSliceNumber').value;$('frame').onchange();};
+$('viewerAxis').onchange=()=>{sliceAxis=Number($('viewerAxis').value);frameLabel();saveFileFrame();};
+if($('viewerSliceRange'))$('viewerSliceRange').oninput=()=>{setAxisSlice(Number($('viewerSliceRange').value));$('frame').onchange();};
+if($('viewerSliceNumber'))$('viewerSliceNumber').onchange=()=>{setAxisSlice(Number($('viewerSliceNumber').value));$('frame').onchange();};
 if($('viewerSlicePrev'))$('viewerSlicePrev').onclick=()=>changeFrame(-1);
 if($('viewerSliceNext'))$('viewerSliceNext').onclick=()=>changeFrame(1);
 if($('viewerSlicePlay'))$('viewerSlicePlay').onclick=()=>{$('play').click();syncViewerToolbar();};
 if($('viewerSliceFps'))$('viewerSliceFps').onchange=()=>{$('fps').value=$('viewerSliceFps').value;publishSidebar();};
+$('minimizeTransfer').onclick=()=>{const panel=$('transferPanel');panel.classList.toggle('minimized');$('minimizeTransfer').textContent=panel.classList.contains('minimized')?'+':'−';$('minimizeTransfer').title=panel.classList.contains('minimized')?'Show curve':'Minimize curve';};
 function histogramOptions(){
   document.querySelector('[data-dialog="histogram-options"]')?.remove();
   const dialog=openDialog('histogram-options','Histogram',`<label>Bins <input class="hist-bins" type="number" min="2" max="4096" value="256"></label><label><input class="hist-auto" type="checkbox" checked> Use pixel value range</label><label>X min <input class="hist-min" type="number" step="any" disabled></label><label>X max <input class="hist-max" type="number" step="any" disabled></label><label>Y max <input class="hist-ymax" type="number" step="any" placeholder="Auto"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="hist-cancel">Cancel</button><button class="hist-run">OK</button></div>`);
@@ -863,11 +892,11 @@ function showHistogram(result,args){
   const canvas=dialog.querySelector('.hist-plot'),context=canvas.getContext('2d'),counts=result.counts||[],edges=result.edges||[],peak=Math.max(1,...counts),ceiling=args.yMax||peak,w=canvas.width,h=canvas.height;
   context.fillStyle='#151a20';context.fillRect(0,0,w,h);context.fillStyle='#76d9ba';
   for(let i=0;i<counts.length;i++){const left=i*w/counts.length,width=Math.max(1,w/counts.length),height=Math.max(0,Math.min(h,counts[i]/ceiling*h));context.fillRect(left,h-height,width,height);}
-  dialog.querySelector('.hist-range').textContent=`${edges[0]??''}                                      ${edges.at(-1)??''}`;
+  const range=dialog.querySelector('.hist-range');range.replaceChildren();for(const endpoint of [edges[0],edges.at(-1)]){const label=document.createElement('span');label.textContent=formatValue(endpoint);range.append(label);}
   const values=counts.map((count,index)=>(edges[index]+edges[index+1])/2),count=counts.reduce((a,b)=>a+b,0),mean=result.mean??values.reduce((sum,value,index)=>sum+value*counts[index],0)/(count||1),variance=values.reduce((sum,value,index)=>sum+(value-mean)**2*counts[index],0)/(count||1),modeAt=counts.indexOf(peak);
-  const summary=[`${dataset.width}×${dataset.height} pixels; ${dataset.dtype}`,`N: ${result.samples??count}     Min: ${result.min??edges[0]}`,`Mean: ${mean}     Max: ${result.max??edges.at(-1)}`,`StdDev: ${result.std??Math.sqrt(variance)}     Mode: ${result.mode??values[modeAt]} (${result.modeCount??peak})`,`Bins: ${counts.length}     Bin Width: ${result.binWidth??(edges[1]-edges[0])}`,`Value: ---     Count: ---`];
+  const summary=[`${dataset.width}×${dataset.height} pixels; ${dataset.dtype}`,`N: ${formatValue(result.samples??count)}     Min: ${formatValue(result.min??edges[0])}`,`Mean: ${formatValue(mean)}     Max: ${formatValue(result.max??edges.at(-1))}`,`StdDev: ${formatValue(result.std??Math.sqrt(variance))}     Mode: ${formatValue(result.mode??values[modeAt])} (${formatValue(result.modeCount??peak)})`,`Bins: ${counts.length}     Bin Width: ${formatValue(result.binWidth??(edges[1]-edges[0]))}`,`Value: ---     Count: ---`];
   const stats=dialog.querySelector('.hist-stats');stats.textContent=summary.join('\n');
-  canvas.onpointermove=e=>{const index=Math.max(0,Math.min(counts.length-1,Math.floor((e.offsetX/canvas.clientWidth)*counts.length)));summary[5]=`Value: ${values[index]}     Count: ${counts[index]}`;stats.textContent=summary.join('\n');};
+  canvas.onpointermove=e=>{const index=Math.max(0,Math.min(counts.length-1,Math.floor((e.offsetX/canvas.clientWidth)*counts.length)));summary[5]=`Value: ${formatValue(values[index])}     Count: ${counts[index]}`;stats.textContent=summary.join('\n');};
   canvas.onpointerleave=()=>{summary[5]='Value: ---     Count: ---';stats.textContent=summary.join('\n');};
   dialog.querySelector('.hist-list').onclick=()=>{const list=openDialog('histogram-list','Histogram bins','<pre class="hist-list-data"></pre>');list.querySelector('.hist-list-data').textContent=counts.map((n,i)=>`${edges[i]}\t${edges[i+1]}\t${n}`).join('\n');};
   dialog.querySelector('.hist-copy').onclick=()=>navigator.clipboard?.writeText(counts.map((n,i)=>`${edges[i]}\t${n}`).join('\n')).catch(showError);
@@ -911,7 +940,7 @@ window.addEventListener('message',({data:m})=>{
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
     const state=fileFrames.get(m.frameId);if(!state)return;
-    state.metadata={...state.metadata,...m};state.preview=null;state.tilePreview=null;state.previewBox=null;state.frameCache=new Map();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';state.plane=Math.min(state.plane||1,state.metadata.datasets[0].frames);
+    state.metadata={...state.metadata,...m};for(const key of transferHistograms.keys())if(key.startsWith(`${m.frameId}:`))transferHistograms.delete(key);state.preview=null;state.tilePreview=null;state.previewBox=null;state.frameCache=new Map();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';state.plane=Math.min(state.plane||1,state.metadata.datasets[0].frames);
     if(m.frameId===activeFileFrame){activeFileFrame=null;selectFileFrame(m.frameId);}else{frameList();scheduleTileRefresh(0);}
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);

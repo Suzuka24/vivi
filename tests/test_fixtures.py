@@ -118,6 +118,17 @@ class FixtureTests(unittest.TestCase):
                 self.assertEqual(self.pixel(frame=frames - 1), expected)
                 self.assertTrue(self.render(frame=frames - 1)['png'])
 
+    def test_four_axis_fits_preserves_other_axis(self):
+        info=self.open('four-axis.fits')
+        data=info['datasets'][0]
+        self.assertEqual(data['shape'], (2, 3, 24, 32))
+        self.assertEqual(data['extra'], [0, 1])
+        self.assertEqual(data['frames'], 6)
+        for frame,expected in [(0,131),(1,231),(2,331),(3,1131),(4,1231),(5,1331)]:
+            with self.subTest(frame=frame):
+                self.assertEqual(self.pixel(frame=frame),expected)
+                self.assertTrue(self.render(frame=frame)['png'])
+
     def test_duplicate_current_slice_range_and_selection(self):
         self.open('stack.tiff')
         cases = [

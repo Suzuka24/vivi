@@ -4,8 +4,8 @@ const $ = id => document.getElementById(id);
 const labels = { open: 'Open', openNewTab: 'Open in New Tab', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
-let layoutState = null, heldSlice = null;
-let adjustRangeBounds = [0, 1], adjustDragStart = null;
+let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
+let adjustSource = null;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function frameIcon(symbol,title,pressed,action){
   const button=document.createElement('button');button.type='button';button.className='frame-icon';button.title=title;button.setAttribute('aria-label',title);button.setAttribute('aria-pressed',String(pressed));
@@ -13,6 +13,7 @@ function frameIcon(symbol,title,pressed,action){
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href',`#${symbol}`);svg.append(use);button.append(svg);button.onclick=action;return button;
 }
 function renderSidebar(state){
+  if(state?.cuts!=='manual')adjustSource=null;
   layoutState=state;
   $('layoutEmpty').hidden=!!state;$('layoutControls').hidden=!state;
   if(!state){$('layoutTitle').textContent='';return;}
@@ -71,29 +72,29 @@ for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=
 function sendAdjust(){sideAction('adjust',{cuts:$('adjustCuts').value,low:Number($('adjustLow').value),high:Number($('adjustHigh').value),stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});}
 function syncAdjustRanges(){
   const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);
-  if(!Number.isFinite(low)||!Number.isFinite(high))return;
-  const width=Math.max(Math.abs(high-low),1e-9);
-  if(!['adjustMinRange','adjustMaxRange'].includes(document.activeElement?.id))adjustRangeBounds=[low-width,high+width];
-  const [start,end]=adjustRangeBounds,toStep=value=>Math.max(0,Math.min(1000,Math.round((value-start)/(end-start)*1000)));
-  if(document.activeElement!==$('adjustMinRange'))$('adjustMinRange').value=toStep(low);
-  if(document.activeElement!==$('adjustMaxRange'))$('adjustMaxRange').value=toStep(high);
-  const canvas=$('adjustCurve'),ctx=canvas.getContext('2d');if(!ctx)return;
-  const w=canvas.width,h=canvas.height,x=value=>(value-start)/(end-start)*w;
-  ctx.clearRect(0,0,w,h);ctx.strokeStyle='#66778866';ctx.beginPath();ctx.moveTo(0,h);ctx.lineTo(w,0);ctx.stroke();
-  ctx.strokeStyle='#72d4b5';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,h);ctx.lineTo(Math.max(0,Math.min(w,x(low))),h);ctx.lineTo(Math.max(0,Math.min(w,x(high))),0);ctx.lineTo(w,0);ctx.stroke();
+  if(!Number.isFinite(low)||!Number.isFinite(high)||!(high>low))return;
+  if(!adjustSource || layoutState?.active!==adjustSource.frame || low<adjustSource.min || high>adjustSource.max){
+    const width=high-low;
+    adjustSource={frame:layoutState?.active,min:low-width,max:high+width};
+  }
+  const {min,max}=adjustSource,range=max-min;
+  // ImageJ ContrastAdjuster: brightness tracks the center, contrast the display width.
+  const clamp=x=>Math.max(0,Math.min(1000,Math.round(x)));
+  const values={adjustMinRange:clamp((low-min)/range*1000),adjustMaxRange:clamp((high-min)/range*1000),
+    adjustBrightnessRange:clamp((1-((low+high)/2-min)/range)*1000)};
+  const ratio=range/(high-low),contrast=ratio<=1?ratio*500:1000-500/ratio;
+  values.adjustContrastRange=clamp(contrast);
+  for(const [id,value] of Object.entries(values))if(document.activeElement!==$(id))$(id).value=value;
 }
 for(const [id,key,other] of [['adjustMinRange','adjustLow','adjustHigh'],['adjustMaxRange','adjustHigh','adjustLow']]){
-  $(id).oninput=()=>{const [start,end]=adjustRangeBounds,value=start+(end-start)*Number($(id).value)/1000;$(key).value=id==='adjustMinRange'?Math.min(value,Number($(other).value)):Math.max(value,Number($(other).value));$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
+  $(id).oninput=()=>{const {min,max}=adjustSource,value=min+(max-min)*Number($(id).value)/1000;$(key).value=id==='adjustMinRange'?Math.min(value,Number($(other).value)-1e-12):Math.max(value,Number($(other).value)+1e-12);$('adjustCuts').value='manual';sendAdjust();};
 }
 for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastRange','contrast']]){
-  const input=$(id);
-  const capture=()=>{adjustDragStart={low:Number($('adjustLow').value),high:Number($('adjustHigh').value)};};
-  input.onpointerdown=capture;input.onfocus=capture;
-  input.oninput=()=>{if(!adjustDragStart)capture();const {low,high}=adjustDragStart,span=Math.max(Math.abs(high-low),1e-9),delta=(Number(input.value)-50)/50;
-    if(kind==='brightness'){const shift=delta*span;$('adjustLow').value=low+shift;$('adjustHigh').value=high+shift;}
-    else{const center=(low+high)/2,next=span*Math.pow(2,-delta);$('adjustLow').value=center-next/2;$('adjustHigh').value=center+next/2;}
-    $('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
-  input.onchange=()=>{adjustDragStart=null;input.value=50;};
+  $(id).oninput=()=>{
+    const {min,max}=adjustSource,range=max-min,position=Number($(id).value),center=kind==='brightness'?min+range*(1-position/1000):(Number($('adjustLow').value)+Number($('adjustHigh').value))/2;
+    const width=kind==='brightness'?Number($('adjustHigh').value)-Number($('adjustLow').value):range/(position<=500?Math.max(.001,position/500):500/Math.max(1,1000-position));
+    $('adjustLow').value=center-width/2;$('adjustHigh').value=center+width/2;$('adjustCuts').value='manual';sendAdjust();
+  };
 }
 $('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
 $('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
@@ -102,7 +103,7 @@ $('adjustThreshold').onchange=()=>{if($('adjustThreshold').checked)$('adjustCuts
 for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';sendAdjust();};
 function list(path, start = 0) {
   if(start && (loading || !more))return;
-  closeMenu();$('error').textContent='';loading=true;
+  closeMenu();if(Date.now()>=errorUntil)$('error').textContent='';loading=true;
   if(!start){more=false;entries=[];render();$('files').scrollTop=0;}
   vscode.postMessage({type:'list',path,offset:start,sortMode,showHidden});
 }
@@ -192,12 +193,13 @@ $('sort').onclick = event => {
   const rect=$('sort').getBoundingClientRect();menu.hidden=false;menu.style.left=Math.max(2,Math.min(rect.left,document.body.clientWidth-menu.offsetWidth-2))+'px';menu.style.top=rect.bottom+2+'px';$('sort').setAttribute('aria-expanded','true');
 };
 $('filter').oninput = render;
+$('filterToggle').onclick=()=>{const field=$('filter');field.hidden=!field.hidden;$('filterToggle').setAttribute('aria-expanded',String(!field.hidden));if(!field.hidden)field.focus();else{field.value='';render();}};
 for(const button of document.querySelectorAll('.icon-button')) button.dataset.tip = button.title;
 document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
 $('contextMenu').addEventListener('mouseleave', closeMenu);
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape'){closeMenu();if(!$('filter').hidden)$('filterToggle').click();} });
 window.addEventListener('message', ({data:message}) => {
-  if (message.type === 'error') { loading=false;$('error').textContent = message.message; return; }
+  if (message.type === 'error') { loading=false;$('error').textContent = message.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(()=>{if(Date.now()>=errorUntil)$('error').textContent='';},2600);return; }
   if(message.type==='sidebarState'){renderSidebar(message.state);return;}
   if(message.type==='sidebarClear'){renderSidebar(null);return;}
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}

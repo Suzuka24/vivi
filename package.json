@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -33,7 +33,9 @@
   },
   "activationEvents": [
     "onCustomEditor:vivi.viewer",
-    "onView:vivi.explorer"
+    "onView:vivi.explorer",
+    "onView:vivi.layout",
+    "onView:vivi.adjust"
   ],
   "scripts": {
     "check": "node --check src/extension.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
@@ -73,6 +75,16 @@
         {
           "id": "vivi.explorer",
           "name": "Explorer",
+          "type": "webview"
+        },
+        {
+          "id": "vivi.layout",
+          "name": "Layout",
+          "type": "webview"
+        },
+        {
+          "id": "vivi.adjust",
+          "name": "Adjust",
           "type": "webview"
         }
       ]
