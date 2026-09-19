@@ -6,6 +6,13 @@ const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Si
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
+function formatAdjust(value){
+  if(!Number.isFinite(value))return '';
+  if(value===0)return '0';
+  const compact=Number(value.toPrecision(8)).toString();
+  if(compact.length<=11)return compact;
+  return value.toExponential(5).replace(/\.0+e/,'e').replace(/e([+-])0+/,'e$1');
+}
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function frameIcon(symbol,title,pressed,action){
   const button=document.createElement('button');button.type='button';button.className='frame-icon';button.title=title;button.setAttribute('aria-label',title);button.setAttribute('aria-pressed',String(pressed));
@@ -13,7 +20,7 @@ function frameIcon(symbol,title,pressed,action){
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href',`#${symbol}`);svg.append(use);button.append(svg);button.onclick=action;return button;
 }
 function renderSidebar(state){
-  if(state?.cuts!=='manual')adjustSource=null;
+  if(!state||adjustSource?.frame!==state.active||adjustSource?.dataset!==state.datasetId)adjustSource=null;
   layoutState=state;
   $('layoutEmpty').hidden=!!state;$('layoutControls').hidden=!state;
   if(!state){$('layoutTitle').textContent='';return;}
@@ -47,7 +54,8 @@ function renderSidebar(state){
   }
   for(const input of document.querySelectorAll('[data-side-lock]'))input.checked=state.locks.includes(input.dataset.sideLock);
   const lut=$('adjustLut');if(lut.options.length!==state.luts.length){lut.replaceChildren();for(const [value,label] of state.luts){const option=document.createElement('option');option.value=value;option.textContent=label;lut.append(option);}}
-  for(const [target,key] of [['adjustCuts','cuts'],['adjustLow','low'],['adjustHigh','high'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
+  for(const [target,key] of [['adjustCuts','cuts'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
+  for(const [target,key] of [['adjustLow','low'],['adjustHigh','high']])if(document.activeElement!==$(target))$(target).value=formatAdjust(Number(state[key]));
   $('adjustInvert').checked=state.invert;$('adjustThreshold').checked=state.threshold;
   syncAdjustRanges();
 }
@@ -69,38 +77,39 @@ $('frameTile').onclick=()=>sideAction('tile');
 for(const id of ['frameColumns','frameRows'])$(id).onchange=()=>sideAction(id==='frameColumns'?'columns':'rows',Number($(id).value)||0);
 $('lockAll').onclick=()=>sideAction('lockAll');$('unlockAllFrames').onclick=()=>sideAction('unlockAll');
 for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=()=>sideAction('lock',{group:input.dataset.sideLock,enabled:input.checked});
-function sendAdjust(){sideAction('adjust',{cuts:$('adjustCuts').value,low:Number($('adjustLow').value),high:Number($('adjustHigh').value),stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});}
+function sendAdjust(){const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);if(!Number.isFinite(low)||!Number.isFinite(high)||high<=low)return;sideAction('adjust',{cuts:$('adjustCuts').value,low,high,stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});}
 function syncAdjustRanges(){
   const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);
   if(!Number.isFinite(low)||!Number.isFinite(high)||!(high>low))return;
-  if(!adjustSource || layoutState?.active!==adjustSource.frame || low<adjustSource.min || high>adjustSource.max){
-    const width=high-low;
-    adjustSource={frame:layoutState?.active,min:low-width,max:high+width};
+  const sourceMin=Number(layoutState?.rangeMin),sourceMax=Number(layoutState?.rangeMax);
+  if(!adjustSource||adjustSource.frame!==layoutState?.active||adjustSource.dataset!==layoutState?.datasetId||sourceMin!==adjustSource.min||sourceMax!==adjustSource.max){
+    adjustSource={frame:layoutState?.active,dataset:layoutState?.datasetId,min:sourceMin,max:sourceMax};
   }
-  const {min,max}=adjustSource,range=max-min;
-  // ImageJ ContrastAdjuster: brightness tracks the center, contrast the display width.
+  const {min,max}=adjustSource,range=Math.max(1e-12,max-min);
   const clamp=x=>Math.max(0,Math.min(1000,Math.round(x)));
   const values={adjustMinRange:clamp((low-min)/range*1000),adjustMaxRange:clamp((high-min)/range*1000),
-    adjustBrightnessRange:clamp((1-((low+high)/2-min)/range)*1000)};
-  const ratio=range/(high-low),contrast=ratio<=1?ratio*500:1000-500/ratio;
-  values.adjustContrastRange=clamp(contrast);
+    adjustBrightnessRange:clamp((.5-(((low+high)/2)-((min+max)/2))/range)*1000),
+    adjustContrastRange:clamp(Math.atan(range/(high-low))*2000/Math.PI)};
   for(const [id,value] of Object.entries(values))if(document.activeElement!==$(id))$(id).value=value;
+  if(document.activeElement!==$('adjustBrightnessValue'))$('adjustBrightnessValue').value=formatAdjust(values.adjustBrightnessRange/1000);
+  if(document.activeElement!==$('adjustContrastValue'))$('adjustContrastValue').value=formatAdjust(values.adjustContrastRange/1000);
 }
 for(const [id,key,other] of [['adjustMinRange','adjustLow','adjustHigh'],['adjustMaxRange','adjustHigh','adjustLow']]){
-  $(id).oninput=()=>{const {min,max}=adjustSource,value=min+(max-min)*Number($(id).value)/1000;$(key).value=id==='adjustMinRange'?Math.min(value,Number($(other).value)-1e-12):Math.max(value,Number($(other).value)+1e-12);$('adjustCuts').value='manual';sendAdjust();};
+  $(id).oninput=()=>{const {min,max}=adjustSource,value=min+(max-min)*Number($(id).value)/1000;$(key).value=formatAdjust(id==='adjustMinRange'?Math.min(value,Number($(other).value)-1e-12):Math.max(value,Number($(other).value)+1e-12));$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
 }
 for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastRange','contrast']]){
   $(id).oninput=()=>{
-    const {min,max}=adjustSource,range=max-min,position=Number($(id).value),center=kind==='brightness'?min+range*(1-position/1000):(Number($('adjustLow').value)+Number($('adjustHigh').value))/2;
-    const width=kind==='brightness'?Number($('adjustHigh').value)-Number($('adjustLow').value):range/(position<=500?Math.max(.001,position/500):500/Math.max(1,1000-position));
-    $('adjustLow').value=center-width/2;$('adjustHigh').value=center+width/2;$('adjustCuts').value='manual';sendAdjust();
+    const {min,max}=adjustSource,range=max-min,position=Number($(id).value)/1000,center=kind==='brightness'?(min+max)/2+(.5-position)*range:(Number($('adjustLow').value)+Number($('adjustHigh').value))/2;
+    const width=kind==='brightness'?Number($('adjustHigh').value)-Number($('adjustLow').value):range/Math.tan(Math.max(.001,Math.min(.999,position))*Math.PI/2);
+    $('adjustLow').value=formatAdjust(center-width/2);$('adjustHigh').value=formatAdjust(center+width/2);$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();
   };
 }
+for(const [id,slider] of [['adjustBrightnessValue','adjustBrightnessRange'],['adjustContrastValue','adjustContrastRange']])$(id).onchange=()=>{const value=Number($(id).value);if(!Number.isFinite(value))return;$(slider).value=Math.max(0,Math.min(1000,Math.round(value*1000)));$(slider).oninput();};
 $('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
-$('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
+$('adjustReset').onclick=()=>{if(adjustSource&&adjustSource.max>adjustSource.min){$('adjustCuts').value='manual';$('adjustLow').value=formatAdjust(adjustSource.min);$('adjustHigh').value=formatAdjust(adjustSource.max);syncAdjustRanges();}else $('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
 for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=sendAdjust;
 $('adjustThreshold').onchange=()=>{if($('adjustThreshold').checked)$('adjustCuts').value='manual';sendAdjust();};
-for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';sendAdjust();};
+for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
 function list(path, start = 0) {
   if(start && (loading || !more))return;
   closeMenu();if(Date.now()>=errorUntil)$('error').textContent='';loading=true;

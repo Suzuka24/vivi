@@ -47,3 +47,17 @@ body.view-adjust .adjust-value-row input[type=number]{flex:1;width:0;min-width:4
 body.explorer input[type=range]{padding:0;border:0;background:transparent;min-width:0;margin:0;accent-color:var(--vscode-focusBorder,#65c9ae)}
 body.explorer #filter[hidden]{display:none}
 body.explorer #filter{width:100%}
+body.view-layout #layoutControls[hidden],body.view-layout #layoutEmpty[hidden]{display:none}
+body.view-layout #layoutControls{display:flex;flex-direction:column;min-height:0;height:100%}
+body.view-layout .frame-items{flex:1;min-height:60px;max-height:none;overflow-y:auto}
+body.view-layout .frame-item{flex:none;min-height:27px}
+body.view-layout .frame-item button:not(.frame-icon):not(.frame-remove){flex:1;width:0;min-width:0;text-align:left}
+body.view-adjust .adjust-grid{font-size:11px}
+body.view-adjust .adjust-grid>label{justify-content:flex-start;gap:6px;font-size:11px}
+body.view-adjust .adjust-grid>label>select{width:160px;max-width:160px;margin-left:0}
+body.view-adjust .adjust-ranges{gap:5px}
+body.view-adjust .adjust-ranges label{display:grid;grid-template-columns:76px 150px 82px;gap:6px;justify-content:start;font-size:11px}
+body.view-adjust .adjust-ranges input[type=range]{width:150px;min-width:150px;max-width:150px;justify-self:start}
+body.view-adjust .adjust-ranges input[type=text]{width:82px;min-width:82px;height:23px;padding:2px 4px;font-size:11px;background:var(--vscode-input-background,#292e38);color:var(--vscode-input-foreground,#ddd);border:1px solid var(--vscode-input-border,#434b59);border-radius:3px}
+body.view-adjust .adjust-options{justify-content:flex-start;font-size:11px}
+body.view-adjust .adjust-options #adjustAuto{margin-left:0}

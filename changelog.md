@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4 (development build; not published)
+- Align the two viewer toolbar rows and remove the redundant Series label.
+- Keep Layout frame rows visible and select Pointer when a new image opens.
+- Rework Adjust around fixed pixel bounds, editable slider values, and a linked B&C curve with endpoint values.
+- Shrink histogram results and dock minimized result windows along the viewer bottom edge.
+- Format displayed measurements using compact decimal or scientific notation according to length.
+
 ## 0.6.2 (development build; not published)
 - Split Explorer, Layout, and Adjust into native collapsible sidebar sections; compact the file filter into a toolbar button.
 - Move series and slice controls to a second viewer toolbar row; select the third or fourth FITS axis while preserving the other coordinate.

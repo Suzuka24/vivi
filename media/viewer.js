@@ -1,7 +1,13 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
-const formatValue = value => typeof value==='number'&&Number.isFinite(value)?Number(value.toPrecision(6)).toString():String(value);
+const formatValue = value => {
+  if(typeof value!=='number'||!Number.isFinite(value))return String(value);
+  if(value===0)return '0';
+  const compact=Number(value.toPrecision(8)).toString();
+  if(compact.length<=11)return compact;
+  return value.toExponential(5).replace(/\.0+e/,'e').replace(/e([+-])0+/,'e$1');
+};
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -22,7 +28,7 @@ let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelR
 let playing = false, playbackTimer, analysisRunning = false, blinking = false, blinkTimer;
 const pending = new Map();
 let cacheSignature = '', cacheGeneration = 0, cacheBytes = 0, preloadRunning = false, preloadRestartWanted = false, preloadTimer, activePng = '';
-const overviewCache = new Map(), transferHistograms = new Map();
+const overviewCache = new Map(), transferHistograms = new Map(), displayBounds = new Map();
 let overviewBytes = 0, overviewRunning = false;
 const fullBox = () => [0, 0, dataset.width, dataset.height];
 const fullPreview = () => Math.max(dataset.width, dataset.height) <= metadata.maxSize;
@@ -34,7 +40,7 @@ function sidebarState(){
   if(!dataset)return null;
   return {active:activeFileFrame,activeLabel:metadata.label||metadata.path.split(/[\\/]/).pop(),frames:[...fileFrames].map(([id,state])=>({id,label:state.metadata.label||state.metadata.path.split(/[\\/]/).pop(),visible:state.visible!==false,locked:!!state.lockMember})),
     datasets:metadata.datasets.map(d=>({id:d.id,name:d.name})),datasetId:dataset.id,slice:Number($('frame').value),total:dataset.frames,fps:Number($('fps').value)||5,playing,blinking,tile:tileMode,columns:layoutColumns,rows:layoutRows,locks:[...frameLocks],
-    cuts:$('cuts').value,low:$('low').value,high:$('high').value,stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked};
+    cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin:(displayBounds.get(`${activeFileFrame}:${dataset.id}`)||[])[0]??Number($('low').value),rangeMax:(displayBounds.get(`${activeFileFrame}:${dataset.id}`)||[])[1]??Number($('high').value),stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked};
 }
 function publishSidebar(delay=20){clearTimeout(sidebarTimer);sidebarTimer=setTimeout(()=>{const state=sidebarState();if(state)vscode.postMessage({type:'sidebarState',state});},delay);}
 function request(op, args, prefetch = false, fileFrame = activeFileFrame) {
@@ -280,15 +286,19 @@ function loadTransferHistogram(){
   const key=`${activeFileFrame}:${dataset.id}:${Number($('frame').value)-1}`;
   if(transferHistograms.has(key))return;
   transferHistograms.set(key,null);
-  request('histogram',{...base(),bins:128},true).then(result=>{transferHistograms.set(key,result);if(key===`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`)drawTransferCurve();}).catch(()=>transferHistograms.delete(key));
+  const boundKey=`${activeFileFrame}:${dataset.id}`;
+  request('histogram',{...base(),bins:128},true).then(result=>{transferHistograms.set(key,result);if(!displayBounds.has(boundKey)&&Number.isFinite(result.min)&&Number.isFinite(result.max)&&result.max>result.min)displayBounds.set(boundKey,[result.min,result.max]);if(key===`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`){drawTransferCurve();publishSidebar();}}).catch(()=>transferHistograms.delete(key));
 }
 function drawTransferCurve(){
   const canvas=$('transferCurve'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,low=Number($('low').value),high=Number($('high').value);if(!Number.isFinite(low)||!Number.isFinite(high))return;
   const histogram=transferHistograms.get(`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`);
-  const span=Math.max(1e-12,high-low),start=histogram?.edges?.[0]??low-span,end=histogram?.edges?.at(-1)??high+span,extent=Math.max(1e-12,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
+  const bounds=displayBounds.get(`${activeFileFrame}:${dataset?.id}`),span=Math.max(1e-12,high-low),start=bounds?.[0]??histogram?.min??low,end=bounds?.[1]??histogram?.max??high,extent=Math.max(1e-12,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
   g.fillStyle='#1a2028';g.fillRect(0,0,w,h);
   if(histogram){const peak=Math.max(1,...histogram.counts);g.fillStyle='#55626d';for(let i=0;i<histogram.counts.length;i++){const height=Math.min(h-4,histogram.counts[i]/peak*(h-4));g.fillRect(i*w/histogram.counts.length,h-height,Math.max(1,w/histogram.counts.length),height);}}
-  g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();g.moveTo(0,h);g.lineTo(x(low),h);g.lineTo(x(high),0);g.lineTo(w,0);g.stroke();
+  const y=value=>h-Math.max(0,Math.min(1,(value-low)/span))*h;
+  g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();g.moveTo(0,y(start));if(low>start&&low<end)g.lineTo(x(low),h);if(high>start&&high<end)g.lineTo(x(high),0);g.lineTo(w,y(end));g.stroke();
+  g.fillStyle='#d5e4e7';for(const value of [low,high]){const px=x(value);g.fillRect(Math.max(0,Math.min(w-1,px)),h-5,1,5);}
+  $('transferLow').textContent=formatValue(low);$('transferHigh').textContent=formatValue(high);
 }
 function selectDataset(){dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;fit();}
 function saveFileFrame() {
@@ -565,7 +575,21 @@ $('monitorMemory').onclick=()=>vscode.postMessage({type:'imageAction',action:'me
 $('focusLayout').onclick=()=>vscode.postMessage({type:'focusLayout'});
 $('aboutVivi').onclick=()=>openDialog('about','About vivi','<p>vivi image viewer</p>');
 $('closeAnalysis').onclick=()=>$('analysisPane').hidden=true;
-$('minimizeAnalysis').onclick=()=>$('analysisPane').classList.toggle('minimized');
+function arrangeMinimized(){
+  const windows=[...document.querySelectorAll('.floating-dialog.minimized, #analysisPane.minimized')];
+  windows.forEach((pane,index)=>{pane.style.position='fixed';pane.style.left=`${8+index*188}px`;pane.style.right='auto';pane.style.top='auto';pane.style.bottom='25px';});
+}
+function toggleMinimized(pane){
+  if(!pane.classList.contains('minimized')){
+    pane.dataset.restoredPosition=pane.style.position||'';pane.dataset.restoredLeft=pane.style.left||'';pane.dataset.restoredRight=pane.style.right||'';pane.dataset.restoredTop=pane.style.top||'';pane.dataset.restoredBottom=pane.style.bottom||'';
+    pane.classList.add('minimized');arrangeMinimized();
+  }else{
+    pane.classList.remove('minimized');
+    for(const key of ['position','left','right','top','bottom'])pane.style[key]=pane.dataset[`restored${key[0].toUpperCase()+key.slice(1)}`]||'';
+    arrangeMinimized();
+  }
+}
+$('minimizeAnalysis').onclick=()=>toggleMinimized($('analysisPane'));
 $('pinAnalysis').onclick=()=>$('analysisPane').classList.toggle('pinned');
 const analysisHead=$('analysisPane').querySelector('.analysis-head');
 analysisHead.onpointerdown=event=>{if(event.target.closest('button'))return;const pane=$('analysisPane'),rect=pane.getBoundingClientRect(),stage=$('stage').getBoundingClientRect(),left=rect.left-stage.left,top=rect.top-stage.top,startX=event.clientX,startY=event.clientY;pane.style.left=left+'px';pane.style.top=top+'px';pane.style.right='auto';pane.style.bottom='auto';analysisHead.setPointerCapture(event.pointerId);analysisHead.onpointermove=move=>{if(!analysisHead.hasPointerCapture(event.pointerId))return;pane.style.left=Math.max(0,left+move.clientX-startX)+'px';pane.style.top=Math.max(0,top+move.clientY-startY)+'px';};};
@@ -681,8 +705,8 @@ function openDialog(key,title,content){
   dialog.innerHTML=`<div class="dialog-head"><strong>${title}</strong><button class="dialog-min" title="Minimize">−</button><button class="dialog-pin" title="Keep in front">◇</button><button class="dialog-close" title="Close">×</button></div><div class="dialog-body">${content}</div>`;
   $('dialogLayer').append(dialog);
   dialog.onclick=()=>{if(!dialog.classList.contains('pinned'))dialog.style.zIndex=++dialogZ;};
-  dialog.querySelector('.dialog-close').onclick=()=>dialog.remove();
-  dialog.querySelector('.dialog-min').onclick=()=>dialog.classList.toggle('minimized');
+  dialog.querySelector('.dialog-close').onclick=()=>{dialog.remove();arrangeMinimized();};
+  dialog.querySelector('.dialog-min').onclick=()=>toggleMinimized(dialog);
   dialog.querySelector('.dialog-pin').onclick=()=>{dialog.classList.toggle('pinned');dialog.style.zIndex=dialog.classList.contains('pinned')?10000:++dialogZ;};
   const head=dialog.querySelector('.dialog-head');head.onpointerdown=e=>{if(e.target.tagName==='BUTTON')return;head.setPointerCapture(e.pointerId);const x=e.clientX,y=e.clientY,left=dialog.offsetLeft,top=dialog.offsetTop;head.onpointermove=move=>{if(!head.hasPointerCapture(e.pointerId))return;dialog.style.left=Math.max(0,left+move.clientX-x)+'px';dialog.style.top=Math.max(0,top+move.clientY-y)+'px';};};
   head.onpointerup=e=>{if(head.hasPointerCapture(e.pointerId))head.releasePointerCapture(e.pointerId);head.onpointermove=null;};
@@ -888,7 +912,7 @@ function histogramOptions(){
 function showHistogram(result,args){
   document.querySelector('[data-dialog="histogram-result"]')?.remove();
   const title=metadata.label||metadata.path.split(/[\\/]/).pop();
-  const dialog=openDialog('histogram-result',`Histogram of ${title}`,`<canvas class="hist-plot" width="440" height="240"></canvas><div class="hist-range"></div><pre class="hist-stats"></pre><div class="dialog-actions"><button class="hist-list">List</button><button class="hist-copy">Copy</button><button class="hist-log">Log</button><button class="hist-live">Live</button></div>`);
+  const dialog=openDialog('histogram-result',`Histogram of ${title}`,`<canvas class="hist-plot" width="300" height="145"></canvas><div class="hist-range"></div><pre class="hist-stats"></pre><div class="dialog-actions"><button class="hist-list">List</button><button class="hist-copy">Copy</button><button class="hist-log">Log</button><button class="hist-live">Live</button></div>`);
   const canvas=dialog.querySelector('.hist-plot'),context=canvas.getContext('2d'),counts=result.counts||[],edges=result.edges||[],peak=Math.max(1,...counts),ceiling=args.yMax||peak,w=canvas.width,h=canvas.height;
   context.fillStyle='#151a20';context.fillRect(0,0,w,h);context.fillStyle='#76d9ba';
   for(let i=0;i<counts.length;i++){const left=i*w/counts.length,width=Math.max(1,w/counts.length),height=Math.max(0,Math.min(h,counts[i]/ceiling*h));context.fillRect(left,h-height,width,height);}
@@ -934,7 +958,8 @@ window.addEventListener('message',({data:m})=>{
     if(m.keyboardShortcuts)keyboardShortcuts={...keyboardShortcuts,...m.keyboardShortcuts};
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
-    fileFrames.set(m.frameId,{metadata:m});selectFileFrame(m.frameId);
+  fileFrames.set(m.frameId,{metadata:m});selectFileFrame(m.frameId);
+    setTool('pointer');
     if(m.initialSelection){selection=m.initialSelection;refreshSelection();saveFileFrame();}
   }else if(m.type==='frameUpdated'){
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
