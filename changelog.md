@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+- Prepare the public `Suzuka24.vivi` identity, marketplace icon, and listing metadata. The former `local-science.vivi` development ID is a separate installation.
+- Add bilingual README, installation and usage guides, plus privacy, support, security, contribution, and publishing documentation.
+
 ## 0.6.0
 - Add stack assembly, splitting, montage with pixel-preserving scale, reslicing, projection, profiles, measurements and statistics.
 - Keep flips and right-angle rotations in the active Frame with ten undo steps while preserving stack slices.

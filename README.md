@@ -1,46 +1,48 @@
 # vivi
 
-vivi 是面向 Cursor / VS Code 的文件与数据查看扩展。目前提供图像查看器，支持 PNG、JPEG、TIFF、FITS 等格式，以及基础视频预览。连接 Remote SSH 时，文件由远端 Python 解码，编辑器接收预览图，适合快速浏览服务器上的大图。
+[简体中文](README.zh-CN.md) · [Installation](docs/installation.en.md) · [Usage](docs/usage.en.md) · [ImageJ menu coverage](docs/imagej-menu-coverage.md)
 
-## 功能
+vivi is a scientific image and data viewer for VS Code and Cursor. Browse files on the extension host and inspect large images, stacks, and hyperstacks without downloading the original file to your laptop. When you connect through Remote SSH, Python reads and processes the data on the remote host; the editor receives previews and results.
 
-- 从侧栏 Explorer 浏览当前主机上的任意可访问路径。目录列表可持续滚动并自动加载后续文件；路径框右侧可展开最近访问的目录；双击文件在 vivi 中打开，右键可选择在新标签页打开。
-- 使用 `vivi.managedExtensions` 设置由 vivi 接管的文件扩展名；其他文件交给编辑器默认打开方式。
-- 浏览 TIFF stack、hyperstack 和 FITS 多 HDU；切片预览在后台缓存。
-- 在同一标签页内管理多个文件 Frame，支持单帧、平铺、切换、删除，以及 B&C、色彩、视野、缩放和切片的独立锁定。每个 Frame 可单独勾选是否参与锁定；新加入的 Frame 继承已参与 Frame 的锁定参数。Explorer、Layout 和 Adjust 可分别折叠。
-- Explorer 下方的 Layout 可拖拽 Frame 顺序、选择显示的 Frame、设置平铺行列和拖动切片进度条；按住左右切片键会按 FPS 连续切换。
-- Adjust 提供 ImageJ Auto、DS9 ZScale 和百分位色阶。初次自动计算的 B&C 在切换切片时保持固定；另有原有色表及 ImageJ 官方 LUT 归档的 68 个 LUT。矩形和椭圆选区提供八个编辑点；Shift 约束比例，Ctrl/Cmd 从中心绘制，Alt 在调整时维持比例。
-- 提供测量、带参数设置及统计值的直方图、线剖面和 Montage。Montage 使用缩放比例，保留灰度图像的像素类型与数值。Stacks 菜单还提供 Images to Stack、Stack to Images、Reslice、Z Project、Z-axis Profile、Measure Stack 和 Statistics。Duplicate 会在扩展所在主机生成独立 TIFF：2D 可指定标题，stack 可选择当前切片或指定范围，选区可裁切或忽略。Crop、四则运算、归一化和 Z 投影的结果作为新 Frame 打开；翻转与 90°/180° 旋转在当前 Frame 生效，可撤销最多十步。源文件按只读方式打开；重命名会修改文件名。
-- Adjust 提供 Min、Max、Brightness、Contrast 滑块和曲线；Process 的 FFT 有原尺寸与 ImageJ 补齐至 2 的幂两种模式。键盘命令可在 `vivi.keyboardShortcuts` 中配置。
-- 右键选区会显示 ROI 专用菜单，可编辑属性和精确坐标、加入 Overlay 或 ROI Manager、拟合样条、生成蒙版和测量。也可通过 Edit → Selection → Specify 创建选区。鼠标绘制与拖动控制点对齐整数像素；在坐标对话框中输入的小数会保留。
+## Highlights
 
-菜单中置灰的命令尚未实现；同名但简化的命令也有范围限制，逐项状态见 [ImageJ 菜单覆盖情况](docs/imagej-menu-coverage.md)。
+- Open PNG, JPEG, TIFF, FITS, and other supported image formats. TIFF stacks, hyperstacks, and multi-HDU FITS files expose their slices or series. Basic AVI/MP4/MOV/MKV previews are also supported when a suitable codec is available.
+- Navigate any accessible host path from vivi's Explorer, including paths outside the workspace. Choose which extensions vivi opens by default with `vivi.managedExtensions`; other files follow the editor's normal behavior.
+- Keep several files as Frames in one editor tab, switch or tile them, reorder them, and optionally synchronize display parameters across selected Frames. **Open in New Tab** creates an independent tab.
+- Adjust brightness and contrast, stretch, thresholds, and LUTs; draw and measure regions; inspect pixel values and histograms. The ImageJ-style menu also includes stack conversion, montage, reslice, projection, profiles, and selected image-processing commands.
+- Cache previews for smooth browsing. The memory limit is configurable; images beyond it may still need host-side reads while navigating.
 
-Adjust 中勾选 **Threshold** 后，原始像素值在 Min 与 Max 之间的区域显示为白色，其他区域显示为黑色。修改 Min/Max 即可设置下限与上限；启用 Threshold 会切换至 Manual，以固定该范围。
+**vivi is under active development.** Menu entries shown in gray are unavailable, and several implemented commands are simplified relative to ImageJ. See the [feature coverage and differences](docs/imagej-menu-coverage.md) before relying on a particular analysis command.
 
-## 安装
+## Quick install
 
-在运行扩展的主机上准备 Python 3.10+，安装依赖并打包扩展：
+Requirements: VS Code or Cursor with a desktop or Remote SSH extension host, Python 3.10+, and the packages in [`backend/requirements.txt`](backend/requirements.txt) **on that host**. vivi runs in the workspace extension host and does not install Python packages automatically.
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r backend/requirements.txt
-pnpm install
-pnpm run package
-```
+1. Install vivi from the extension marketplace when a listing is available, or use **Extensions → … → Install from VSIX…** with a package built from this repository.
+2. Install the backend packages into a Python environment on the host that will read the images:
 
-在 Cursor / VS Code 中通过 **Install from VSIX…** 安装生成的 `vivi-*.vsix`。使用 Remote SSH 时，还需在远端扩展主机安装。将设置 `vivi.pythonPath` 指向该主机的 Python 解释器；然后运行 **vivi: Check Python Backend** 检查依赖。
+   ```bash
+   python3 -m venv ~/.venvs/vivi
+   ~/.venvs/vivi/bin/python -m pip install -r backend/requirements.txt
+   ```
 
-## 开发与测试
+   If you installed only the VSIX, download [`backend/requirements.txt`](backend/requirements.txt) separately or clone this repository on that host. On Windows, use the corresponding `python.exe` in your virtual environment.
 
-```bash
-pnpm run check
-pnpm test
-.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
-```
+3. Set `vivi.pythonPath` to that environment's **absolute** Python path in the relevant local or remote settings. Run **vivi: Check Python Backend** from the Command Palette.
+4. Select the vivi activity-bar icon, browse to a folder, and double-click an image. In Remote SSH, install vivi **on the remote extension host** and repeat the Python setup there.
 
-`tests/fixtures/` 存放固定回归样本，可用 `tests/generate_fixtures.py` 重新生成。新格式入口位于 `src/formats.js`。
+Upgrading from development builds: the publisher changes from `local-science` to `Suzuka24` in version 0.6.1. `local-science.vivi` and `Suzuka24.vivi` are different extension IDs; remove the old build after installing the new one. Settings named `vivi.*` remain the same.
 
-## 许可
+See [installation, upgrade, and troubleshooting](docs/installation.en.md) for details.
 
-MIT，见 [LICENSE](LICENSE)。
+## Documentation
+
+- [Installation and Remote SSH](docs/installation.en.md) · [中文](docs/installation.md)
+- [Viewer and Explorer guide](docs/usage.en.md) · [中文](docs/usage.md)
+- [ImageJ menu coverage and differences](docs/imagej-menu-coverage.md)
+- [Privacy and local data](PRIVACY.md), [support](SUPPORT.md), and [security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md), [publishing](PUBLISHING.md), and [changelog](changelog.md)
+
+## License
+
+[MIT](LICENSE). vivi is an independent project; it is not affiliated with or endorsed by the ImageJ/Fiji, SAOImage DS9, VS Code, or Cursor teams. Their names belong to their respective owners.

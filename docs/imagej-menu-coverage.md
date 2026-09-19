@@ -1,4 +1,4 @@
-# ImageJ 菜单覆盖情况（vivi 0.6.0）
+# ImageJ 菜单覆盖情况（vivi 0.6.1）
 
 此清单以 [ImageJ Image](https://imagej.net/ij/docs/menus/image.html)、[Process](https://imagej.net/ij/docs/menus/process.html)、[Analyze](https://imagej.net/ij/docs/menus/analyze) 菜单为参照。可运行的命令与 ImageJ 同名，但仅在下述范围内实现；灰色命令不执行操作。源数据按只读方式打开，新的图像结果作为新的 vivi Frame。
 
