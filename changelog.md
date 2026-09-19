@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.8
+- Replace Explorer paging with continuous scroll loading; fix the flex layout so long lists remain visible and scrollable.
+- Give each Frame a separate lock participation checkbox and copy enabled lock settings when a Frame joins the group.
+- Freeze each new Frame's automatically computed brightness range across slice changes.
+- Group Adjust toggles with Auto/Reset, distinguish single/tiled icons, and remove the Focus LUT tool and menu text tooltips.
+- Add all 68 LUT tables from the official ImageJ LUT archive, plus image type/scale/rotation, more Process commands, and basic Analyze result controls.
+- Record menu coverage and known differences from ImageJ.
+
 ## 0.5.5
 - Add independent Explorer/Layout/Adjust collapsible sections, readable Frame names, per-Frame close, and compact tile toggle.
 - Fix drawing on the active Frame in tiled mode, selection clearing, menu hover behavior, immediate tooltips, and ImageJ zoom steps.

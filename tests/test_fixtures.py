@@ -11,6 +11,7 @@ import tifffile
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'backend'))
 from worker import Session
+from luts import imagej_tables
 
 FIXTURES = Path(__file__).with_name('fixtures')
 
@@ -53,6 +54,48 @@ class FixtureTests(unittest.TestCase):
                 with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
                     self.assertEqual(image.size, (32, 24))
                     self.assertEqual(image.mode, 'L' if lut == 'gray' else 'RGB')
+        self.assertEqual(len(imagej_tables()), 68)
+        for lut in imagej_tables():
+            with self.subTest(lut=lut):
+                result=self.session.handle({'op':'render','dataset':0,'frame':0,'size':128,'cmap':lut})
+                with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
+                    self.assertEqual(image.mode,'RGB')
+                    self.assertEqual(image.size,(32,24))
+
+    def test_process_filters_on_fixed_image(self):
+        self.open('gray.png')
+        for action in ('smooth', 'sharpen', 'findEdges', 'invertPixels', 'sqrt',
+                       'square', 'log', 'exp', 'abs', 'thresholdBinary',
+                       'binaryErode', 'binaryDilate', 'binaryOpen', 'binaryClose', 'fftPower',
+                       'mean', 'minimum', 'maximum', 'variance', 'findMaxima',
+                       'noiseGaussian', 'saltPepper', 'shadowNorth', 'shadowSouth',
+                       'shadowEast', 'shadowWest', 'binaryFillHoles', 'binarySkeleton',
+                       'fftBandpass'):
+            with self.subTest(action=action):
+                value=0.05 if action in ('saltPepper','fftBandpass') else 1
+                result=self.session.handle({'op':'derive','dataset':0,'frame':0,'action':action,'value':value})
+                try:
+                    image=tifffile.imread(result['path'])
+                    self.assertEqual(image.shape,(24,32))
+                    self.assertTrue(np.all(np.isfinite(image)))
+                finally:
+                    os.unlink(result['path'])
+
+    def test_image_type_scale_and_rotation(self):
+        self.open('gray.png')
+        for action,dtype,shape in [('to8',np.uint8,(24,32)),('to16',np.uint16,(24,32)),
+                                   ('to32',np.float32,(24,32)),('toRgb',np.uint8,(24,32,3)),
+                                   ('rotateLeft',np.uint8,(32,24)),('rotateRight',np.uint8,(32,24)),
+                                   ('rotate180',np.uint8,(24,32)),('resize',np.uint8,(48,64))]:
+            with self.subTest(action=action):
+                result=self.session.handle({'op':'derive','dataset':0,'frame':0,'action':action,'value':2,
+                                            'displayLow':0,'displayHigh':255})
+                try:
+                    image=tifffile.imread(result['path'])
+                    self.assertEqual(image.shape,shape)
+                    self.assertEqual(image.dtype,dtype)
+                finally:
+                    os.unlink(result['path'])
 
     def test_fractional_rectangle_and_mask(self):
         self.open('gray.png')

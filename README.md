@@ -4,16 +4,16 @@ vivi 是面向 Cursor / VS Code 的文件与数据查看扩展。目前提供图
 
 ## 功能
 
-- 从侧栏 Explorer 浏览当前主机上的任意可访问路径。路径框右侧可展开最近访问的目录；双击文件在 vivi 中打开，右键可选择在新标签页打开。
+- 从侧栏 Explorer 浏览当前主机上的任意可访问路径。目录列表可持续滚动并自动加载后续文件；路径框右侧可展开最近访问的目录；双击文件在 vivi 中打开，右键可选择在新标签页打开。
 - 使用 `vivi.managedExtensions` 设置由 vivi 接管的文件扩展名；其他文件交给编辑器默认打开方式。
 - 浏览 TIFF stack、hyperstack 和 FITS 多 HDU；切片预览在后台缓存。
-- 在同一标签页内管理多个文件 Frame，支持单帧、平铺、切换、删除，以及 B&C、色彩、视野、缩放和切片的独立锁定。Explorer、Layout 和 Adjust 可分别折叠。
+- 在同一标签页内管理多个文件 Frame，支持单帧、平铺、切换、删除，以及 B&C、色彩、视野、缩放和切片的独立锁定。每个 Frame 可单独勾选是否参与锁定；新加入的 Frame 继承已参与 Frame 的锁定参数。Explorer、Layout 和 Adjust 可分别折叠。
 - Explorer 下方的 Layout 可拖拽 Frame 顺序、选择显示的 Frame、设置平铺行列和拖动切片进度条；按住左右切片键会按 FPS 连续切换。
-- Adjust 提供 ImageJ Auto、DS9 ZScale 和百分位色阶，以及 20 种 LUT。矩形和椭圆选区提供八个编辑点；Shift 约束比例，Ctrl/Cmd 从中心绘制，Alt 在调整时维持比例。
+- Adjust 提供 ImageJ Auto、DS9 ZScale 和百分位色阶。初次自动计算的 B&C 在切换切片时保持固定；另有原有色表及 ImageJ 官方 LUT 归档的 68 个 LUT。矩形和椭圆选区提供八个编辑点；Shift 约束比例，Ctrl/Cmd 从中心绘制，Alt 在调整时维持比例。
 - 提供测量、直方图、线剖面和 Montage。Duplicate 会在扩展所在主机生成独立 TIFF：2D 可指定标题，stack 可选择当前切片或指定范围，选区可裁切或忽略。Crop、翻转、四则运算、归一化和 Z 投影的结果也作为新 Frame 打开。源图像数据按只读方式打开；重命名会修改文件名。
 - 右键选区会显示 ROI 专用菜单，可编辑属性和精确坐标、加入 Overlay 或 ROI Manager、拟合样条、生成蒙版和测量。也可通过 Edit → Selection → Specify 创建选区。鼠标绘制与拖动控制点对齐整数像素；在坐标对话框中输入的小数会保留。
 
-菜单中标为 **Planned** 的命令尚未实现；逐项状态见 [ImageJ 菜单覆盖情况](docs/imagej-menu-coverage.md)。
+菜单中置灰的命令尚未实现；同名但简化的命令也有范围限制，逐项状态见 [ImageJ 菜单覆盖情况](docs/imagej-menu-coverage.md)。
 
 Adjust 中勾选 **Threshold** 后，原始像素值在 Min 与 Max 之间的区域显示为白色，其他区域显示为黑色。修改 Min/Max 即可设置下限与上限；启用 Threshold 会切换至 Manual，以固定该范围。
 

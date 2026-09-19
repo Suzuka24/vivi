@@ -1,5 +1,13 @@
 """Small built-in lookup tables for scientific grayscale previews."""
 import numpy as np
+from functools import lru_cache
+from pathlib import Path
+
+
+@lru_cache(maxsize=1)
+def imagej_tables():
+    with np.load(Path(__file__).with_name("imagej_luts.npz"), allow_pickle=False) as archive:
+        return {name: archive[name] for name in archive.files}
 
 PALETTES = {
     "fire": [(0, 0, 0), (90, 0, 0), (220, 45, 0), (255, 180, 0), (255, 255, 255)],
@@ -21,6 +29,11 @@ def apply_lut(scaled, name):
     """Map normalized luminance to RGB; preserve 2-D gray for the gray LUT."""
     if name == "gray":
         return scaled
+    if name.startswith("ij-"):
+        table = imagej_tables().get(name)
+        if table is None:
+            raise ValueError(f"Unknown LUT: {name}")
+        return table[np.clip(np.rint(np.asarray(scaled)*255), 0, 255).astype(np.uint8)] / 255
     if name == "rgb332":
         values = np.asarray(np.clip(scaled, 0, 1) * 255, dtype=np.uint8)
         return np.stack([(values >> 5) / 7, ((values >> 2) & 7) / 7, (values & 3) / 3], axis=-1)

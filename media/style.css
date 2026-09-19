@@ -30,6 +30,12 @@ body.explorer .explorer-module:not([open]){flex:0 0 auto}
 body.explorer .explorer-module summary{flex:none}
 body.explorer .explorer-module-body{display:flex;flex-direction:column;flex:1;min-height:0;padding:3px 4px}
 body.explorer .explorer-module:not([open]) .explorer-module-body{display:none}
+body.explorer .explorer-module-body #files{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+body.explorer .explorer-module{position:relative}
+body.explorer .explorer-module-body{position:absolute;inset:28px 0 0}
+body.explorer .adjust-options{align-items:center;gap:5px;white-space:nowrap}
+body.explorer .adjust-options #adjustAuto{margin-left:auto}
+body.explorer .frame-heading small{font-size:9px;font-weight:400;white-space:nowrap}
 body.explorer .frame-items{max-height:155px;min-width:0}
 body.explorer .frame-item{min-width:0}
 body.explorer .frame-item button:not(.frame-remove){min-width:0;width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

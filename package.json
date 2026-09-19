@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "Remote-first, extensible data viewer with configurable file takeover and scientific image support.",
-  "version": "0.5.5",
+  "version": "0.5.8",
   "publisher": "local-science",
   "license": "MIT",
   "repository": {

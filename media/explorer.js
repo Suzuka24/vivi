@@ -3,7 +3,7 @@ const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const labels = { open: 'Open', openNewTab: 'Open in New Tab', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
-let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true;
+let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function renderSidebar(state){
@@ -19,6 +19,7 @@ function renderSidebar(state){
   $('slicePlay').textContent=state.playing?'Ⅱ':'▶';$('slicePlay').disabled=state.total<2;
   if(document.activeElement!==$('sliceFps'))$('sliceFps').value=state.fps;
   $('frameTile').classList.toggle('selected',state.tile);
+  $('frameTile').querySelector('use').setAttribute('href',state.tile?'#i-tile':'#i-single');
   $('frameTile').dataset.tip=state.tile?'Display: tiled frames; click for single frame':'Display: single frame; click to tile';
   $('frameTile').setAttribute('aria-label',$('frameTile').dataset.tip);
   $('frameColumns').value=state.columns||'';$('frameRows').value=state.rows||'';
@@ -27,9 +28,10 @@ function renderSidebar(state){
     const row=document.createElement('div');row.className='frame-item'+(frame.id===state.active?' active':'');row.draggable=true;row.dataset.id=frame.id;
     const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='Drag to reorder';
     const visible=document.createElement('input');visible.type='checkbox';visible.checked=frame.visible;visible.title='Show this frame';visible.setAttribute('aria-label',`Show ${frame.label}`);visible.onchange=()=>sideAction('frameVisible',{id:frame.id,visible:visible.checked});
+    const locked=document.createElement('input');locked.type='checkbox';locked.checked=frame.locked;locked.title='Include this frame in locks';locked.setAttribute('aria-label',`Include ${frame.label} in locks`);locked.onchange=()=>sideAction('frameLockMember',{id:frame.id,enabled:locked.checked});
     const button=document.createElement('button');button.textContent=`${frame.id}: ${frame.label}`;button.title=frame.label;button.onclick=()=>sideAction('selectFrame',frame.id);
     const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';remove.title=`Close Frame ${frame.id}: ${frame.label}`;remove.setAttribute('aria-label',remove.title);remove.onclick=()=>sideAction('closeFrame',frame.id);
-    row.append(handle,visible,button,remove);
+    row.append(handle,visible,locked,button,remove);
     row.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(frame.id));e.dataTransfer.effectAllowed='move';row.classList.add('dragging');};
     row.ondragend=()=>row.classList.remove('dragging');
     row.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};
@@ -65,7 +67,15 @@ $('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').
 for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=sendAdjust;
 $('adjustThreshold').onchange=()=>{if($('adjustThreshold').checked)$('adjustCuts').value='manual';sendAdjust();};
 for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';sendAdjust();};
-function list(path, start = 0) { closeMenu(); $('error').textContent = ''; vscode.postMessage({ type: 'list', path, offset: start, sortMode, showHidden }); }
+function list(path, start = 0) {
+  if(start && (loading || !more))return;
+  closeMenu();$('error').textContent='';loading=true;
+  if(!start){more=false;entries=[];render();$('files').scrollTop=0;}
+  vscode.postMessage({type:'list',path,offset:start,sortMode,showHidden});
+}
+function loadMore(){if(more&&!loading)list(current,entries.length);}
+function fillViewport(){if(more&&!loading&&$('files').scrollHeight<=$('files').clientHeight+80)loadMore();}
+$('files').onscroll=()=>{if($('files').scrollTop+$('files').clientHeight >= $('files').scrollHeight-200)loadMore();};
 function select(item) {
   selectedPath = item.path;
   for(const row of $('files').children)row.classList.toggle('selected',row.dataset.path===selectedPath);
@@ -135,7 +145,7 @@ $('historyMenu').addEventListener('pointerover',event=>{const button=event.targe
 $('historyMenu').addEventListener('pointerleave',hidePathTip);
 $('up').onclick = () => list(parent);
 $('home').onclick = () => list('~');
-$('refresh').onclick = () => list(current, offset);
+$('refresh').onclick = () => list(current);
 $('newFolder').onclick = () => vscode.postMessage({ type: 'action', action: 'newFolder', path: current });
 $('newFile').onclick = () => vscode.postMessage({ type: 'action', action: 'newFile', path: current });
 $('delete').onclick = () => {if(selectedPath)vscode.postMessage({type:'action',action:'delete',path:selectedPath,folder:current});};
@@ -150,24 +160,21 @@ $('sort').onclick = event => {
 };
 $('filter').oninput = render;
 for(const button of document.querySelectorAll('.icon-button')) button.dataset.tip = button.title;
-$('prev').onclick = () => list(current, Math.max(0,offset - 500));
-$('next').onclick = () => list(current, offset + 500);
 document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 window.addEventListener('message', ({data:message}) => {
-  if (message.type === 'error') { $('error').textContent = message.message; return; }
+  if (message.type === 'error') { loading=false;$('error').textContent = message.message; return; }
   if(message.type==='sidebarState'){renderSidebar(message.state);return;}
   if(message.type==='sidebarClear'){renderSidebar(null);return;}
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}
   if(message.type==='focusLayout'){$('layoutModule').open=true;$('frameItems').scrollIntoView({block:'nearest'});return;}
   if (message.type !== 'list') return;
-  current = message.path; parent = message.parent; offset = message.offset; entries = message.entries; menuItems = message.menuItems || [];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
+  const append=message.path===current&&message.offset===entries.length&&message.offset>0;
+  current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
   $('path').value = current;
   $('pathHistory').disabled=!history.length;
-  $('page').textContent = entries.length?`${offset + 1}–${offset + entries.length}`:'0';
-  $('prev').disabled = !offset; $('next').disabled = !message.more;
   $('hidden').classList.toggle('selected',showHidden);$('hidden').setAttribute('aria-pressed',String(showHidden));$('hidden').title=showHidden?'Hide hidden files':'Show hidden files';$('hidden').setAttribute('aria-label',$('hidden').title);$('hidden').dataset.tip=$('hidden').title;
   $('sort').title=`Sort: ${sorts.find(([mode])=>mode===sortMode)?.[1]||'Name A–Z'}`;$('sort').dataset.tip=$('sort').title;
-  render();
+  render();requestAnimationFrame(fillViewport);
 });
 vscode.postMessage({type:'ready'});

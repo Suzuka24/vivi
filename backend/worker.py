@@ -318,7 +318,7 @@ class Session:
         if op == "derive":
             import tifffile
             action = req.get("action")
-            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp"}
+            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"}
             if action not in supported:
                 raise ValueError("Unsupported image operation")
             area = (box[2]-box[0])*(box[3]-box[1])
@@ -346,6 +346,33 @@ class Session:
                     result = result[:, ::-1]
                 elif action == "flipVertical":
                     result = result[::-1]
+                elif action in ("rotateLeft", "rotateRight", "rotate180"):
+                    result = np.rot90(result, {"rotateLeft":1,"rotateRight":3,"rotate180":2}[action])
+                elif action == "resize":
+                    import cv2
+                    factor=finite_number(req.get("value"),1)
+                    if not 0 < factor <= 32 or result.shape[0]*result.shape[1]*factor*factor > self.source.max_pixels:
+                        raise ValueError("Scale factor or output size exceeds limit")
+                    result=cv2.resize(np.ascontiguousarray(result), None, fx=factor, fy=factor, interpolation=cv2.INTER_LINEAR if factor >= 1 else cv2.INTER_AREA)
+                elif action in ("to8", "to16", "to32", "toRgb"):
+                    data=result.astype(np.float64)
+                    if action == "toRgb":
+                        if data.ndim == 2:
+                            data=np.repeat(data[...,None],3,axis=-1)
+                        action="to8"
+                        rgb=True
+                    else:
+                        rgb=False
+                        if data.ndim == 3:
+                            data=np.mean(data[...,:3],axis=-1)
+                    if action == "to32": result=data.astype(np.float32)
+                    else:
+                        low=finite_number(req.get("displayLow"),float(np.nanmin(data)))
+                        high=finite_number(req.get("displayHigh"),float(np.nanmax(data)))
+                        if high <= low: high=low+1
+                        maximum=255 if action == "to8" else 65535
+                        result=np.rint(np.clip((data-low)/(high-low),0,1)*maximum).astype(np.uint8 if action == "to8" else np.uint16)
+                    if rgb: result=np.ascontiguousarray(result[...,:3])
                 elif action in ("add", "subtract", "multiply", "divide"):
                     value = finite_number(req.get("value"), 0)
                     if action == "divide" and value == 0:
@@ -357,6 +384,84 @@ class Session:
                     finite = result[np.isfinite(result)]
                     low, high = (float(finite.min()), float(finite.max())) if finite.size else (0., 1.)
                     result = np.clip((result.astype(np.float32)-low)/(high-low or 1.), 0, 1)
+                elif action in ("smooth", "sharpen", "findEdges", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"):
+                    import cv2
+                    data = np.ascontiguousarray(result.astype(np.float32))
+                    if action == "smooth":
+                        result = cv2.blur(data, (3, 3))
+                    elif action == "sharpen":
+                        result = cv2.filter2D(data, -1, np.array([[-1,-1,-1],[-1,12,-1],[-1,-1,-1]], dtype=np.float32)/4)
+                    elif action == "findEdges":
+                        result = cv2.magnitude(cv2.Sobel(data, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(data, cv2.CV_32F, 0, 1, ksize=3))
+                    elif action in ("mean", "minimum", "maximum", "variance"):
+                        radius=int(finite_number(req.get("value"),1))
+                        if not 1 <= radius <= 20: raise ValueError("Radius must be between 1 and 20 pixels")
+                        kernel=(radius*2+1,radius*2+1)
+                        if action == "mean": result=cv2.blur(data,kernel)
+                        elif action == "minimum": result=cv2.erode(data,np.ones(kernel,dtype=np.uint8))
+                        elif action == "maximum": result=cv2.dilate(data,np.ones(kernel,dtype=np.uint8))
+                        else:
+                            average=cv2.blur(data,kernel)
+                            result=np.maximum(0,cv2.blur(data*data,kernel)-average*average)
+                    elif action == "findMaxima":
+                        tolerance=finite_number(req.get("value"),0)
+                        if tolerance < 0: raise ValueError("Noise tolerance must be nonnegative")
+                        gray=np.mean(data[...,:3],axis=-1) if data.ndim == 3 else data
+                        peak=cv2.dilate(gray,np.ones((3,3),dtype=np.uint8))
+                        result=np.uint8((gray>=peak)&(gray>=np.nanmin(gray)+tolerance))*255
+                    elif action == "noiseGaussian":
+                        sigma=finite_number(req.get("value"),25)
+                        if not 0 <= sigma <= 1e6: raise ValueError("Noise standard deviation is out of range")
+                        result=data+np.random.default_rng().normal(0,sigma,data.shape).astype(np.float32)
+                    elif action == "saltPepper":
+                        fraction=finite_number(req.get("value"),0.05)
+                        if not 0 <= fraction <= 1: raise ValueError("Noise fraction must be between 0 and 1")
+                        random=np.random.default_rng().random(data.shape[:2]);result=data.copy()
+                        result[random<fraction/2]=np.nanmin(data)
+                        result[random>1-fraction/2]=np.nanmax(data)
+                    elif action.startswith("shadow"):
+                        direction={"shadowNorth":(-1,0),"shadowSouth":(1,0),"shadowEast":(0,1),"shadowWest":(0,-1)}[action]
+                        result=data-np.roll(data,direction,axis=(0,1))
+                    elif action == "binaryFillHoles":
+                        gray=np.mean(data[...,:3],axis=-1) if data.ndim==3 else data
+                        binary=np.uint8(gray>0)
+                        count,labels,stats,_=cv2.connectedComponentsWithStats(1-binary,8)
+                        border=set(np.unique(np.concatenate((labels[0],labels[-1],labels[:,0],labels[:,-1]))))
+                        result=np.uint8(binary|np.isin(labels,[i for i in range(1,count) if i not in border]))*255
+                    elif action == "binarySkeleton":
+                        gray=np.mean(data[...,:3],axis=-1) if data.ndim==3 else data
+                        current=np.uint8(gray>0)*255;skeleton=np.zeros_like(current);kernel=cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
+                        for _ in range(min(max(current.shape),4096)):
+                            eroded=cv2.erode(current,kernel)
+                            skeleton=cv2.bitwise_or(skeleton,cv2.subtract(current,cv2.dilate(eroded,kernel)))
+                            current=eroded
+                            if not np.any(current):break
+                        result=skeleton
+                    elif action == "fftBandpass":
+                        low=finite_number(req.get("value"),0.05)
+                        if not 0 <= low <= 0.5: raise ValueError("Cutoff must be between 0 and 0.5")
+                        gray=np.mean(data[...,:3],axis=-1) if data.ndim==3 else data
+                        yy=np.fft.fftfreq(gray.shape[0])[:,None];xx=np.fft.fftfreq(gray.shape[1])[None,:]
+                        mask=(yy*yy+xx*xx)>=low*low
+                        result=np.real(np.fft.ifft2(np.fft.fft2(gray)*mask)).astype(np.float32)
+                    else:
+                        binary = np.uint8(np.any(data > 0, axis=-1) if data.ndim == 3 else data > 0) * 255
+                        kernel = np.ones((3,3), dtype=np.uint8)
+                        result = {"binaryErode":lambda:cv2.erode(binary,kernel),"binaryDilate":lambda:cv2.dilate(binary,kernel),"binaryOpen":lambda:cv2.morphologyEx(binary,cv2.MORPH_OPEN,kernel),"binaryClose":lambda:cv2.morphologyEx(binary,cv2.MORPH_CLOSE,kernel)}[action]()
+                elif action in ("invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "fftPower"):
+                    data = result.astype(np.float64)
+                    if action == "invertPixels": result = np.nanmax(data) + np.nanmin(data) - data
+                    elif action == "sqrt": result = np.sqrt(np.maximum(data, 0))
+                    elif action == "square": result = np.square(data)
+                    elif action == "log": result = np.log1p(np.maximum(data, 0))
+                    elif action == "exp": result = np.exp(np.clip(data, -50, 50))
+                    elif action == "abs": result = np.abs(data)
+                    elif action == "thresholdBinary":
+                        threshold = finite_number(req.get("value"), 0)
+                        result = np.uint8(data >= threshold) * 255
+                    elif action == "fftPower":
+                        if data.ndim == 3: data = np.mean(data[...,:3], axis=-1)
+                        result = np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(data))))
                 elif action in ("gaussian", "median", "unsharp"):
                     import cv2
                     radius = finite_number(req.get("value"), 1)

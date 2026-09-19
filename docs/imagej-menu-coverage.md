@@ -1,22 +1,19 @@
-# ImageJ 菜单覆盖情况（vivi 0.5.5）
+# ImageJ 菜单覆盖情况（vivi 0.5.8）
 
-此表仅记录 vivi 当前显示的 File / Edit / Image / Process / Analyze 菜单。`Planned` 项尚未执行任何处理。图像计算在扩展运行的主机完成，衍生结果创建新的 Frame；原图仍以只读方式打开。
+此清单以 [ImageJ Image](https://imagej.net/ij/docs/menus/image.html)、[Process](https://imagej.net/ij/docs/menus/process.html)、[Analyze](https://imagej.net/ij/docs/menus/analyze) 菜单为参照。可运行的命令与 ImageJ 同名，但仅在下述范围内实现；灰色命令不执行操作。源数据按只读方式打开，新的图像结果作为新的 vivi Frame。
 
-| 菜单 | 已可使用 | 尚未实现 |
+| 菜单 | 已可运行 | 尚未实现或尚不等价 |
 | --- | --- | --- |
-| File | Open、Close Frame、导出预览 PNG、导出结果 CSV | New Image/Stack/Text Window、Open Recent、Import Image Sequence/Raw/URL、Save As TIFF/FITS、Revert、Print |
-| Edit | Clear Selection、Selection: Select All/Select None/Restore Selection/Enlarge/Fit Spline/Properties/Specify/Add to Overlay/Add to ROI Manager | Undo、Redo、Cut、Copy、Paste、Options: Colors/Line Width/Memory & Threads |
-| Image | Adjust: Brightness/Contrast、Auto、Reset、Threshold；Stacks: Make Montage、Z Project；Transform: Flip Horizontally/Vertically；Crop、Duplicate、Rename | Type: 8/16/32-bit/RGB；Color: Channels Tool/Split/Merge；Stacks: Add/Delete Slice、Orthogonal Views；Transform: Rotate；Properties |
-| Process | Enhance Contrast: Auto、Normalize；Math: Add/Subtract/Multiply/Divide；Filters: Gaussian Blur/Median/Unsharp Mask | 其他 ImageJ Process 命令（如 FFT、Binary、Batch）尚未列入菜单 |
-| Analyze | Measure、Histogram、Plot Profile、ROI Manager | Set Measurements、Set Scale、Analyze Particles、Calibration Bar |
+| Image | Type: 8/16/32-bit、RGB；Adjust: Auto、ZScale、百分位、手动 B&C、Threshold；Show Info；Stacks: Montage、Z Projection；Crop、Duplicate、Rename、Scale；Transform: 水平/垂直翻转、90°/180°旋转；Zoom: In/Out/Original/Fit；Overlay: Add Selection | 8-bit Color、完整 Color/Channels、Stack 增删与重排、任意角度旋转/平移、Overlay 隐藏/显示/Flatten/导出、Hyperstack 各轴范围处理；转换只处理当前切片 |
+| Process | Smooth、Sharpen、Find Edges；Find Maxima 的基本局部峰值；Enhance Contrast 的 Auto/Normalize；Noise 的 Gaussian/Salt and Pepper/Despeckle；Shadows 四向；Binary 的二值化、腐蚀、膨胀、开、闭、填洞、形态骨架；Math 的四则运算、Invert/Sqrt/Square/Log/Exp/Abs；FFT 功率谱与基本高通；Filters 的 Gaussian/Median/Unsharp/Mean/Min/Max/Variance | Find Maxima 的全部输出模式与精确 ImageJ 容差、完整 Noise/Shadows/Binary/Math/FFT/Filters 参数及批处理、Convolve、Watershed、Inverse FFT；命令处理当前切片并创建新 Frame |
+| Analyze | Measure、Summarize、Distribution（测量值直方图）、Label Selection、Clear Results、Set Measurements（显示字段）、Set Scale（面积单位）、Histogram、Plot Profile、ROI Manager | Analyze Particles、Skeleton 分析、更多 Set Measurements 指标、校准与完整结果表、Profile 插值及 ROI Manager 全部操作 |
+| File/Edit | Open、Close Frame、预览 PNG/CSV 导出；选区创建、调整、指定、ROI Manager/Overlay | New/Import/Save As 多格式、Undo/Redo、剪贴板、完整 Edit Options |
 
-ImageJ 自身还有较多尚未列入 vivi 菜单的类别：Image 的 Hyperstacks、Zoom、Overlay、Lookup Tables；Process 的 Noise、Shadows、Binary、FFT、Batch 和 Image Calculator；Analyze 的 Gels、Summarize、Clear Results 及更多 Tools。具体条目会随 ImageJ 版本与安装的插件变化；本清单以 ImageJ 官方 [Menus.java](https://github.com/imagej/ImageJ/blob/master/ij/Menus.java) 的菜单结构为参考。
+## 关键行为与限制
 
-## 目前与 ImageJ 的差异
-
-- Duplicate 对 2D 图像提供标题；对 stack 提供 Duplicate stack 和 `起始-结束` 范围；有面积选区时提供 Ignore selection。它在主机上保存真实像素副本。普通 stack 的范围按 ImageJ 的线性切片序号处理。多轴 hyperstack 目前将 C/Z/T 展平为线性切片序号，尚未提供各轴单独范围。ImageJ 的行为参考其 [Duplicator.java](https://github.com/imagej/ImageJ/blob/master/ij/plugin/Duplicator.java)。
-- Gaussian Blur 与 Unsharp Mask 接受 0–20 px 的 sigma。Median 当前支持半径 1 或 2 px。处理当前切片并生成新 Frame；尚未提供 ImageJ 的“处理整个 stack”对话框。
-- Z Project 当前支持全 stack 的最大、平均和最小投影，最多 256 切片；尚未提供区间和其他投影方式。
-- 图像变换与四则运算目前作用于当前切片并创建新 Frame，尚未实现对源 Frame 像素的就地修改及其 Undo/Redo。
-- Threshold 是显示用二值映射，不修改原始像素：Min ≤ 像素值 ≤ Max 显示白色，其他值显示黑色。勾选后使用 Manual 色阶；通过 Adjust 中的 Min/Max 设置上下阈值。
-- 缩放档位取自 ImageJ 的 [ImageCanvas.java](https://github.com/imagej/ImageJ/blob/master/ij/gui/ImageCanvas.java)。Fit 仍按窗口大小计算，故可以落在这些固定档位之间。
+- B&C 在 Frame 首次呈现时由所选自动方式计算，然后把该 Frame 的 Min/Max 固定。切片切换沿用这组数值；只有在 Adjust 中再次选择自动方式或手动修改才变化。
+- Layout 的第一列勾选控制显示，第二列勾选控制是否参与参数锁。刚加入锁定组的 Frame 从已勾选的 Frame 继承当前勾选的参数组。退出锁定组后保留自己的参数。
+- Duplicate 对 2D 图像提供标题；对 stack 提供 Duplicate stack 与切片范围；面积选区可裁切或忽略。多轴 hyperstack 暂时用线性切片序号表示范围。
+- ImageJ 核心内置 LUT 之外，vivi 还提供 [ImageJ 官方 LUT 归档](https://imagej.net/ij/download/luts/luts.zip)的 68 个原始色表和先前的自定义色表。来源与转换方式见 [`backend/IMAGEJ_LUTS.md`](../backend/IMAGEJ_LUTS.md)。这覆盖该归档中的全部 `.lut` 文件，不包含第三方插件或用户自行安装的 LUT。
+- 图像处理操作目前仅取当前切片；多数 ImageJ 原命令可直接修改像素，而 vivi 生成新 Frame。数值算法在同名但简化的操作上可能与 ImageJ 不逐像素相同。
+- Threshold 在显示层将 Min 到 Max 之间的原始像素显示为白色，范围外为黑色。Process → Binary → Make Binary 则创建真实二值图像。
