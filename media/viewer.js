@@ -1,13 +1,7 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
-const formatValue = value => {
-  if(typeof value!=='number'||!Number.isFinite(value))return String(value);
-  if(value===0)return '0';
-  const compact=Number(value.toPrecision(8)).toString();
-  if(compact.length<=11)return compact;
-  return value.toExponential(5).replace(/\.0+e/,'e').replace(/e([+-])0+/,'e$1');
-};
+const formatValue = window.ViviNumberFormat.formatNumber;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -108,7 +102,7 @@ function draw() {
   }else if(roi){const a=transform(roi[0],roi[1]),b=transform(roi[2],roi[3]);ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);}
   if(line&&!selection){const a=transform(line[0],line[1]),b=transform(line[2],line[3]);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();}
   ctx.fillStyle='#72ebc4';ctx.font='16px sans-serif';for(const note of annotations){const at=transform(...note.point);ctx.fillText(note.text,at[0],at[1]);}
-  ctx.setLineDash([]);if(tileMode&&tileViewport())ctx.restore();$('zoom').textContent=`${(scale*100).toFixed(1)}%`;
+  ctx.setLineDash([]);if(tileMode&&tileViewport())ctx.restore();$('zoom').textContent=`${formatValue(scale*100)}%`;
 }
 function drawOverlay(item){
   const points=item.points;if(!points?.length)return;
@@ -233,13 +227,11 @@ function clearExpiredError(){if(Date.now()>=errorUntil)$('error').textContent=''
 function showError(error){$('error').textContent=error.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
 function fit(){if(!dataset)return;const {w,h}=size();scale=Math.min(w/dataset.width,h/dataset.height)*.96;cx=dataset.width/2;cy=dataset.height/2;commitFrameChange('view');commitFrameChange('scale');scheduleRender(0);}
 const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32];
-let lastPointer=null;
-function zoom(direction){
+function zoom(direction,anchor=null){
   if(!dataset)return;
   const old=scale,epsilon=1e-9;
   const next=direction>0?zoomLevels.find(value=>value>old+epsilon):[...zoomLevels].reverse().find(value=>value<old-epsilon);
   if(!next)return;
-  const anchor=$('tool').value==='pan'&&lastPointer?lastPointer:null;
   scale=next;
   if(anchor){cx=anchor[0]-(anchor[0]-cx)*old/scale;cy=anchor[1]-(anchor[1]-cy)*old/scale;}
   clampCenter();commitFrameChange('scale');if(anchor)commitFrameChange('view');scheduleRender();
@@ -276,7 +268,7 @@ function syncViewerToolbar(){
   $('viewerSlicePlay').textContent=playing?'Ⅱ':'▶';
   if(document.activeElement!==$('viewerSliceFps'))$('viewerSliceFps').value=$('fps').value;
   const dtype=String(dataset.dtype||''),bits=Number(dtype.match(/\d+/)?.[0])||8,channels=String(dataset.axes||'').endsWith('S')?dataset.shape.at(-1):1;
-  const bytes=dataset.width*dataset.height*channels*bits/8,sizeLabel=bytes<1048576?`${(bytes/1024).toFixed(1)}KB`:`${(bytes/1048576).toFixed(1)}MB`;
+  const bytes=dataset.width*dataset.height*channels*bits/8,sizeLabel=bytes<1048576?`${formatValue(bytes/1024)}KB`:`${formatValue(bytes/1048576)}MB`;
   $('imageSummary').textContent=`${dataset.width}×${dataset.height} (${dataset.width}×${dataset.height}); ${channels===3?'RGB':bits+'-bit'}; ${sizeLabel}`;
   drawTransferCurve();
 }
@@ -292,7 +284,7 @@ function loadTransferHistogram(){
 function drawTransferCurve(){
   const canvas=$('transferCurve'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,low=Number($('low').value),high=Number($('high').value);if(!Number.isFinite(low)||!Number.isFinite(high))return;
   const histogram=transferHistograms.get(`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`);
-  const bounds=displayBounds.get(`${activeFileFrame}:${dataset?.id}`),span=Math.max(1e-12,high-low),start=bounds?.[0]??histogram?.min??low,end=bounds?.[1]??histogram?.max??high,extent=Math.max(1e-12,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
+  const bounds=displayBounds.get(`${activeFileFrame}:${dataset?.id}`),span=Math.max(Number.MIN_VALUE,high-low),start=bounds?.[0]??histogram?.min??low,end=bounds?.[1]??histogram?.max??high,extent=Math.max(Number.MIN_VALUE,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
   g.fillStyle='#1a2028';g.fillRect(0,0,w,h);
   if(histogram){const peak=Math.max(1,...histogram.counts);g.fillStyle='#55626d';for(let i=0;i<histogram.counts.length;i++){const height=Math.min(h-4,histogram.counts[i]/peak*(h-4));g.fillRect(i*w/histogram.counts.length,h-height,Math.max(1,w/histogram.counts.length),height);}}
   const y=value=>h-Math.max(0,Math.min(1,(value-low)/span))*h;
@@ -423,10 +415,10 @@ function chart(values){const c=$('chart'),g=c.getContext('2d'),w=c.width,h=c.hei
 const measurementHistory=[];
 let measurementFields=new Set(["Area","Mean","Std","Min","Max","Sum"]);
 let calibration={factor:1,unit:"px"};
-async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI).toFixed(3)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);clearExpiredError();if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${formatValue(r.area*calibration.factor*calibration.factor)} ${calibration.unit}²\nFinite pixels: ${r.count}\nMean: ${formatValue(r.mean)}\nStd (population): ${formatValue(r.std)}\nMin: ${formatValue(r.min)}\nMax: ${formatValue(r.max)}\nSum: ${formatValue(r.sum)}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${r.samples} samples\n${r.sampled?'Sampled; stride '+r.step:'All pixels'}\nX: ${r.edges[0]} … ${r.edges.at(-1)}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${r.values.length} points\nLength: ${r.distance.at(-1).toFixed(3)} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
-canvas.addEventListener('wheel',e=>{e.preventDefault();lastPointer=position(e);zoom(e.deltaY<0?1:-1);},{passive:false});
+async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${formatValue(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);clearExpiredError();if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${formatValue(r.area*calibration.factor*calibration.factor)} ${calibration.unit}²\nFinite pixels: ${formatValue(r.count)}\nMean: ${formatValue(r.mean)}\nStd (population): ${formatValue(r.std)}\nMin: ${formatValue(r.min)}\nMax: ${formatValue(r.max)}\nSum: ${formatValue(r.sum)}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${formatValue(r.samples)} samples\n${r.sampled?'Sampled; stride '+formatValue(r.step):'All pixels'}\nX: ${formatValue(r.edges[0])} … ${formatValue(r.edges.at(-1))}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${formatValue(r.values.length)} points\nLength: ${formatValue(r.distance.at(-1))} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
+canvas.addEventListener('wheel',e=>{e.preventDefault();if(dataset)zoom(e.deltaY<0?1:-1,position(e));},{passive:false});
 function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.disabled=!run;if(run)button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
-canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;if($('tool').value==='zoom'){e.preventDefault();lastPointer=position(e);zoom(-1);return;}const point=position(e);const selected=selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
+canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;if($('tool').value==='zoom'){e.preventDefault();zoom(-1,position(e));return;}const point=position(e);const selected=selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
   const items=selected?[
     ['ROI Properties…',()=>openSelectionDialog(true)],['Specify…',()=>openSelectionDialog(false)],
     ['ROI Defaults…',openRoiDefaults],['Add to Overlay',addSelectionToOverlay],['Add to ROI Manager',addSelectionToManager],
@@ -483,7 +475,6 @@ canvas.onpointerdown=e=>{
   if(tileMode){const rect=canvas.getBoundingClientRect(),{ids,cols,rows}=tileGeometry(rect.width,rect.height),col=Math.floor((e.clientX-rect.left)/(rect.width/cols)),row=Math.floor((e.clientY-rect.top)/(rect.height/rows)),id=ids[row*cols+col];if(!id)return;if(id!==activeFileFrame){selectFileFrame(id);draw();return;}}
   if(e.button===2&&!e.altKey)return;
   stopPlay();const raw=bounded(position(e)),tool=e.button===2?'contrast':e.button===1?'pan':$('tool').value;
-  lastPointer=raw;
   const point=['roi','oval','polygon','freehand','line','angle'].includes(tool)?roiGeometry.pixelPoint(raw,dataset.width,dataset.height):raw;
   if(e.button===0&&selection&&['roi','oval','polygon','freehand','line','angle'].includes(tool)){
     const handle=hitSelectionHandle(e);
@@ -495,7 +486,7 @@ canvas.onpointerdown=e=>{
     selection=null;roi=null;line=null;vertices=[];$('region').textContent='Full image';draw();return;
   }
   if(tool==='pointer'){cx=point[0];cy=point[1];commitFrameChange('view');scheduleRender(0);return;}
-  if(tool==='zoom'){zoom(e.altKey?-1:1);return;}
+  if(tool==='zoom'){zoom(e.altKey?-1:1,raw);return;}
   if(tool==='text'){openTextDialog(point);return;}
   if(tool==='polygon'||tool==='angle'||(tool==='line'&&toolVariant==='segmented')){
     vertices.push(point);selection={type:tool,points:[...vertices]};draw();
@@ -511,11 +502,11 @@ canvas.onpointerdown=e=>{
 canvas.ondblclick=()=>{if(tileMode){tileMode=false;frameList();draw();}else if(( $('tool').value==='polygon'||toolVariant==='segmented')&&vertices.length>=2){if(vertices.length>2){const a=vertices.at(-1),b=vertices.at(-2);if(Math.hypot(a[0]-b[0],a[1]-b[1])<2)vertices.pop();}finishSelection(toolVariant==='segmented'?'line':'polygon',vertices);}};
 canvas.onpointermove=e=>{
   if(!dataset)return;
-  const p=position(e);lastPointer=p;
+  const p=position(e);
   if(drag){const dx=e.clientX-drag.screen[0],dy=e.clientY-drag.screen[1];
     if(drag.tool==='editHandle'||drag.tool==='editMove'){dragEditedSelection(e,roiGeometry.pixelPoint(p,dataset.width,dataset.height));return;}
     if(drag.tool==='pan'){cx=drag.cx-dx/scale;cy=drag.cy-dy/scale;clampCenter();commitFrameChange('view');scheduleRender(100);}
-    else if(drag.tool==='contrast'){const span=Math.max(1e-12,drag.high-drag.low),range=span*Math.exp(dy/150),middle=(drag.low+drag.high)/2-dx/300*span;$('cuts').value='manual';$('low').value=middle-range/2;$('high').value=middle+range/2;commitFrameChange('bc');scheduleRender(100);}
+    else if(drag.tool==='contrast'){const span=Math.max(Number.MIN_VALUE,drag.high-drag.low),range=span*Math.exp(dy/150),middle=(drag.low+drag.high)/2-dx/300*span;$('cuts').value='manual';$('low').value=middle-range/2;$('high').value=middle+range/2;drawTransferCurve();commitFrameChange('bc');scheduleRender(100);}
     else if(selection){let end=roiGeometry.pixelPoint(p,dataset.width,dataset.height);if(['roi','oval'].includes(drag.tool))selection.points=rectPoints(roiGeometry.createRect(drag.point,end,{shift:e.shiftKey,center:e.ctrlKey||e.metaKey}));
       else if(drag.tool==='line'&&e.shiftKey){const dx=end[0]-drag.point[0],dy=end[1]-drag.point[1],angle=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*Math.PI/4,length=Math.hypot(dx,dy);end=bounded([drag.point[0]+length*Math.cos(angle),drag.point[1]+length*Math.sin(angle)]);selection.points=[drag.point,end];}
       else if(drag.tool==='freehand'||toolVariant==='freeline')selection.points.push(end);else selection.points=[drag.point,end];
@@ -524,7 +515,7 @@ canvas.onpointermove=e=>{
     return;
   }
   clearTimeout(pixelTimer);const stamp=revision,b=base();
-  pixelTimer=setTimeout(async()=>{if(pixelRunning||p[0]<0||p[1]<0||p[0]>=dataset.width||p[1]>=dataset.height)return;pixelRunning=true;try{const r=await request('pixel',{...b,x:Math.floor(p[0]),y:Math.floor(p[1])});if(stamp===revision)$('pixel').textContent=`x=${Number((r.x*calibration.factor).toPrecision(7))} (${r.x}), y=${Number((r.y*calibration.factor).toPrecision(7))} (${r.y}), value=${Array.isArray(r.value)?r.value.join(', '):r.value}`;}catch{/* main actions report worker errors */}finally{pixelRunning=false;}},100);
+  pixelTimer=setTimeout(async()=>{if(pixelRunning||p[0]<0||p[1]<0||p[0]>=dataset.width||p[1]>=dataset.height)return;pixelRunning=true;try{const r=await request('pixel',{...b,x:Math.floor(p[0]),y:Math.floor(p[1])});if(stamp===revision)$('pixel').textContent=`x=${formatValue(r.x*calibration.factor)} (${formatValue(r.x)}), y=${formatValue(r.y*calibration.factor)} (${formatValue(r.y)}), value=${Array.isArray(r.value)?r.value.map(formatValue).join(', '):formatValue(r.value)}`;}catch{/* main actions report worker errors */}finally{pixelRunning=false;}},100);
 };
 canvas.onpointerup=e=>{if(!drag)return;if(selection&&['roi','oval','freehand','line'].includes(drag.tool)){if(Math.hypot(e.clientX-drag.screen[0],e.clientY-drag.screen[1])<3){selection=null;roi=null;line=null;$('region').textContent='Full image';}else finishSelection(drag.tool,selection.points);}else if(['editHandle','editMove'].includes(drag.tool))refreshSelection();drag=null;canvas.releasePointerCapture(e.pointerId);draw();};
 canvas.onpointercancel=()=>{drag=null;};
@@ -544,7 +535,7 @@ for(const [id,tool] of tools)if(variants[tool])$(id).oncontextmenu=e=>showToolVa
 $('cmap').replaceChildren();
 for(const [value,label] of lutOptions){const option=document.createElement('option');option.value=value;option.textContent=label;$('cmap').append(option);}
 for(const button of document.querySelectorAll('.tool-button')) button.dataset.tip=button.title;
-$('fit').onclick=fit;$('actual').onclick=()=>{const old=scale;scale=1;if($('tool').value==='pan'&&lastPointer){cx=lastPointer[0]-(lastPointer[0]-cx)*old;cy=lastPointer[1]-(lastPointer[1]-cy)*old;clampCenter();commitFrameChange('view');}commitFrameChange('scale');scheduleRender(0);};$('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
+$('fit').onclick=fit;$('actual').onclick=()=>{scale=1;commitFrameChange('scale');scheduleRender(0);};$('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
 for(const button of document.querySelectorAll('[data-click]')) button.onclick=()=>$(button.dataset.click).click();
 for(const menu of document.querySelectorAll('.menu')){
   menu.querySelector(':scope > summary').addEventListener('click',event=>{event.preventDefault();menu.open=true;});
@@ -588,6 +579,8 @@ function toggleMinimized(pane){
     for(const key of ['position','left','right','top','bottom'])pane.style[key]=pane.dataset[`restored${key[0].toUpperCase()+key.slice(1)}`]||'';
     arrangeMinimized();
   }
+  const button=pane.querySelector('.dialog-min, #minimizeAnalysis');
+  if(button){const minimized=pane.classList.contains('minimized');button.textContent=minimized?'+':'−';button.title=minimized?'Restore':'Minimize';button.setAttribute('aria-label',button.title);}
 }
 $('minimizeAnalysis').onclick=()=>toggleMinimized($('analysisPane'));
 $('pinAnalysis').onclick=()=>$('analysisPane').classList.toggle('pinned');
@@ -609,7 +602,7 @@ $('summarize').onclick=()=>{
     if(!values.length)continue;
     const mean=values.reduce((a,b)=>a+b,0)/values.length;
     const standard=Math.sqrt(values.reduce((a,b)=>a+(b-mean)**2,0)/values.length);
-    lines.push(`${key}: mean ${mean}, SD ${standard}, min ${Math.min(...values)}, max ${Math.max(...values)}`);
+    lines.push(`${key}: mean ${formatValue(mean)}, SD ${formatValue(standard)}, min ${formatValue(Math.min(...values))}, max ${formatValue(Math.max(...values))}`);
   }
   $('analysis').textContent=lines.join('\n');chart([]);$('analysisPane').hidden=false;
 };
@@ -617,7 +610,7 @@ $('distribution').onclick=()=>{
   if(!measurementHistory.length){showError(new Error('Measure at least one image or selection first.'));return;}
   document.querySelector('[data-dialog="distribution"]')?.remove();
   const dialog=openDialog('distribution','Distribution',`<label>Column <select class="distribution-field"><option>area</option><option>mean</option><option>std</option><option>min</option><option>max</option><option>sum</option></select></label><div class="dialog-actions"><button class="distribution-run">Plot</button></div>`);
-  dialog.querySelector('.distribution-run').onclick=()=>{const field=dialog.querySelector('.distribution-field').value,values=measurementHistory.map(row=>Number(row[field])).filter(Number.isFinite);const low=Math.min(...values),high=Math.max(...values);const bins=Array(32).fill(0);for(const value of values)bins[Math.min(31,Math.floor((value-low)/(high-low||1)*32))]++;$('analysis').textContent=`Distribution · ${field}\n${values.length} measurements\nRange: ${low} … ${high}`;chart(bins);$('analysisPane').hidden=false;dialog.remove();};
+  dialog.querySelector('.distribution-run').onclick=()=>{const field=dialog.querySelector('.distribution-field').value,values=measurementHistory.map(row=>Number(row[field])).filter(Number.isFinite);const low=Math.min(...values),high=Math.max(...values);const bins=Array(32).fill(0);for(const value of values)bins[Math.min(31,Math.floor((value-low)/(high-low||1)*32))]++;$('analysis').textContent=`Distribution · ${field}\n${formatValue(values.length)} measurements\nRange: ${formatValue(low)} … ${formatValue(high)}`;chart(bins);$('analysisPane').hidden=false;dialog.remove();};
 };
 $('setMeasurements').onclick=()=>{
   document.querySelector('[data-dialog="measurements"]')?.remove();
@@ -627,7 +620,7 @@ $('setMeasurements').onclick=()=>{
 };
 $('setScale').onclick=()=>{
   document.querySelector('[data-dialog="set-scale"]')?.remove();
-  const dialog=openDialog('set-scale','Set Scale',`<label>Distance in pixels <input class="scale-pixels" type="number" min="0.0001" step="any" value="1"></label><label>Known distance <input class="scale-known" type="number" min="0.0001" step="any" value="${calibration.factor}"></label><label>Unit <input class="scale-unit" type="text" value="${escapeHtml(calibration.unit)}"></label><div class="dialog-actions"><button class="scale-apply">OK</button></div>`);
+  const dialog=openDialog('set-scale','Set Scale',`<label>Distance in pixels <input class="scale-pixels" type="number" min="0.0001" step="any" value="1"></label><label>Known distance <input class="scale-known" type="number" min="0.0001" step="any" value="${formatValue(calibration.factor)}"></label><label>Unit <input class="scale-unit" type="text" value="${escapeHtml(calibration.unit)}"></label><div class="dialog-actions"><button class="scale-apply">OK</button></div>`);
   dialog.querySelector('.scale-apply').onclick=()=>{const pixels=Number(dialog.querySelector('.scale-pixels').value),known=Number(dialog.querySelector('.scale-known').value);if(!(pixels>0&&known>0)){showError(new Error('Distances must be positive.'));return;}calibration={factor:known/pixels,unit:dialog.querySelector('.scale-unit').value.trim()||'px'};dialog.remove();};
 };
 $('labelSelection').onclick=()=>{if(!selection){showError(new Error('Select a region first.'));return;}const bounds=selectionBounds(selection.points);annotations.push({point:[bounds[0],bounds[1]],text:String(roiManager.length+1)});draw();};
@@ -685,7 +678,7 @@ function applySidebarAction(action,value){
   else if(action==='adjust'){
     for(const key of ['cuts','low','high','stretch','cmap'])$(key).value=value[key];
     $('invert').checked=!!value.invert;$('threshold').checked=!!value.threshold;
-    commitFrameChange('bc');commitFrameChange('color');scheduleRender(0);publishSidebar();
+    drawTransferCurve();commitFrameChange('bc');commitFrameChange('color');scheduleRender(0);publishSidebar();
   }
 }
 function stopBlink(){blinking=false;clearTimeout(blinkTimer);$('blink').classList.remove('selected');}
@@ -872,9 +865,9 @@ async function runStackAnalysis(action,args,title){
     document.querySelector(`[data-dialog="stack-${action}"]`)?.remove();
     const dialog=openDialog(`stack-${action}`,title,`<canvas class="stack-plot" width="440" height="180" hidden></canvas><pre class="stack-result"></pre>`),plot=dialog.querySelector('.stack-plot');
     if(action==='zAxisProfile'){
-      plot.hidden=false;const c=plot.getContext('2d'),values=result.values||[],finite=values.filter(Number.isFinite),min=Math.min(...finite),max=Math.max(...finite),span=max-min||1;c.clearRect(0,0,plot.width,plot.height);c.strokeStyle='#72d4b5';c.lineWidth=1.5;c.beginPath();values.forEach((value,index)=>{const x=16+index/Math.max(1,values.length-1)*(plot.width-32),y=plot.height-16-(value-min)/span*(plot.height-32);if(index)c.lineTo(x,y);else c.moveTo(x,y);});c.stroke();dialog.querySelector('.stack-result').textContent=`X ${result.x}, Y ${result.y}\nSlices: ${result.frames?.length||0}\nMin: ${min}  Max: ${max}\n`+values.map((value,index)=>`${result.frames[index]}\t${value}`).join('\n');
-    }else if(action==='measureStack')dialog.querySelector('.stack-result').textContent=['Slice\tCount\tMean\tStdDev\tMin\tMax',...(result.results||[]).map((row,index)=>`${row.frame!=null?row.frame+1:index+1}\t${row.count}\t${row.mean}\t${row.std}\t${row.min}\t${row.max}`)].join('\n');
-    else dialog.querySelector('.stack-result').textContent=Object.entries(result).map(([key,value])=>`${key}: ${Array.isArray(value)?value.join(', '):value}`).join('\n');
+      plot.hidden=false;const c=plot.getContext('2d'),values=result.values||[],finite=values.filter(Number.isFinite),min=Math.min(...finite),max=Math.max(...finite),span=max-min||1;c.clearRect(0,0,plot.width,plot.height);c.strokeStyle='#72d4b5';c.lineWidth=1.5;c.beginPath();values.forEach((value,index)=>{const x=16+index/Math.max(1,values.length-1)*(plot.width-32),y=plot.height-16-(value-min)/span*(plot.height-32);if(index)c.lineTo(x,y);else c.moveTo(x,y);});c.stroke();dialog.querySelector('.stack-result').textContent=`X ${formatValue(result.x)}, Y ${formatValue(result.y)}\nSlices: ${formatValue(result.frames?.length||0)}\nMin: ${formatValue(min)}  Max: ${formatValue(max)}\n`+values.map((value,index)=>`${result.frames[index]}\t${formatValue(value)}`).join('\n');
+    }else if(action==='measureStack')dialog.querySelector('.stack-result').textContent=['Slice\tCount\tMean\tStdDev\tMin\tMax',...(result.results||[]).map((row,index)=>`${row.frame!=null?row.frame+1:index+1}\t${formatValue(row.count)}\t${formatValue(row.mean)}\t${formatValue(row.std)}\t${formatValue(row.min)}\t${formatValue(row.max)}`)].join('\n');
+    else dialog.querySelector('.stack-result').textContent=Object.entries(result).map(([key,value])=>`${key}: ${Array.isArray(value)?value.map(item=>typeof item==='number'?formatValue(item):item).join(', '):typeof value==='number'?formatValue(value):value}`).join('\n');
   }catch(error){showError(error);}
 }
 function stackDialog(action,title,extra='',analysis=false){if(!dataset||dataset.frames<2){showError(new Error(`${title} requires a stack.`));return;}document.querySelector(`[data-dialog="stack-${action}-options"]`)?.remove();const dialog=openDialog(`stack-${action}-options`,title,stackRangeFields()+extra+'<div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="stack-cancel">Cancel</button><button class="stack-run">Run</button></div>');dialog.querySelector('.stack-cancel').onclick=()=>dialog.remove();dialog.querySelector('.stack-run').onclick=()=>{try{const args=stackRange(dialog);if(action==='reslice'){args.axis=dialog.querySelector('.stack-axis').value;args.position=Number(dialog.querySelector('.stack-position').value);}if(action==='zAxisProfile'){args.x=Number(dialog.querySelector('.stack-x').value);args.y=Number(dialog.querySelector('.stack-y').value);}if(['measureStack','statistics'].includes(action)){args.box=roi||undefined;args.selection=selection||undefined;}if(analysis)runStackAnalysis(action,args,title);else runStackImage(action,args);dialog.remove();}catch(error){dialog.querySelector('.roi-dialog-error').textContent=error.message;}};}
@@ -918,11 +911,11 @@ function showHistogram(result,args){
   for(let i=0;i<counts.length;i++){const left=i*w/counts.length,width=Math.max(1,w/counts.length),height=Math.max(0,Math.min(h,counts[i]/ceiling*h));context.fillRect(left,h-height,width,height);}
   const range=dialog.querySelector('.hist-range');range.replaceChildren();for(const endpoint of [edges[0],edges.at(-1)]){const label=document.createElement('span');label.textContent=formatValue(endpoint);range.append(label);}
   const values=counts.map((count,index)=>(edges[index]+edges[index+1])/2),count=counts.reduce((a,b)=>a+b,0),mean=result.mean??values.reduce((sum,value,index)=>sum+value*counts[index],0)/(count||1),variance=values.reduce((sum,value,index)=>sum+(value-mean)**2*counts[index],0)/(count||1),modeAt=counts.indexOf(peak);
-  const summary=[`${dataset.width}×${dataset.height} pixels; ${dataset.dtype}`,`N: ${formatValue(result.samples??count)}     Min: ${formatValue(result.min??edges[0])}`,`Mean: ${formatValue(mean)}     Max: ${formatValue(result.max??edges.at(-1))}`,`StdDev: ${formatValue(result.std??Math.sqrt(variance))}     Mode: ${formatValue(result.mode??values[modeAt])} (${formatValue(result.modeCount??peak)})`,`Bins: ${counts.length}     Bin Width: ${formatValue(result.binWidth??(edges[1]-edges[0]))}`,`Value: ---     Count: ---`];
+  const summary=[`${dataset.width}×${dataset.height} pixels; ${dataset.dtype}`,`N: ${formatValue(result.samples??count)}     Min: ${formatValue(result.min??edges[0])}`,`Mean: ${formatValue(mean)}     Max: ${formatValue(result.max??edges.at(-1))}`,`StdDev: ${formatValue(result.std??Math.sqrt(variance))}     Mode: ${formatValue(result.mode??values[modeAt])} (${formatValue(result.modeCount??peak)})`,`Bins: ${formatValue(counts.length)}     Bin Width: ${formatValue(result.binWidth??(edges[1]-edges[0]))}`,`Value: ---     Count: ---`];
   const stats=dialog.querySelector('.hist-stats');stats.textContent=summary.join('\n');
-  canvas.onpointermove=e=>{const index=Math.max(0,Math.min(counts.length-1,Math.floor((e.offsetX/canvas.clientWidth)*counts.length)));summary[5]=`Value: ${formatValue(values[index])}     Count: ${counts[index]}`;stats.textContent=summary.join('\n');};
+  canvas.onpointermove=e=>{const index=Math.max(0,Math.min(counts.length-1,Math.floor((e.offsetX/canvas.clientWidth)*counts.length)));summary[5]=`Value: ${formatValue(values[index])}     Count: ${formatValue(counts[index])}`;stats.textContent=summary.join('\n');};
   canvas.onpointerleave=()=>{summary[5]='Value: ---     Count: ---';stats.textContent=summary.join('\n');};
-  dialog.querySelector('.hist-list').onclick=()=>{const list=openDialog('histogram-list','Histogram bins','<pre class="hist-list-data"></pre>');list.querySelector('.hist-list-data').textContent=counts.map((n,i)=>`${edges[i]}\t${edges[i+1]}\t${n}`).join('\n');};
+  dialog.querySelector('.hist-list').onclick=()=>{const list=openDialog('histogram-list','Histogram bins','<pre class="hist-list-data"></pre>');list.querySelector('.hist-list-data').textContent=counts.map((n,i)=>`${formatValue(edges[i])}\t${formatValue(edges[i+1])}\t${formatValue(n)}`).join('\n');};
   dialog.querySelector('.hist-copy').onclick=()=>navigator.clipboard?.writeText(counts.map((n,i)=>`${edges[i]}\t${n}`).join('\n')).catch(showError);
   dialog.querySelector('.hist-log').onclick=()=>{context.fillStyle='#151a20';context.fillRect(0,0,w,h);context.fillStyle='#76d9ba';const top=Math.log1p(ceiling);for(let i=0;i<counts.length;i++){const height=Math.max(0,Math.min(h,Math.log1p(counts[i])/top*h));context.fillRect(i*w/counts.length,h-height,Math.max(1,w/counts.length),height);}};
   dialog.querySelector('.hist-live').onclick=()=>{dialog.remove();histogramOptions();};
@@ -959,7 +952,7 @@ window.addEventListener('message',({data:m})=>{
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
   fileFrames.set(m.frameId,{metadata:m});selectFileFrame(m.frameId);
-    setTool('pointer');
+    setTool('pan');
     if(m.initialSelection){selection=m.initialSelection;refreshSelection();saveFileFrame();}
   }else if(m.type==='frameUpdated'){
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
@@ -972,7 +965,7 @@ window.addEventListener('message',({data:m})=>{
   }else if(m.type==='frameRenamed'){
     const state=fileFrames.get(m.frameId);if(state){state.metadata={...state.metadata,...m};if(m.frameId===activeFileFrame){metadata=state.metadata;$('filename').textContent=m.path.split(/[\\/]/).pop();$('filename').title=m.path;}frameList();draw();}
   }else if(m.type==='memoryInfo'){
-    const mib=n=>(n/1048576).toFixed(1);const dialog=openDialog('memory','Monitor Memory',`<pre>Extension host RSS: ${mib(m.host.rss)} MiB\nHost free: ${mib(m.free)} / ${mib(m.total)} MiB\nCurrent preview cache: ${mib(cacheBytes)} MiB\nImage Frames: ${fileFrames.size}</pre>`);dialog.hidden=false;
+    const mib=n=>formatValue(n/1048576);const dialog=openDialog('memory','Monitor Memory',`<pre>Extension host RSS: ${mib(m.host.rss)} MiB\nHost free: ${mib(m.free)} / ${mib(m.total)} MiB\nCurrent preview cache: ${mib(cacheBytes)} MiB\nImage Frames: ${fileFrames.size}</pre>`);dialog.hidden=false;
   }else if(m.type==='result'||m.type==='error'){
     const p=pending.get(m.id);if(p){pending.delete(m.id);m.type==='error'?p.reject(new Error(m.message)):p.resolve(m.result);}else if(m.type==='error')showError(new Error(m.message));
   }

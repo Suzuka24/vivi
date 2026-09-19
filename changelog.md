@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5 (development build; not published)
+- Use a shared eight-character number formatter in Adjust, B&C, plots, measurements, and pixel readouts.
+- Update the B&C curve during Adjust slider movement and center the minimized B&C bar.
+- Show a restore icon on minimized Results and Histogram windows and align the viewer toolbar controls.
+- Select Pan for new images; anchor wheel zoom at the pointer and toolbar or keyboard zoom at the image center.
+
 ## 0.6.4 (development build; not published)
 - Align the two viewer toolbar rows and remove the redundant Series label.
 - Keep Layout frame rows visible and select Pointer when a new image opens.

@@ -50,3 +50,10 @@
 .viewer .floating-dialog.minimized .dialog-head{height:27px;padding:2px 5px}
 .viewer #analysisPane.minimized{width:180px;height:28px;min-height:28px;max-height:28px;padding:0;overflow:hidden}
 .viewer #analysisPane.minimized .analysis-head{height:27px;padding:2px 5px}
+.viewer #tool-actions{display:flex;align-items:center;gap:3px;height:31px;min-width:0;width:100%;overflow-x:auto;white-space:nowrap}
+.viewer #tool-actions .tool-button,.viewer #tool-actions .tool-group{flex:none;vertical-align:middle}
+.viewer #tool-actions #fit,.viewer #tool-actions #actual{height:26px;line-height:1;align-self:center}
+.viewer #tool-actions #zoom{display:inline-flex;align-items:center;height:26px}
+.viewer .transfer-panel.minimized .transfer-head{height:20px;line-height:1;align-items:center}
+.viewer .transfer-panel.minimized .transfer-head span{display:flex;align-items:center;height:20px}
+.viewer .transfer-panel.minimized .transfer-head button{display:flex;align-items:center;justify-content:center;height:20px;line-height:1}

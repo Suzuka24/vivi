@@ -23,6 +23,7 @@ function html(webview, context, name) {
     .replaceAll('{{nonce}}', nonce).replaceAll('{{csp}}', webview.cspSource)
     .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css'))
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
+    .replaceAll('{{formatScript}}', uri('numberFormat.js'))
     .replaceAll('{{roiScript}}', uri('roiGeometry.js')));
 }
 

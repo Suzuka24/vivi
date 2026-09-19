@@ -6,13 +6,7 @@ const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Si
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
-function formatAdjust(value){
-  if(!Number.isFinite(value))return '';
-  if(value===0)return '0';
-  const compact=Number(value.toPrecision(8)).toString();
-  if(compact.length<=11)return compact;
-  return value.toExponential(5).replace(/\.0+e/,'e').replace(/e([+-])0+/,'e$1');
-}
+const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function frameIcon(symbol,title,pressed,action){
   const button=document.createElement('button');button.type='button';button.className='frame-icon';button.title=title;button.setAttribute('aria-label',title);button.setAttribute('aria-pressed',String(pressed));
@@ -85,7 +79,7 @@ function syncAdjustRanges(){
   if(!adjustSource||adjustSource.frame!==layoutState?.active||adjustSource.dataset!==layoutState?.datasetId||sourceMin!==adjustSource.min||sourceMax!==adjustSource.max){
     adjustSource={frame:layoutState?.active,dataset:layoutState?.datasetId,min:sourceMin,max:sourceMax};
   }
-  const {min,max}=adjustSource,range=Math.max(1e-12,max-min);
+  const {min,max}=adjustSource,range=Math.max(Number.MIN_VALUE,max-min);
   const clamp=x=>Math.max(0,Math.min(1000,Math.round(x)));
   const values={adjustMinRange:clamp((low-min)/range*1000),adjustMaxRange:clamp((high-min)/range*1000),
     adjustBrightnessRange:clamp((.5-(((low+high)/2)-((min+max)/2))/range)*1000),
@@ -95,7 +89,7 @@ function syncAdjustRanges(){
   if(document.activeElement!==$('adjustContrastValue'))$('adjustContrastValue').value=formatAdjust(values.adjustContrastRange/1000);
 }
 for(const [id,key,other] of [['adjustMinRange','adjustLow','adjustHigh'],['adjustMaxRange','adjustHigh','adjustLow']]){
-  $(id).oninput=()=>{const {min,max}=adjustSource,value=min+(max-min)*Number($(id).value)/1000;$(key).value=formatAdjust(id==='adjustMinRange'?Math.min(value,Number($(other).value)-1e-12):Math.max(value,Number($(other).value)+1e-12));$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
+  $(id).oninput=()=>{const {min,max}=adjustSource,value=min+(max-min)*Number($(id).value)/1000,gap=Math.max(Number.MIN_VALUE,(max-min)*1e-9);$(key).value=formatAdjust(id==='adjustMinRange'?Math.min(value,Number($(other).value)-gap):Math.max(value,Number($(other).value)+gap));$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
 }
 for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastRange','contrast']]){
   $(id).oninput=()=>{
