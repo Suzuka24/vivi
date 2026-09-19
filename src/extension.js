@@ -148,8 +148,10 @@ function activate(context) {
       await context.workspaceState.update('explorerPath', folder);
       await context.workspaceState.update('explorerSort', page.sortMode);
       await context.workspaceState.update('explorerShowHidden', page.showHidden);
+      const history = [folder, ...context.workspaceState.get('explorerHistory', []).filter(item => item !== folder)].slice(0, 20);
+      await context.workspaceState.update('explorerHistory', history);
       this.view?.webview.postMessage({ type: 'list', path: folder, parent: path.dirname(folder), entries,
-        offset:page.offset, more:page.more, sortMode:page.sortMode, showHidden:page.showHidden, menuItems: menuItems() });
+        offset:page.offset, more:page.more, sortMode:page.sortMode, showHidden:page.showHidden, menuItems: menuItems(), history });
     }
   }
   const explorer = new Explorer();

@@ -44,3 +44,6 @@
 - Added an ImageJ-style context menu when right-clicking an active ROI, plus Specify Selection and ROI Properties dialogs.
 - Added fractional coordinate input for rectangles, ovals and vertex-based selections; mouse drawing and handle edits snap to integer pixels.
 - Added ROI overlays, a compact ROI Manager, spline fitting and mask creation as a new Frame.
+# 0.5.2
+
+- Added a compact recent-path dropdown next to the Explorer path field. Successful directory visits are saved per workspace, most recent first, up to 20 paths.

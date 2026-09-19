@@ -3,7 +3,7 @@ const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const labels = { open: 'Open', openNewTab: 'Open in New Tab', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
-let current = '', parent = '', offset = 0, entries = [], menuItems = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true;
+let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true;
 let layoutState = null, heldSlice = null;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function renderSidebar(state){
@@ -74,7 +74,7 @@ function run(action, item) {
     else vscode.postMessage({ type: 'open', path: item.path, newTab: action === 'openNewTab' });
   } else vscode.postMessage({ type: 'action', action, path: item.path, folder: current });
 }
-function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false'); }
+function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false');$('historyMenu').hidden=true;$('pathHistory').setAttribute('aria-expanded','false'); }
 function showMenu(event, item) {
   event.preventDefault(); closeMenu();select(item);
   const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder'].includes(action)) && (action !== 'openNewTab' || !item.directory));
@@ -113,6 +113,14 @@ function render() {
   else {selectedPath='';$('delete').disabled=true;$('terminal').disabled=true;}
 }
 $('navigate').onsubmit = event => { event.preventDefault(); list($('path').value); };
+$('pathHistory').onclick=event=>{
+  event.stopPropagation();const menu=$('historyMenu');
+  if(!menu.hidden){closeMenu();return;}
+  closeMenu();menu.replaceChildren();
+  for(const path of history){const button=document.createElement('button');button.type='button';button.role='option';button.textContent=path;button.title=path;button.onclick=()=>list(path);menu.append(button);}
+  menu.hidden=false;$('pathHistory').setAttribute('aria-expanded','true');menu.querySelector('button')?.focus();
+};
+$('path').onkeydown=event=>{if(event.key==='ArrowDown'&&history.length){event.preventDefault();$('pathHistory').click();}};
 $('up').onclick = () => list(parent);
 $('home').onclick = () => list('~');
 $('refresh').onclick = () => list(current, offset);
@@ -132,7 +140,7 @@ $('filter').oninput = render;
 for(const button of document.querySelectorAll('.icon-button')) button.dataset.tip = button.title;
 $('prev').onclick = () => list(current, Math.max(0,offset - 500));
 $('next').onclick = () => list(current, offset + 500);
-document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)) closeMenu(); });
+document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 window.addEventListener('message', ({data:message}) => {
   if (message.type === 'error') { $('error').textContent = message.message; return; }
@@ -141,8 +149,9 @@ window.addEventListener('message', ({data:message}) => {
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}
   if(message.type==='focusLayout'){$('layoutModule').open=true;$('frameItems').scrollIntoView({block:'nearest'});return;}
   if (message.type !== 'list') return;
-  current = message.path; parent = message.parent; offset = message.offset; entries = message.entries; menuItems = message.menuItems || [];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
+  current = message.path; parent = message.parent; offset = message.offset; entries = message.entries; menuItems = message.menuItems || [];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
   $('path').value = current;
+  $('pathHistory').disabled=!history.length;
   $('page').textContent = entries.length?`${offset + 1}–${offset + entries.length}`:'0';
   $('prev').disabled = !offset; $('next').disabled = !message.more;
   $('hidden').classList.toggle('selected',showHidden);$('hidden').setAttribute('aria-pressed',String(showHidden));$('hidden').title=showHidden?'Hide hidden files':'Show hidden files';$('hidden').setAttribute('aria-label',$('hidden').title);$('hidden').dataset.tip=$('hidden').title;
