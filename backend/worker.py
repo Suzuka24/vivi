@@ -5,6 +5,7 @@ import json
 import math
 import os
 import sys
+import tempfile
 import warnings
 
 import numpy as np
@@ -289,6 +290,97 @@ class Session:
         box = bounds(d, req.get("box"))
         if op == "render":
             return self.render(d, frame, box, req)
+        if op == "duplicate":
+            import tifffile
+            selected = req.get("selection")
+            if not req.get("ignoreSelection") and selected and selected.get("type") in ("roi", "oval", "polygon", "freehand"):
+                box = bounds(d, req.get("box"))
+            else:
+                box = bounds(d)
+            duplicate_stack = bool(req.get("duplicateStack")) and d["frames"] > 1
+            first = max(1, min(d["frames"], int(req.get("first", 1))))
+            last = max(first, min(d["frames"], int(req.get("last", d["frames"]))))
+            planes = range(first-1, last) if duplicate_stack else (frame,)
+            if (box[2]-box[0])*(box[3]-box[1]) > self.source.max_pixels:
+                raise ValueError("Duplicate plane exceeds maxDecodedPixels; select a smaller area")
+            descriptor, destination = tempfile.mkstemp(prefix="vivi-duplicate-", suffix=".tif")
+            os.close(descriptor)
+            try:
+                with tifffile.TiffWriter(destination, bigtiff=True) as writer:
+                    for plane in planes:
+                        data = np.ascontiguousarray(self.source.read(d, plane, box))
+                        writer.write(data, photometric="rgb" if data.ndim == 3 and data.shape[-1] in (3, 4) else "minisblack",
+                                     contiguous=duplicate_stack, metadata={"axes": "YXS" if data.ndim == 3 else "YX"})
+            except Exception:
+                os.unlink(destination)
+                raise
+            return {"path": destination, "count": len(planes), "box": box}
+        if op == "derive":
+            import tifffile
+            action = req.get("action")
+            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp"}
+            if action not in supported:
+                raise ValueError("Unsupported image operation")
+            area = (box[2]-box[0])*(box[3]-box[1])
+            if area > self.source.max_pixels:
+                raise ValueError("Image operation exceeds maxDecodedPixels; select a smaller area")
+            if action.startswith("z"):
+                if d["frames"] > 256:
+                    raise ValueError("Projection supports at most 256 slices")
+                result = None
+                for plane in range(d["frames"]):
+                    image = np.asarray(self.source.read(d, plane, box), dtype=np.float64)
+                    if result is None:
+                        result = image.copy()
+                    elif action == "zMax":
+                        result = np.fmax(result, image)
+                    elif action == "zMin":
+                        result = np.fmin(result, image)
+                    else:
+                        result += image
+                if action == "zMean":
+                    result /= d["frames"]
+            else:
+                result = np.asarray(self.source.read(d, frame, box))
+                if action == "flipHorizontal":
+                    result = result[:, ::-1]
+                elif action == "flipVertical":
+                    result = result[::-1]
+                elif action in ("add", "subtract", "multiply", "divide"):
+                    value = finite_number(req.get("value"), 0)
+                    if action == "divide" and value == 0:
+                        raise ValueError("Cannot divide by zero")
+                    result = result.astype(np.float64)
+                    result = {"add": lambda: result+value, "subtract": lambda: result-value,
+                              "multiply": lambda: result*value, "divide": lambda: result/value}[action]()
+                elif action == "normalize":
+                    finite = result[np.isfinite(result)]
+                    low, high = (float(finite.min()), float(finite.max())) if finite.size else (0., 1.)
+                    result = np.clip((result.astype(np.float32)-low)/(high-low or 1.), 0, 1)
+                elif action in ("gaussian", "median", "unsharp"):
+                    import cv2
+                    radius = finite_number(req.get("value"), 1)
+                    if not 0 < radius <= 20:
+                        raise ValueError("Filter radius must be between 0 and 20 pixels")
+                    if action == "median" and radius > 2:
+                        raise ValueError("Median radius supports 1 or 2 pixels")
+                    data = np.ascontiguousarray(result.astype(np.float32))
+                    if action == "median":
+                        kernel = 3 if radius <= 1 else 5
+                        result = cv2.medianBlur(data, kernel)
+                    else:
+                        blurred = cv2.GaussianBlur(data, (0, 0), sigmaX=radius, sigmaY=radius)
+                        result = blurred if action == "gaussian" else data + (data - blurred)
+            descriptor, destination = tempfile.mkstemp(prefix="vivi-derived-", suffix=".tif")
+            os.close(descriptor)
+            try:
+                result = np.ascontiguousarray(result)
+                tifffile.imwrite(destination, result, bigtiff=True,
+                                 photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack")
+            except Exception:
+                os.unlink(destination)
+                raise
+            return {"path": destination}
         if op == "mask":
             selected = req.get("selection") or {}
             if not selected or (box[2]-box[0])*(box[3]-box[1]) > min(self.source.max_pixels, 64_000_000):

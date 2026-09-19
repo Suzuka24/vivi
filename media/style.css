@@ -24,3 +24,29 @@ body.explorer .explorer-tools .icon-button{flex:none}body.explorer .icon-button.
 .roi-box-fields{display:flex;flex-direction:column;gap:5px}.roi-box-fields[hidden],.roi-points-label[hidden]{display:none}.dialog-body .roi-points-label{display:flex;align-items:stretch;flex-direction:column}.dialog-body .roi-points{width:100%;min-height:88px;resize:vertical;background:var(--vscode-input-background,#292e38);color:var(--vscode-input-foreground,#ddd);border:1px solid var(--vscode-input-border,#434b59);border-radius:3px;padding:5px;font:var(--vscode-editor-font-family,monospace)}.dialog-body .roi-center-label{justify-content:flex-start}.dialog-body .roi-center-label input{width:auto}.dialog-body .roi-stroke{height:26px;padding:1px}.roi-dialog-error{color:var(--vscode-errorForeground,#ff8f91);font-size:11px}.roi-manager-list{max-height:210px;overflow:auto}.roi-manager-row{display:flex;gap:4px;margin-bottom:4px}.roi-manager-row button:first-child{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis}.roi-manager-row button:last-child{padding:2px 6px}
 .viewer .context-menu button:disabled{opacity:.45;cursor:default}.viewer .context-menu button:disabled:hover{background:transparent}
 .explorer .path-combo{position:relative;display:flex;flex:1;min-width:0}.explorer .path-combo #path{flex:1;min-width:0;width:0;padding-right:3px;border-radius:3px 0 0 3px}.explorer #pathHistory{height:27px;width:23px;flex:none;padding:0;border:1px solid var(--vscode-input-border,#434b59);border-left:0;border-radius:0 3px 3px 0;background:var(--vscode-input-background,#292e38);color:var(--vscode-icon-foreground,#aeb9c5)}.explorer #pathHistory:hover{background:var(--vscode-toolbar-hoverBackground,#66778830)}.explorer #historyMenu{position:absolute;z-index:30;top:calc(100% + 2px);left:0;right:0;max-height:min(45vh,280px);overflow:auto;padding:3px;background:var(--vscode-menu-background,#252b33);border:1px solid var(--vscode-menu-border,#56616c);border-radius:4px;box-shadow:0 8px 20px #0006}.explorer #historyMenu[hidden]{display:none}.explorer #historyMenu button{display:block;width:100%;padding:5px 6px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;font-size:11px}.explorer #historyMenu button:hover,.explorer #historyMenu button:focus-visible{background:var(--vscode-menu-selectionBackground,#3c6478)}
+/* Collapsible sidebar sections and legible Frame labels. */
+body.explorer .explorer-module{display:flex;flex-direction:column;flex:1;min-height:29px;overflow:hidden}
+body.explorer .explorer-module:not([open]){flex:0 0 auto}
+body.explorer .explorer-module summary{flex:none}
+body.explorer .explorer-module-body{display:flex;flex-direction:column;flex:1;min-height:0;padding:3px 4px}
+body.explorer .explorer-module:not([open]) .explorer-module-body{display:none}
+body.explorer .frame-items{max-height:155px;min-width:0}
+body.explorer .frame-item{min-width:0}
+body.explorer .frame-item button:not(.frame-remove){min-width:0;width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.explorer .frame-item .frame-remove{flex:none;width:19px;min-width:19px;padding:0;text-align:center;opacity:.7;font-size:15px}
+body.explorer #frameTile svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;vertical-align:middle}
+body.explorer .adjust-grid select,body.explorer .adjust-grid input[type=number]{max-width:146px}
+body.explorer .adjust-grid label input[type=number]{width:min(65%,100px)}
+.path-tooltip{position:fixed;z-index:80;max-width:min(85vw,640px);padding:5px 8px;border:1px solid var(--vscode-menu-border,#56616c);border-radius:3px;background:var(--vscode-editorHoverWidget-background,#323944);color:var(--vscode-editorHoverWidget-foreground,#eee);font-size:11px;overflow-wrap:anywhere;box-shadow:0 3px 12px #0007;pointer-events:none}
+.path-tooltip[hidden]{display:none}
+/* Immediate tooltip outside the horizontally scrolling tool strip. */
+.hover-tip{position:fixed;z-index:100;max-width:260px;padding:4px 7px;border:1px solid var(--vscode-menu-border,#56616c);border-radius:3px;background:var(--vscode-editorHoverWidget-background,#323944);color:var(--vscode-editorHoverWidget-foreground,#eee);font-size:11px;white-space:normal;box-shadow:0 3px 12px #0007;pointer-events:none}
+.hover-tip[hidden]{display:none}
+.viewer .tool-button[data-tip]:hover::after,.viewer .tool-button[data-tip]:focus-visible::after{display:none}
+.viewer .submenu-panel{left:100%}
+.viewer .menu-panel #metadata,.viewer .menu-panel #warning{display:none}
+.dialog-body label:has(.duplicate-ignore),.dialog-body label:has(.duplicate-stack){justify-content:flex-start}
+.dialog-body .duplicate-range-label[hidden]{display:none}
+body.explorer .frame-item input[type=checkbox],body.explorer .lock-controls input[type=checkbox],body.explorer .adjust-options input[type=checkbox]{width:13px;height:13px;min-width:13px;flex:none}
+body.explorer .frame-item button:not(.frame-remove){white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.3}
+body.explorer .frame-items{max-height:220px}

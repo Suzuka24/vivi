@@ -36,9 +36,20 @@ function request(op, args, prefetch = false, fileFrame = activeFileFrame) {
 }
 function base() { return {dataset:dataset.id,frame:Number($('frame').value)-1}; }
 function size() { return {w:canvas.clientWidth,h:canvas.clientHeight}; }
-function transform(x,y) { const {w,h}=size();return [(x-cx)*scale+w/2,(y-cy)*scale+h/2]; }
+function tileViewport(){
+  const {w,h}=size(),{ids,cols,tw,th}=tileGeometry(w,h),index=ids.indexOf(activeFileFrame);
+  if(index<0||!dataset)return null;
+  const left=(index%cols)*tw,top=Math.floor(index/cols)*th;
+  const picture=fileFrames.get(activeFileFrame)?.tilePreview||preview;
+  const baseRatio=Math.min((tw-16)/dataset.width,(th-34)/dataset.height);
+  const normalScale=Math.min(w/dataset.width,h/dataset.height)*.96;
+  const pixelsPerImage=picture&&fileFrames.get(activeFileFrame)?.tilePreview?baseRatio*scale/normalScale:Math.min((tw-16)/dataset.width,(th-34)/dataset.height);
+  return {left,top,tw,th,pixelsPerImage};
+}
+function transform(x,y) {const tile=tileMode?tileViewport():null;if(tile)return [tile.left+tile.tw/2+(x-cx)*tile.pixelsPerImage,tile.top+22+(tile.th-26)/2+(y-cy)*tile.pixelsPerImage];const {w,h}=size();return [(x-cx)*scale+w/2,(y-cy)*scale+h/2]; }
 function position(e) {
-  const rect=canvas.getBoundingClientRect(),{w,h}=size();
+  const rect=canvas.getBoundingClientRect(),{w,h}=size(),tile=tileMode?tileViewport():null;
+  if(tile)return [(e.clientX-rect.left-tile.left-tile.tw/2)/tile.pixelsPerImage+cx,(e.clientY-rect.top-tile.top-22-(tile.th-26)/2)/tile.pixelsPerImage+cy];
   return [(e.clientX-rect.left-w/2)/scale+cx,(e.clientY-rect.top-h/2)/scale+cy];
 }
 function bounded(p) { return [Math.max(0,Math.min(dataset.width-1,p[0])),Math.max(0,Math.min(dataset.height-1,p[1]))]; }
@@ -61,13 +72,14 @@ function draw() {
       ctx.strokeStyle=id===activeFileFrame?'#72d4b5':'#7b899450';ctx.lineWidth=id===activeFileFrame?2:1;ctx.strokeRect(x+1,y+1,tw-2,th-2);
       ctx.fillStyle='#d9e2e9';ctx.font='11px sans-serif';ctx.fillText(`${id}: ${state.metadata.label||state.metadata.path.split(/[\\/]/).pop()}`,x+8,y+16,tw-14);
     });
-    return;
+    const active=tileViewport();if(active){ctx.save();ctx.beginPath();ctx.rect(active.left+3,active.top+22,active.tw-6,active.th-25);ctx.clip();}
   }
-  const frame=Number($('frame').value)-1;
+  if(!tileMode){const frame=Number($('frame').value)-1;
   const overview=overviewCache.get(overviewKey(cacheSignature,frame));
   if(overview)drawEntry(overview);
   for(const [key,entry] of frameCache)if(key.startsWith(`${frame}:`))drawEntry(entry);
   if(!overview&&!frameCache.size&&preview&&previewBox)drawEntry({image:preview,result:{box:previewBox}});
+  }
   for(const item of overlays)drawOverlay(item);
   ctx.strokeStyle=selection?.stroke||'#72ebc4';ctx.lineWidth=selection?.strokeWidth||1.5;ctx.setLineDash([5,3]);
   if(selection){
@@ -84,7 +96,7 @@ function draw() {
   }else if(roi){const a=transform(roi[0],roi[1]),b=transform(roi[2],roi[3]);ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);}
   if(line&&!selection){const a=transform(line[0],line[1]),b=transform(line[2],line[3]);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();}
   ctx.fillStyle='#72ebc4';ctx.font='16px sans-serif';for(const note of annotations){const at=transform(...note.point);ctx.fillText(note.text,at[0],at[1]);}
-  ctx.setLineDash([]);$('zoom').textContent=`${(scale*100).toFixed(1)}%`;
+  ctx.setLineDash([]);if(tileMode&&tileViewport())ctx.restore();$('zoom').textContent=`${(scale*100).toFixed(1)}%`;
 }
 function drawOverlay(item){
   const points=item.points;if(!points?.length)return;
@@ -202,7 +214,18 @@ function trimFrameCache(){
 }
 function showError(error){$('error').textContent=error.message;$('busy').textContent='Error';}
 function fit(){if(!dataset)return;const {w,h}=size();scale=Math.min(w/dataset.width,h/dataset.height)*.96;cx=dataset.width/2;cy=dataset.height/2;commitFrameChange('view');commitFrameChange('scale');scheduleRender(0);}
-function zoom(factor, anchor){if(!dataset)return;const old=scale;scale=Math.max(.000001,Math.min(128,scale*factor));if(anchor){cx=anchor[0]-(anchor[0]-cx)*old/scale;cy=anchor[1]-(anchor[1]-cy)*old/scale;}clampCenter();commitFrameChange('scale');if(anchor)commitFrameChange('view');scheduleRender();}
+const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32];
+let lastPointer=null;
+function zoom(direction){
+  if(!dataset)return;
+  const old=scale,epsilon=1e-9;
+  const next=direction>0?zoomLevels.find(value=>value>old+epsilon):[...zoomLevels].reverse().find(value=>value<old-epsilon);
+  if(!next)return;
+  const anchor=$('tool').value==='pan'&&lastPointer?lastPointer:null;
+  scale=next;
+  if(anchor){cx=anchor[0]-(anchor[0]-cx)*old/scale;cy=anchor[1]-(anchor[1]-cy)*old/scale;}
+  clampCenter();commitFrameChange('scale');if(anchor)commitFrameChange('view');scheduleRender();
+}
 function stopPlay(){playing=false;clearTimeout(playbackTimer);$('playIcon').setAttribute('href','#i-play');$('play').title='Play frames';publishSidebar();}
 function frameLabel(){
   let n=Number($('frame').value)-1;
@@ -274,7 +297,7 @@ function frameList() {
   }
   box.value=String(activeFileFrame);
   $('filePosition').textContent=`${[...fileFrames.keys()].indexOf(activeFileFrame)+1}/${fileFrames.size}`;
-  $('closeFileFrame').disabled=fileFrames.size<2;
+  $('closeFileFrame').disabled=false;
   $('tile').classList.toggle('selected',tileMode);
   $('lockView').classList.toggle('selected',frameLocks.size>0);
   $('lockView').title=frameLocks.size?`Locked: ${[...frameLocks].join(', ')}. Click to unlock all.`:'Lock all Frame parameters';
@@ -310,18 +333,23 @@ function selectFileFrame(id) {
   vscode.postMessage({type:'activeFrame',frameId:id});
 }
 function moveFileFrame(delta){const ids=visibleFrameIds(),at=ids.indexOf(activeFileFrame),next=ids[(at+delta+ids.length)%ids.length];if(next)selectFileFrame(next);}
-function closeFileFrame(){if(fileFrames.size<2)return;const id=activeFileFrame,next=visibleFrameIds().find(value=>value!==id)||[...fileFrames.keys()].find(value=>value!==id);fileFrames.get(next).visible=true;selectFileFrame(next);fileFrames.delete(id);vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();}
+function closeFileFrame(id=activeFileFrame){
+  id=Number(id);if(!fileFrames.has(id))return;
+  if(fileFrames.size===1){vscode.postMessage({type:'closeFrame',frameId:id});return;}
+  if(id===activeFileFrame){const next=visibleFrameIds().find(value=>value!==id)||[...fileFrames.keys()].find(value=>value!==id);fileFrames.get(next).visible=true;selectFileFrame(next);}
+  fileFrames.delete(id);vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();
+}
 function chart(values){const c=$('chart'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);const good=values.filter(Number.isFinite);c.classList.toggle('has-data',!!good.length);if(!good.length)return;let min=Math.min(...good),max=Math.max(...good);if(max===min)max=min+1;g.strokeStyle='#72d4b5';g.lineWidth=1;g.beginPath();let pen=false;values.forEach((v,i)=>{if(!Number.isFinite(v)){pen=false;return;}const x=8+i/Math.max(1,values.length-1)*(w-16),y=h-8-(v-min)/(max-min)*(h-16);if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true;});g.stroke();}
 async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI).toFixed(3)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);$('error').textContent='';if(op==='measure'){$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${r.area} px²\nFinite pixels: ${r.count}\nMean: ${r.mean}\nStd (population): ${r.std}\nMin: ${r.min}\nMax: ${r.max}\nSum: ${r.sum}`;chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${r.samples} samples\n${r.sampled?'Sampled; stride '+r.step:'All pixels'}\nX: ${r.edges[0]} … ${r.edges.at(-1)}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${r.values.length} points\nLength: ${r.distance.at(-1).toFixed(3)} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
-canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(-e.deltaY*.0015),position(e));},{passive:false});
+canvas.addEventListener('wheel',e=>{e.preventDefault();lastPointer=position(e);zoom(e.deltaY<0?1:-1);},{passive:false});
 function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.disabled=!run;if(run)button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
-canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;const point=position(e);const selected=!tileMode&&selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
+canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;if($('tool').value==='zoom'){e.preventDefault();lastPointer=position(e);zoom(-1);return;}const point=position(e);const selected=selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
   const items=selected?[
     ['ROI Properties…',()=>openSelectionDialog(true)],['Specify…',()=>openSelectionDialog(false)],
     ['ROI Defaults…',openRoiDefaults],['Add to Overlay',addSelectionToOverlay],['Add to ROI Manager',addSelectionToManager],
-    ['Duplicate Image…',()=>vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame})],
+    ['Duplicate Image…',openDuplicateDialog],
     ['Fit Spline',['polygon','freehand','line'].includes(selection.type)?fitSelectionSpline:null],['Create Mask',createSelectionMask],['Measure',()=>analyze('measure')]
-  ]:[['Rename…',()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame})],['Duplicate',()=>vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame})],['Original Scale',()=>$('actual').click()],['Fit to Window',()=>$('fit').click()],['Brightness/Contrast…',openBCDialog],['Measure',()=>analyze('measure')],['Clear Selection',()=>$('clear').click()],['Monitor Memory…',()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame})]];
+  ]:[['Rename…',()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame})],['Duplicate…',openDuplicateDialog],['Original Scale',()=>$('actual').click()],['Fit to Window',()=>$('fit').click()],['Brightness/Contrast…',openBCDialog],['Measure',()=>analyze('measure')],['Clear Selection',()=>$('clear').click()],['Monitor Memory…',()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame})]];
   showPopup($('imageContextMenu'),e,items);
 };
 function selectionBounds(points,type=selection?.type){
@@ -369,20 +397,22 @@ function finishSelection(type,points){
 }
 canvas.onpointerdown=e=>{
   if(!dataset)return;canvas.focus();
-  if(tileMode){const rect=canvas.getBoundingClientRect(),{ids,cols,rows}=tileGeometry(rect.width,rect.height),col=Math.floor((e.clientX-rect.left)/(rect.width/cols)),row=Math.floor((e.clientY-rect.top)/(rect.height/rows)),id=ids[row*cols+col];if(id)selectFileFrame(id);draw();return;}
+  if(tileMode){const rect=canvas.getBoundingClientRect(),{ids,cols,rows}=tileGeometry(rect.width,rect.height),col=Math.floor((e.clientX-rect.left)/(rect.width/cols)),row=Math.floor((e.clientY-rect.top)/(rect.height/rows)),id=ids[row*cols+col];if(!id)return;if(id!==activeFileFrame){selectFileFrame(id);draw();return;}}
   if(e.button===2&&!e.altKey)return;
   stopPlay();const raw=bounded(position(e)),tool=e.button===2?'contrast':e.button===1?'pan':$('tool').value;
+  lastPointer=raw;
   const point=['roi','oval','polygon','freehand','line','angle'].includes(tool)?roiGeometry.pixelPoint(raw,dataset.width,dataset.height):raw;
-  if(e.button===0&&selection&&['roi','oval','polygon','freehand','line','angle','pointer'].includes(tool)){
+  if(e.button===0&&selection&&['roi','oval','polygon','freehand','line','angle'].includes(tool)){
     const handle=hitSelectionHandle(e);
     if(handle>=0||insideSelection(point)){
       canvas.setPointerCapture(e.pointerId);
       drag={tool:handle>=0?'editHandle':'editMove',handle,point,screen:[e.clientX,e.clientY],rect:selectionRect(),original:{...selection,points:selection.points.map(p=>[...p])}};
       return;
     }
+    selection=null;roi=null;line=null;vertices=[];$('region').textContent='Full image';draw();return;
   }
   if(tool==='pointer'){cx=point[0];cy=point[1];commitFrameChange('view');scheduleRender(0);return;}
-  if(tool==='zoom'){zoom(e.altKey?.5:2,point);return;}
+  if(tool==='zoom'){zoom(e.altKey?-1:1);return;}
   if(tool==='lut'){openBCDialog();return;}
   if(tool==='text'){openTextDialog(point);return;}
   if(tool==='polygon'||tool==='angle'||(tool==='line'&&toolVariant==='segmented')){
@@ -399,7 +429,7 @@ canvas.onpointerdown=e=>{
 canvas.ondblclick=()=>{if(tileMode){tileMode=false;frameList();draw();}else if(( $('tool').value==='polygon'||toolVariant==='segmented')&&vertices.length>=2){if(vertices.length>2){const a=vertices.at(-1),b=vertices.at(-2);if(Math.hypot(a[0]-b[0],a[1]-b[1])<2)vertices.pop();}finishSelection(toolVariant==='segmented'?'line':'polygon',vertices);}};
 canvas.onpointermove=e=>{
   if(!dataset)return;
-  const p=position(e);
+  const p=position(e);lastPointer=p;
   if(drag){const dx=e.clientX-drag.screen[0],dy=e.clientY-drag.screen[1];
     if(drag.tool==='editHandle'||drag.tool==='editMove'){dragEditedSelection(e,roiGeometry.pixelPoint(p,dataset.width,dataset.height));return;}
     if(drag.tool==='pan'){cx=drag.cx-dx/scale;cy=drag.cy-dy/scale;clampCenter();commitFrameChange('view');scheduleRender(100);}
@@ -414,7 +444,7 @@ canvas.onpointermove=e=>{
   clearTimeout(pixelTimer);const stamp=revision,b=base();
   pixelTimer=setTimeout(async()=>{if(pixelRunning||p[0]<0||p[1]<0||p[0]>=dataset.width||p[1]>=dataset.height)return;pixelRunning=true;try{const r=await request('pixel',{...b,x:Math.floor(p[0]),y:Math.floor(p[1])});if(stamp===revision)$('pixel').textContent=`X ${r.x}   Y ${r.y}\nValue: ${JSON.stringify(r.value)}`;}catch{/* main actions report worker errors */}finally{pixelRunning=false;}},100);
 };
-canvas.onpointerup=e=>{if(!drag)return;if(selection&&['roi','oval','freehand','line'].includes(drag.tool))finishSelection(drag.tool,selection.points);else if(['editHandle','editMove'].includes(drag.tool))refreshSelection();drag=null;canvas.releasePointerCapture(e.pointerId);draw();};
+canvas.onpointerup=e=>{if(!drag)return;if(selection&&['roi','oval','freehand','line'].includes(drag.tool)){if(Math.hypot(e.clientX-drag.screen[0],e.clientY-drag.screen[1])<3){selection=null;roi=null;line=null;$('region').textContent='Full image';}else finishSelection(drag.tool,selection.points);}else if(['editHandle','editMove'].includes(drag.tool))refreshSelection();drag=null;canvas.releasePointerCapture(e.pointerId);draw();};
 canvas.onpointercancel=()=>{drag=null;};
 const tools = [['roiTool','roi'],['ovalTool','oval'],['polygonTool','polygon'],['freehandTool','freehand'],['lineTool','line'],['angleTool','angle'],['textTool','text'],['zoomTool','zoom'],['panTool','pan'],['pointerTool','pointer'],['lutTool','lut']];
 for(const [,value] of tools){const option=document.createElement('option');option.value=value;option.textContent=value;$('tool').append(option);}
@@ -432,13 +462,32 @@ for(const [id,tool] of tools)if(variants[tool])$(id).oncontextmenu=e=>showToolVa
 $('cmap').replaceChildren();
 for(const [value,label] of lutOptions){const option=document.createElement('option');option.value=value;option.textContent=label;$('cmap').append(option);}
 for(const button of document.querySelectorAll('.tool-button')) button.dataset.tip=button.title;
-$('fit').onclick=fit;$('actual').onclick=()=>{scale=1;commitFrameChange('scale');scheduleRender(0);};$('zoomIn').onclick=()=>zoom(2);$('zoomOut').onclick=()=>zoom(.5);
+$('fit').onclick=fit;$('actual').onclick=()=>{const old=scale;scale=1;if($('tool').value==='pan'&&lastPointer){cx=lastPointer[0]-(lastPointer[0]-cx)*old;cy=lastPointer[1]-(lastPointer[1]-cy)*old;clampCenter();commitFrameChange('view');}commitFrameChange('scale');scheduleRender(0);};$('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
 for(const button of document.querySelectorAll('[data-click]')) button.onclick=()=>$(button.dataset.click).click();
-for(const menu of document.querySelectorAll('.menu')) menu.addEventListener('toggle',()=>{if(menu.open)for(const other of document.querySelectorAll('.menu'))if(other!==menu)other.open=false;});
+for(const menu of document.querySelectorAll('.menu')){
+  menu.querySelector(':scope > summary').addEventListener('click',event=>{event.preventDefault();menu.open=true;});
+  menu.addEventListener('pointerenter',()=>{for(const other of document.querySelectorAll('.menu'))if(other!==menu)other.open=false;menu.open=true;});
+  menu.addEventListener('pointerleave',()=>{menu.open=false;for(const sub of menu.querySelectorAll('.submenu'))sub.open=false;});
+}
+for(const sub of document.querySelectorAll('.submenu')){
+  sub.querySelector(':scope > summary').addEventListener('click',event=>{event.preventDefault();sub.open=true;});
+  sub.addEventListener('pointerenter',()=>{for(const sibling of sub.parentElement.children)if(sibling!==sub&&sibling.classList?.contains('submenu'))sibling.open=false;sub.open=true;});
+  sub.addEventListener('pointerleave',()=>{sub.open=false;});
+}
 document.addEventListener('click',event=>{if(event.target.closest('.menu-panel button'))event.target.closest('.menu').open=false;});
+const hoverTip=$('hoverTip');let hoveredTipTarget=null;
+function hideHoverTip(){hoverTip.hidden=true;hoveredTipTarget=null;}
+document.addEventListener('pointerover',event=>{
+  const target=event.target.closest('.tool-bar button, .menu-bar summary, .menu-panel button, .menu-panel summary, .dialog-head button');
+  if(!target||target===hoveredTipTarget)return;
+  hoveredTipTarget=target;const tip=target.dataset.tip||target.getAttribute('title')||target.getAttribute('aria-label')||target.textContent.trim();
+  if(!tip){hideHoverTip();return;}hoverTip.textContent=tip;hoverTip.hidden=false;
+  const rect=target.getBoundingClientRect();hoverTip.style.left=Math.max(4,Math.min(rect.left,innerWidth-hoverTip.offsetWidth-4))+'px';hoverTip.style.top=Math.min(innerHeight-hoverTip.offsetHeight-4,rect.bottom+5)+'px';
+},true);
+document.addEventListener('pointerout',event=>{if(hoveredTipTarget&&!hoveredTipTarget.contains(event.relatedTarget))hideHoverTip();},true);
 document.addEventListener('pointerdown',event=>{for(const id of ['toolPopup','imageContextMenu'])if(!$(id).contains(event.target))$(id).hidden=true;});
 $('imageRename').onclick=()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame});
-$('imageDuplicate').onclick=()=>vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame});
+$('imageDuplicate').onclick=openDuplicateDialog;
 $('monitorMemory').onclick=()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame});
 $('focusLayout').onclick=()=>vscode.postMessage({type:'focusLayout'});
 $('aboutVivi').onclick=()=>openDialog('about','About vivi','<p>vivi image viewer</p>');
@@ -464,7 +513,7 @@ $('tileLayout').onchange=()=>{if(tileMode)draw();};
 $('lockView').onclick=()=>{const enabled=frameLocks.size!==Object.keys(lockGroups).length;for(const group of Object.keys(lockGroups))setFrameLock(group,enabled);};
 for(const input of document.querySelectorAll('[data-frame-lock]'))input.onchange=()=>setFrameLock(input.dataset.frameLock,input.checked);
 $('unlockAll').onclick=()=>{frameLocks.clear();frameList();};
-$('closeFileFrame').onclick=closeFileFrame;
+$('closeFileFrame').onclick=()=>closeFileFrame();
 function reorderFileFrame(to) {
   saveFileFrame();const entries=[...fileFrames.entries()],index=entries.findIndex(([id])=>id===activeFileFrame);
   if(index<0)return;const [entry]=entries.splice(index,1);entries.splice(to==='first'?0:entries.length,0,entry);
@@ -490,6 +539,7 @@ function applySidebarAction(action,value){
   else if(action==='fps'){$('fps').value=Math.max(1,Math.min(30,Number(value)||5));publishSidebar();}
   else if(action==='dataset'){$('dataset').value=String(value);selectDataset();}
   else if(action==='selectFrame')selectFileFrame(value);
+  else if(action==='closeFrame')closeFileFrame(value);
   else if(action==='previousFrame')moveFileFrame(-1);
   else if(action==='nextFrame')moveFileFrame(1);
   else if(action==='tile')$('tile').click();
@@ -530,6 +580,65 @@ function openDialog(key,title,content){
   head.onpointerup=e=>{if(head.hasPointerCapture(e.pointerId))head.releasePointerCapture(e.pointerId);head.onpointermove=null;};
   return dialog;
 }
+function openDuplicateDialog(){
+  if(!dataset)return;
+  document.querySelector('[data-dialog="duplicate"]')?.remove();
+  const stack=dataset.frames>1,area=selection&&['roi','oval','polygon','freehand'].includes(selection.type);
+  const content=`<label>Title <input class="duplicate-title" type="text"></label>${area?'<label><input class="duplicate-ignore" type="checkbox"> Ignore selection</label>':''}${stack?`<label><input class="duplicate-stack" type="checkbox"> Duplicate stack</label><label class="duplicate-range-label">Range <input class="duplicate-range" type="text" value="1-${dataset.frames}" placeholder="1-${dataset.frames}"></label>`:''}<div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="duplicate-cancel">Cancel</button><button class="duplicate-create">Duplicate</button></div>`;
+  const dialog=openDialog('duplicate','Duplicate…',content);
+  const title=dialog.querySelector('.duplicate-title');title.value=`Copy · ${metadata.label||metadata.path.split(/[\\/]/).pop()}`;
+  const duplicateStack=dialog.querySelector('.duplicate-stack'),range=dialog.querySelector('.duplicate-range');
+  if(duplicateStack)duplicateStack.onchange=()=>{dialog.querySelector('.duplicate-range-label').hidden=!duplicateStack.checked;};
+  if(duplicateStack)duplicateStack.onchange();
+  dialog.querySelector('.duplicate-cancel').onclick=()=>dialog.remove();
+  dialog.querySelector('.duplicate-create').onclick=()=>{
+    const error=dialog.querySelector('.roi-dialog-error');error.textContent='';
+    const value=title.value.trim();if(!value){error.textContent='Enter a title.';return;}
+    let first=1,last=dataset.frames;
+    if(duplicateStack?.checked){const match=/^\s*(\d+)\s*(?:[-:]\s*(\d+))?\s*$/.exec(range.value);if(!match){error.textContent='Enter a range such as 1-10.';return;}first=Number(match[1]);last=Number(match[2]||match[1]);if(first<1||last>dataset.frames||first>last){error.textContent=`Range must be within 1-${dataset.frames}.`;return;}}
+    const args={dataset:dataset.id,frame:Number($('frame').value)-1,duplicateStack:!!duplicateStack?.checked,first,last,ignoreSelection:!!dialog.querySelector('.duplicate-ignore')?.checked,selection:area?cloneSelection(selection):null,box:area?selectionBounds(selection.points):undefined};
+    vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame,title:value,args});dialog.remove();
+  };
+  title.focus();title.select();
+}
+function derive(action,label,value){
+  if(!dataset)return;
+  const box=action==='crop'&&selection&&['roi','oval','polygon','freehand'].includes(selection.type)?selectionBounds(selection.points):[0,0,dataset.width,dataset.height];
+  if(action==='crop'&&box[0]===0&&box[1]===0&&box[2]===dataset.width&&box[3]===dataset.height){showError(new Error('Select an area to crop.'));return;}
+  vscode.postMessage({type:'derive',fileFrame:activeFileFrame,label,args:{dataset:dataset.id,frame:Number($('frame').value)-1,box,action,value}});
+}
+for(const [id,action,label] of [['flipHorizontal','flipHorizontal','Flip Horizontal'],['flipVertical','flipVertical','Flip Vertical'],['imageCrop','crop','Crop'],['processNormalize','normalize','Normalize']])$(id).onclick=()=>derive(action,label);
+for(const [id,action,label] of [['mathAdd','add','Add'],['mathSubtract','subtract','Subtract'],['mathMultiply','multiply','Multiply'],['mathDivide','divide','Divide']])$(id).onclick=()=>{
+  document.querySelector('[data-dialog="math"]')?.remove();
+  const dialog=openDialog('math',label,`<label>Value <input class="math-value" type="number" step="any" value="1"></label><div class="dialog-actions"><button class="math-cancel">Cancel</button><button class="math-run">Create Frame</button></div>`);
+  dialog.querySelector('.math-cancel').onclick=()=>dialog.remove();
+  dialog.querySelector('.math-run').onclick=()=>{const value=Number(dialog.querySelector('.math-value').value);if(!Number.isFinite(value)){showError(new Error('Enter a finite number.'));return;}derive(action,label,value);dialog.remove();};
+};
+for(const [id,action,label] of [['filterGaussian','gaussian','Gaussian Blur'],['filterMedian','median','Median'],['filterUnsharp','unsharp','Unsharp Mask']])$(id).onclick=()=>{
+  document.querySelector('[data-dialog="filter"]')?.remove();
+  const dialog=openDialog('filter',label,`<label>${action==='median'?'Radius (1 or 2)':'Sigma'} (px) <input class="filter-radius" type="number" step="${action==='median'?'1':'any'}" min="${action==='median'?'1':'0.1'}" max="${action==='median'?'2':'20'}" value="1"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="filter-cancel">Cancel</button><button class="filter-run">Create Frame</button></div>`);
+  dialog.querySelector('.filter-cancel').onclick=()=>dialog.remove();
+  dialog.querySelector('.filter-run').onclick=()=>{const value=Number(dialog.querySelector('.filter-radius').value);if(!Number.isFinite(value)||value<=0||value>(action==='median'?2:20)||(action==='median'&&!Number.isInteger(value))){dialog.querySelector('.roi-dialog-error').textContent=action==='median'?'Enter radius 1 or 2.':'Enter a value between 0 and 20 pixels.';return;}derive(action,label,value);dialog.remove();};
+};
+$('zProject').onclick=()=>{
+  if(!dataset||dataset.frames<2){showError(new Error('Z Project requires a stack.'));return;}
+  document.querySelector('[data-dialog="z-project"]')?.remove();
+  const dialog=openDialog('z-project','Z Project',`<label>Projection <select class="z-method"><option value="zMax">Max Intensity</option><option value="zMean">Average Intensity</option><option value="zMin">Min Intensity</option></select></label><div class="dialog-actions"><button class="z-cancel">Cancel</button><button class="z-create">Create Frame</button></div>`);
+  dialog.querySelector('.z-cancel').onclick=()=>dialog.remove();
+  dialog.querySelector('.z-create').onclick=()=>{derive(dialog.querySelector('.z-method').value,'Z Project');dialog.remove();};
+};
+$('thresholdMenu').onclick=()=>{$('threshold').checked=true;$('cuts').value='manual';commitFrameChange('color');commitFrameChange('bc');scheduleRender(0);openBCDialog();};
+$('selectAll').onclick=()=>{selection={type:'roi',variant:'roi',points:[[0,0],[dataset.width,dataset.height]],...selectionDefaults};refreshSelection();};
+let previousSelection=null;
+const originalClear=$('clear').onclick;
+$('clear').onclick=()=>{if(selection)previousSelection=cloneSelection(selection);originalClear();};
+$('restoreSelection').onclick=()=>{if(previousSelection){selection=cloneSelection(previousSelection);refreshSelection();}};
+$('fitSpline').onclick=fitSelectionSpline;
+$('enlargeSelection').onclick=()=>{
+  if(!selection||!['roi','oval'].includes(selection.type)){showError(new Error('Select a rectangle or oval first.'));return;}
+  document.querySelector('[data-dialog="enlarge"]')?.remove();const dialog=openDialog('enlarge','Enlarge Selection','<label>Pixels <input class="enlarge-value" type="number" step="any" value="1"></label><div class="dialog-actions"><button class="enlarge-run">Apply</button></div>');
+  dialog.querySelector('.enlarge-run').onclick=()=>{const delta=Number(dialog.querySelector('.enlarge-value').value);if(!Number.isFinite(delta)){showError(new Error('Enter a finite pixel distance.'));return;}const [x0,y0,x1,y1]=selectionRect();selection.points=[[Math.max(0,x0-delta),Math.max(0,y0-delta)],[Math.min(dataset.width,x1+delta),Math.min(dataset.height,y1+delta)]];refreshSelection();dialog.remove();};
+};
 const cloneSelection=source=>({...source,points:source.points.map(point=>[...point])});
 function fitSelectionSpline(){if(!selection||!['polygon','freehand','line'].includes(selection.type))return;selection.points=roiGeometry.smoothPoints(selection.points,selection.type!=='line').map(([x,y])=>[Math.max(0,Math.min(dataset.width-1,x)),Math.max(0,Math.min(dataset.height-1,y))]);refreshSelection();}
 function createSelectionMask(){if(!selection)return;vscode.postMessage({type:'selectionMask',fileFrame:activeFileFrame,args:{...base(),box:roi,selection:cloneSelection(selection)}});}
@@ -592,6 +701,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlay();
 window.addEventListener('message',({data:m})=>{
   if(m.type==='frameAdded'){
     fileFrames.set(m.frameId,{metadata:m});selectFileFrame(m.frameId);
+    if(m.initialSelection){selection=m.initialSelection;refreshSelection();saveFileFrame();}
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);
   }else if(m.type==='frameRenamed'){

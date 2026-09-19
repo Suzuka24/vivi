@@ -3,9 +3,11 @@ import sys
 import unittest
 import base64
 import io
+import os
 from pathlib import Path
 from PIL import Image
 import numpy as np
+import tifffile
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'backend'))
 from worker import Session
@@ -72,6 +74,80 @@ class FixtureTests(unittest.TestCase):
                 self.assertEqual(info['datasets'][0]['frames'], frames)
                 self.assertEqual(self.pixel(frame=frames - 1), expected)
                 self.assertTrue(self.render(frame=frames - 1)['png'])
+
+    def test_duplicate_current_slice_range_and_selection(self):
+        self.open('stack.tiff')
+        cases = [
+            ({'frame': 1}, 1, (24, 32)),
+            ({'frame': 1, 'selection': {'type': 'roi', 'points': [[2, 3], [7, 9]]}, 'box': [2, 3, 7, 9]}, 1, (6, 5)),
+            ({'frame': 1, 'duplicateStack': True, 'first': 2, 'last': 3}, 2, (24, 32)),
+            ({'frame': 1, 'selection': {'type': 'roi', 'points': [[2, 3], [7, 9]]}, 'box': [2, 3, 7, 9], 'ignoreSelection': True}, 1, (24, 32)),
+        ]
+        for args, count, shape in cases:
+            with self.subTest(args=args):
+                result = self.session.handle({'op': 'duplicate', 'dataset': 0, **args})
+                try:
+                    with tifffile.TiffFile(result['path']) as copied:
+                        self.assertEqual(len(copied.pages), count)
+                        array = copied.pages[0].asarray()
+                        self.assertEqual(array.shape, shape)
+                        source_box=result['box']
+                        expected=self.session.source.read(self.session.source.dataset(0),args['frame'],source_box)
+                        np.testing.assert_array_equal(array,expected)
+                finally:
+                    os.unlink(result['path'])
+
+    def test_derived_operations_create_independent_pixels(self):
+        self.open('stack.tiff')
+        source = self.session.source.read(self.session.source.dataset(0), 1, [0, 0, 32, 24])
+        for action, expected in [('flipHorizontal', source[:, ::-1]),
+                                 ('flipVertical', source[::-1]),
+                                 ('add', source.astype(float) + 5),
+                                 ('normalize', (source - source.min()) / (source.max() - source.min()))]:
+            with self.subTest(action=action):
+                result = self.session.handle({'op': 'derive', 'dataset': 0, 'frame': 1, 'action': action, 'value': 5})
+                try:
+                    with tifffile.TiffFile(result['path']) as image:
+                        np.testing.assert_allclose(image.pages[0].asarray(), expected, rtol=1e-6)
+                finally:
+                    os.unlink(result['path'])
+        projected = self.session.handle({'op': 'derive', 'dataset': 0, 'frame': 1, 'action': 'zMax'})
+        try:
+            with tifffile.TiffFile(projected['path']) as image:
+                planes = [self.session.source.read(self.session.source.dataset(0), frame, [0, 0, 32, 24]) for frame in range(3)]
+                np.testing.assert_array_equal(image.pages[0].asarray(), np.maximum.reduce(planes))
+        finally:
+            os.unlink(projected['path'])
+
+    def test_duplicate_png_fits_and_hyperstack(self):
+        for name, args, count in [('gray.png', {'frame': 0}, 1),
+                                  ('cube.fits', {'frame': 2, 'duplicateStack': True, 'first': 2, 'last': 3}, 2),
+                                  ('hyperstack.tif', {'frame': 4, 'duplicateStack': True, 'first': 2, 'last': 4}, 3)]:
+            with self.subTest(name=name):
+                self.open(name)
+                result = self.session.handle({'op': 'duplicate', 'dataset': 0, **args})
+                try:
+                    with tifffile.TiffFile(result['path']) as copied:
+                        self.assertEqual(len(copied.pages), count)
+                        source_frame=args.get('first', args['frame']+1)-1
+                        expected=self.session.source.read(self.session.source.dataset(0),source_frame,result['box'])
+                        np.testing.assert_allclose(copied.pages[0].asarray(),expected)
+                finally:
+                    os.unlink(result['path'])
+
+    def test_derived_filters(self):
+        self.open('plain.tif')
+        source=self.session.source.read(self.session.source.dataset(0),0,[0,0,32,24])
+        for action in ('gaussian','median','unsharp'):
+            with self.subTest(action=action):
+                result=self.session.handle({'op':'derive','dataset':0,'frame':0,'action':action,'value':1})
+                try:
+                    with tifffile.TiffFile(result['path']) as image:
+                        pixels=image.pages[0].asarray()
+                        self.assertEqual(pixels.shape,source.shape)
+                        self.assertTrue(np.isfinite(pixels).all())
+                finally:
+                    os.unlink(result['path'])
 
     def test_large_pan_regions(self):
         info = self.open('pan-large.tif')

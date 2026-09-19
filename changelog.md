@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.5
+- Add independent Explorer/Layout/Adjust collapsible sections, readable Frame names, per-Frame close, and compact tile toggle.
+- Fix drawing on the active Frame in tiled mode, selection clearing, menu hover behavior, immediate tooltips, and ImageJ zoom steps.
+- Make Duplicate create server-side pixel copies with selection cropping, current-slice or stack range controls; add crop, flips, arithmetic, normalize, and Z projection as generated Frames.
+- Add Gaussian Blur, Median, and Unsharp Mask filters; preserve nonrectangular ROI geometry on copied Frames.
+
 ## 0.4.3
 - Give each file Frame its own persistent view and display settings while navigating slices.
 - Add independent Frame locks for B&C, color/LUT, view, zoom, and slice. Changes to the active Frame immediately synchronize locked settings.

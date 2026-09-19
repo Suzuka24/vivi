@@ -18,7 +18,9 @@ function renderSidebar(state){
   $('sliceNumber').max=state.total;$('sliceNumber').value=state.slice;$('sliceTotal').textContent=`/ ${state.total}`;
   $('slicePlay').textContent=state.playing?'Ⅱ':'▶';$('slicePlay').disabled=state.total<2;
   if(document.activeElement!==$('sliceFps'))$('sliceFps').value=state.fps;
-  $('frameTile').classList.toggle('selected',state.tile);$('frameBlink').classList.toggle('selected',state.blinking);
+  $('frameTile').classList.toggle('selected',state.tile);
+  $('frameTile').dataset.tip=state.tile?'Display: tiled frames; click for single frame':'Display: single frame; click to tile';
+  $('frameTile').setAttribute('aria-label',$('frameTile').dataset.tip);
   $('frameColumns').value=state.columns||'';$('frameRows').value=state.rows||'';
   const list=$('frameItems');list.replaceChildren();
   for(const frame of state.frames){
@@ -26,7 +28,8 @@ function renderSidebar(state){
     const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='Drag to reorder';
     const visible=document.createElement('input');visible.type='checkbox';visible.checked=frame.visible;visible.title='Show this frame';visible.setAttribute('aria-label',`Show ${frame.label}`);visible.onchange=()=>sideAction('frameVisible',{id:frame.id,visible:visible.checked});
     const button=document.createElement('button');button.textContent=`${frame.id}: ${frame.label}`;button.title=frame.label;button.onclick=()=>sideAction('selectFrame',frame.id);
-    row.append(handle,visible,button);
+    const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';remove.title=`Close Frame ${frame.id}: ${frame.label}`;remove.setAttribute('aria-label',remove.title);remove.onclick=()=>sideAction('closeFrame',frame.id);
+    row.append(handle,visible,button,remove);
     row.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(frame.id));e.dataTransfer.effectAllowed='move';row.classList.add('dragging');};
     row.ondragend=()=>row.classList.remove('dragging');
     row.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};
@@ -52,15 +55,16 @@ $('slicePlay').onclick=()=>sideAction('play');
 $('sliceFps').onchange=()=>sideAction('fps',Number($('sliceFps').value));
 $('layoutDataset').onchange=()=>sideAction('dataset',Number($('layoutDataset').value));
 $('framePrevious').onclick=()=>sideAction('previousFrame');$('frameNext').onclick=()=>sideAction('nextFrame');
-$('frameTile').onclick=()=>sideAction('tile');$('frameBlink').onclick=()=>sideAction('blink');
+$('frameTile').onclick=()=>sideAction('tile');
 for(const id of ['frameColumns','frameRows'])$(id).onchange=()=>sideAction(id==='frameColumns'?'columns':'rows',Number($(id).value)||0);
 $('lockAll').onclick=()=>sideAction('lockAll');$('unlockAllFrames').onclick=()=>sideAction('unlockAll');
 for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=()=>sideAction('lock',{group:input.dataset.sideLock,enabled:input.checked});
-$('adjustApply').onclick=()=>sideAction('adjust',{cuts:$('adjustCuts').value,low:Number($('adjustLow').value),high:Number($('adjustHigh').value),stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});
-$('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';$('adjustApply').click();};
-$('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').value='linear';$('adjustApply').click();};
-for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=()=>{$('adjustApply').click();};
-for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';$('adjustApply').click();};
+function sendAdjust(){sideAction('adjust',{cuts:$('adjustCuts').value,low:Number($('adjustLow').value),high:Number($('adjustHigh').value),stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});}
+$('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
+$('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
+for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=sendAdjust;
+$('adjustThreshold').onchange=()=>{if($('adjustThreshold').checked)$('adjustCuts').value='manual';sendAdjust();};
+for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';sendAdjust();};
 function list(path, start = 0) { closeMenu(); $('error').textContent = ''; vscode.postMessage({ type: 'list', path, offset: start, sortMode, showHidden }); }
 function select(item) {
   selectedPath = item.path;
@@ -117,10 +121,18 @@ $('pathHistory').onclick=event=>{
   event.stopPropagation();const menu=$('historyMenu');
   if(!menu.hidden){closeMenu();return;}
   closeMenu();menu.replaceChildren();
-  for(const path of history){const button=document.createElement('button');button.type='button';button.role='option';button.textContent=path;button.title=path;button.onclick=()=>list(path);menu.append(button);}
+  for(const path of history){const button=document.createElement('button');button.type='button';button.role='option';button.textContent=path;button.onclick=()=>list(path);menu.append(button);}
   menu.hidden=false;$('pathHistory').setAttribute('aria-expanded','true');menu.querySelector('button')?.focus();
 };
 $('path').onkeydown=event=>{if(event.key==='ArrowDown'&&history.length){event.preventDefault();$('pathHistory').click();}};
+let pathTipTimer;
+const pathTip=document.createElement('div');pathTip.className='path-tooltip';pathTip.hidden=true;document.body.append(pathTip);
+function hidePathTip(){clearTimeout(pathTipTimer);pathTip.hidden=true;}
+function showPathTip(element,value,delay=1000){hidePathTip();pathTipTimer=setTimeout(()=>{if(!value)return;pathTip.textContent=value;pathTip.hidden=false;const rect=element.getBoundingClientRect();pathTip.style.left=Math.max(4,Math.min(rect.left,window.innerWidth-pathTip.offsetWidth-4))+'px';pathTip.style.top=Math.min(window.innerHeight-pathTip.offsetHeight-4,rect.bottom+4)+'px';},delay);}
+$('path').addEventListener('pointerenter',()=>showPathTip($('path'),$('path').value));$('path').addEventListener('pointerleave',hidePathTip);
+$('frameTile').removeAttribute('title');$('frameTile').addEventListener('pointerenter',()=>showPathTip($('frameTile'),$('frameTile').dataset.tip,0));$('frameTile').addEventListener('pointerleave',hidePathTip);
+$('historyMenu').addEventListener('pointerover',event=>{const button=event.target.closest('button');if(button)showPathTip(button,button.textContent);});
+$('historyMenu').addEventListener('pointerleave',hidePathTip);
 $('up').onclick = () => list(parent);
 $('home').onclick = () => list('~');
 $('refresh').onclick = () => list(current, offset);

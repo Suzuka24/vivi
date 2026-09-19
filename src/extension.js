@@ -179,17 +179,17 @@ function activate(context) {
     const session = {
       panel,
       sidebarState:null,
-      async add(file, generated = false, label = '') {
+      async add(file, generated = false, label = '', initialSelection = null) {
         if (disposed) throw new Error('Viewer closed.');
         if (!ready) { pendingPaths.push(file); return; }
         const worker = newBackend();
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels });
           const id = ++nextId;
-          frames.set(id, { id, file, worker, generated, latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, latestPng: null, lastResult: null });
           activeId = id;
-          panel.title = frames.size === 1 ? path.basename(file) : `vivi · ${frames.size} frames`;
-          panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, ...data,
+          panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
+          panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, ...data,
             maxSize: config().get('maxPreviewSize', 1600), preloadMaxMiB: config().get('preloadMaxMiB', 512) });
         } catch (error) { worker.dispose(); throw error; }
       }
@@ -235,7 +235,14 @@ function activate(context) {
             panel.webview.postMessage({type:'frameRenamed',frameId:frame.id,...data});
             if(frames.size===1)panel.title=name;
             explorer.list(path.dirname(destination)).catch(report);
-          }else if(msg.action==='duplicate')await session.add(frame.file,frame.generated,`Copy · ${path.basename(frame.file)}`);
+          }else if(msg.action==='duplicate'){
+            const result=await frame.worker.request('duplicate',msg.args||{});
+            generatedPaths.push(result.path);
+            const original=msg.args?.selection;
+            const selected=original&&(msg.args.ignoreSelection||['oval','polygon','freehand'].includes(original.type))
+              ? {...original,points:original.points.map(([x,y])=>msg.args.ignoreSelection?[x,y]:[x-result.box[0],y-result.box[1]])} : null;
+            await session.add(result.path,true,String(msg.title||`Copy · ${path.basename(frame.file)}`),selected);
+          }
           else if(msg.action==='memory')panel.webview.postMessage({type:'memoryInfo',host:process.memoryUsage(),total:os.totalmem(),free:os.freemem()});
         } else if (msg.type === 'openDialog') {
           const uris = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: true, openLabel: 'Add Frame' });
@@ -256,6 +263,12 @@ function activate(context) {
           await fs.writeFile(destination, Buffer.from(result.png, 'base64'), { flag: 'wx' });
           generatedPaths.push(destination);
           await session.add(destination, true, `Mask · ${path.basename(frame.file)}`);
+        } else if (msg.type === 'derive') {
+          const frame = frames.get(msg.fileFrame || activeId);
+          if (!frame) throw new Error('Select a frame first.');
+          const result = await frame.worker.request('derive', msg.args);
+          generatedPaths.push(result.path);
+          await session.add(result.path, true, `${msg.label} · ${path.basename(frame.file)}`);
         } else if (msg.type === 'cloneFrame') {
           const frame = frames.get(msg.frameId || activeId);
           if (frame) await session.add(frame.file, frame.generated, `Copy · ${path.basename(frame.file)}`);
@@ -264,8 +277,8 @@ function activate(context) {
           if (!frame) return;
           frame.worker.dispose(); frames.delete(msg.frameId);
           if (frames.size) {
-            activeId = frames.keys().next().value;
-            panel.title = frames.size === 1 ? path.basename(frames.get(activeId).file) : `vivi · ${frames.size} frames`;
+            if (!frames.has(activeId)) activeId = frames.keys().next().value;
+            panel.title = frames.size === 1 ? (frames.get(activeId).label || path.basename(frames.get(activeId).file)) : `vivi · ${frames.size} frames`;
           } else panel.dispose();
         } else if (msg.type === 'request' && ['render','pixel','measure','histogram','profile'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
