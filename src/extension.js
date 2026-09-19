@@ -246,6 +246,14 @@ function activate(context) {
           await fs.writeFile(destination, Buffer.from(result.png, 'base64'), { flag: 'wx' });
           generatedPaths.push(destination);
           await session.add(destination, true, `Montage · ${path.basename(frame.file)}`);
+        } else if (msg.type === 'selectionMask') {
+          const frame = frames.get(msg.fileFrame || activeId);
+          if (!frame) throw new Error('Select a frame first.');
+          const result = await frame.worker.request('mask', msg.args);
+          const destination = path.join(os.tmpdir(), `vivi-roi-mask-${crypto.randomUUID()}.png`);
+          await fs.writeFile(destination, Buffer.from(result.png, 'base64'), { flag: 'wx' });
+          generatedPaths.push(destination);
+          await session.add(destination, true, `Mask · ${path.basename(frame.file)}`);
         } else if (msg.type === 'cloneFrame') {
           const frame = frames.get(msg.frameId || activeId);
           if (frame) await session.add(frame.file, frame.generated, `Copy · ${path.basename(frame.file)}`);

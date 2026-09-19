@@ -5,6 +5,7 @@ import base64
 import io
 from pathlib import Path
 from PIL import Image
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'backend'))
 from worker import Session
@@ -50,6 +51,19 @@ class FixtureTests(unittest.TestCase):
                 with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
                     self.assertEqual(image.size, (32, 24))
                     self.assertEqual(image.mode, 'L' if lut == 'gray' else 'RGB')
+
+    def test_fractional_rectangle_and_mask(self):
+        self.open('gray.png')
+        selection = {'type': 'roi', 'points': [[1.25, 2.25], [3.25, 4.25]]}
+        measured = self.session.handle({'op': 'measure', 'dataset': 0, 'frame': 0,
+                                        'box': [1, 2, 4, 5], 'selection': selection})
+        self.assertEqual(measured['count'], 4)
+        result = self.session.handle({'op': 'mask', 'dataset': 0, 'frame': 0,
+                                      'box': [1, 2, 4, 5], 'selection': selection})
+        with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
+            self.assertEqual(image.mode, 'L')
+            self.assertEqual(image.size, (3, 3))
+            self.assertEqual(int(np.count_nonzero(np.asarray(image) == 255)), 4)
 
     def test_tiff_stack_and_hyperstack(self):
         for name, frames, expected in [('plain.tif', 1, 131), ('stack.tiff', 3, 2131), ('hyperstack.tif', 6, 1331)]:

@@ -39,3 +39,8 @@
 - Added draggable frame order, per-frame visibility, grid dimensions, frame locks and hold-to-play slice buttons.
 - Added hierarchical ImageJ-style menus, selection handles, tool variant popups, an image context menu and more LUTs.
 - Ignored local `.vscode` settings in Git.
+# 0.5.1
+
+- Added an ImageJ-style context menu when right-clicking an active ROI, plus Specify Selection and ROI Properties dialogs.
+- Added fractional coordinate input for rectangles, ovals and vertex-based selections; mouse drawing and handle edits snap to integer pixels.
+- Added ROI overlays, a compact ROI Manager, spline fitting and mask creation as a new Frame.

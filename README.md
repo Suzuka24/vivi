@@ -11,6 +11,7 @@ vivi 是面向 Cursor / VS Code 的文件与数据查看扩展。目前提供图
 - Explorer 下方的 Layout 可拖拽 Frame 顺序、选择显示的 Frame、设置平铺行列和拖动切片进度条；按住左右切片键会按 FPS 连续切换。
 - Adjust 提供 ImageJ Auto、DS9 ZScale 和百分位色阶，以及 20 种 LUT。矩形和椭圆选区提供八个编辑点；Shift 约束比例，Ctrl/Cmd 从中心绘制，Alt 在调整时维持比例。
 - 提供测量、直方图、线剖面和 Montage。图像右键菜单可重命名、复制 Frame、恢复原始比例和查看内存。源图像数据按只读方式打开；重命名会修改文件名。
+- 右键选区会显示 ROI 专用菜单，可编辑属性和精确坐标、加入 Overlay 或 ROI Manager、拟合样条、生成蒙版和测量。也可通过 Edit → Selection → Specify 创建选区。鼠标绘制与拖动控制点对齐整数像素；在坐标对话框中输入的小数会保留。
 
 菜单中标为 **Planned** 的命令尚未实现。
 

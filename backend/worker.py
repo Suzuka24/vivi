@@ -8,7 +8,7 @@ import sys
 import warnings
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from luts import apply_lut
 
 
@@ -232,10 +232,10 @@ def selection_mask(selection, box, shape, step=1):
     x = box[0] + (xs + .5) * step
     y = box[1] + (ys + .5) * step
     if selection["type"] == "roi":
-        if selection.get("variant") != "rounded":
-            return np.ones(shape, dtype=bool)
         left, right = sorted((points[0, 0], points[1, 0]))
         top, bottom = sorted((points[0, 1], points[1, 1]))
+        if selection.get("variant") != "rounded":
+            return (x >= left) & (x < right) & (y >= top) & (y < bottom)
         radius = .15 * min(right - left, bottom - top)
         center_x = np.clip(x, left + radius, right - radius)
         center_y = np.clip(y, top + radius, bottom - radius)
@@ -289,6 +289,20 @@ class Session:
         box = bounds(d, req.get("box"))
         if op == "render":
             return self.render(d, frame, box, req)
+        if op == "mask":
+            selected = req.get("selection") or {}
+            if not selected or (box[2]-box[0])*(box[3]-box[1]) > min(self.source.max_pixels, 64_000_000):
+                raise ValueError("Select an area within the configured pixel limit")
+            if selected.get("type") in ("line", "angle"):
+                image = Image.new("L", (box[2]-box[0], box[3]-box[1]), 0)
+                points = [(float(x)-box[0], float(y)-box[1]) for x, y in selected["points"]]
+                ImageDraw.Draw(image).line(points, fill=255, width=max(1, round(float(selected.get("strokeWidth", 1)))))
+            else:
+                shape = (box[3]-box[1], box[2]-box[0])
+                image = Image.fromarray(selection_mask(selected, box, shape).astype(np.uint8)*255, mode="L")
+            data = io.BytesIO()
+            image.save(data, format="PNG")
+            return {"png": base64.b64encode(data.getvalue()).decode("ascii"), "width": image.width, "height": image.height}
         if op == "montage":
             start = max(0, min(d["frames"] - 1, int(req.get("start", 1)) - 1))
             end = max(start + 1, min(d["frames"], int(req.get("end", d["frames"]))))

@@ -10,7 +10,8 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane']};
 let tileRefreshTimer, sidebarTimer, layoutColumns=0, layoutRows=0;
-let roi = null, line = null, selection = null, annotations = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
+let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
+const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
 let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelRunning = false;
 let playing = false, playbackTimer, analysisRunning = false, blinking = false, blinkTimer;
 const pending = new Map();
@@ -67,7 +68,8 @@ function draw() {
   if(overview)drawEntry(overview);
   for(const [key,entry] of frameCache)if(key.startsWith(`${frame}:`))drawEntry(entry);
   if(!overview&&!frameCache.size&&preview&&previewBox)drawEntry({image:preview,result:{box:previewBox}});
-  ctx.strokeStyle='#72ebc4';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  for(const item of overlays)drawOverlay(item);
+  ctx.strokeStyle=selection?.stroke||'#72ebc4';ctx.lineWidth=selection?.strokeWidth||1.5;ctx.setLineDash([5,3]);
   if(selection){
     ctx.beginPath();const pts=selection.points;
     if(selection.type==='roi'&&pts.length>=2){const a=transform(...pts[0]),b=transform(...pts[1]),x=Math.min(a[0],b[0]),y=Math.min(a[1],b[1]),rw=Math.abs(b[0]-a[0]),rh=Math.abs(b[1]-a[1]);if(selection.variant==='rounded')ctx.roundRect(x,y,rw,rh,Math.min(rw,rh)*.15);else ctx.rect(x,y,rw,rh);}
@@ -77,12 +79,22 @@ function draw() {
     if(selection.type==='text'){const at=transform(...pts[0]);ctx.fillStyle='#72ebc4';ctx.font='16px sans-serif';ctx.fillText(selection.text||'',at[0],at[1]);}
     if(selection.type==='line'&&selection.variant==='arrow'&&pts.length>=2){const tip=transform(...pts.at(-1)),from=transform(...pts.at(-2)),angle=Math.atan2(tip[1]-from[1],tip[0]-from[0]);ctx.beginPath();for(const d of [-.5,.5]){ctx.moveTo(...tip);ctx.lineTo(tip[0]-12*Math.cos(angle+d),tip[1]-12*Math.sin(angle+d));}ctx.stroke();}
     ctx.setLineDash([]);
-    const anchors=['roi','oval'].includes(selection.type)?roiGeometry.handles(selectionBounds(pts)):selection.type==='freehand'?[pts[0],pts.at(-1)]:pts;
+    const anchors=['roi','oval'].includes(selection.type)?roiGeometry.handles(selectionRect()):selection.type==='freehand'?[pts[0],pts.at(-1)]:pts;
     ctx.lineWidth=1;for(const point of anchors){const [hx,hy]=transform(...point);ctx.fillStyle='#f7f7f7';ctx.fillRect(hx-3.5,hy-3.5,7,7);ctx.strokeStyle='#26313a';ctx.strokeRect(hx-3.5,hy-3.5,7,7);}
   }else if(roi){const a=transform(roi[0],roi[1]),b=transform(roi[2],roi[3]);ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);}
   if(line&&!selection){const a=transform(line[0],line[1]),b=transform(line[2],line[3]);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();}
   ctx.fillStyle='#72ebc4';ctx.font='16px sans-serif';for(const note of annotations){const at=transform(...note.point);ctx.fillText(note.text,at[0],at[1]);}
   ctx.setLineDash([]);$('zoom').textContent=`${(scale*100).toFixed(1)}%`;
+}
+function drawOverlay(item){
+  const points=item.points;if(!points?.length)return;
+  ctx.save();ctx.strokeStyle=item.stroke||'#f6bc65';ctx.lineWidth=item.strokeWidth||1.5;ctx.setLineDash([]);ctx.beginPath();
+  if(['roi','oval'].includes(item.type)&&points.length>=2){const [x0,y0,x1,y1]=roiGeometry.normalize([...points[0],...points[1]]),a=transform(x0,y0),b=transform(x1,y1);
+    if(item.type==='oval')ctx.ellipse((a[0]+b[0])/2,(a[1]+b[1])/2,Math.max(.5,(b[0]-a[0])/2),Math.max(.5,(b[1]-a[1])/2),0,0,Math.PI*2);
+    else if(item.variant==='rounded')ctx.roundRect(a[0],a[1],b[0]-a[0],b[1]-a[1],Math.min(b[0]-a[0],b[1]-a[1])*.15);
+    else ctx.rect(a[0],a[1],b[0]-a[0],b[1]-a[1]);
+  }else{ctx.moveTo(...transform(...points[0]));for(const point of points.slice(1))ctx.lineTo(...transform(...point));if(['polygon','freehand'].includes(item.type))ctx.closePath();}
+  ctx.stroke();ctx.restore();
 }
 function drawEntry(entry){const box=entry.result.box,[x,y]=transform(box[0],box[1]);ctx.drawImage(entry.image,x,y,(box[2]-box[0])*scale,(box[3]-box[1])*scale);}
 function scheduleRender(delay=75) {
@@ -204,11 +216,11 @@ function frameLabel(){
   publishSidebar();
 }
 function changeFrame(delta, automatic=false){if(!dataset)return;let n=Number($('frame').value)-1+delta;if(automatic)n%=dataset.frames;else n=Math.max(0,Math.min(dataset.frames-1,n));$('frame').value=n+1;frameLabel();$('pixel').textContent='';commitFrameChange('slice');scheduleRender(0);}
-function selectDataset(){dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;fit();}
+function selectDataset(){dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;fit();}
 function saveFileFrame() {
   if (!activeFileFrame || !fileFrames.has(activeFileFrame)) return;
   Object.assign(fileFrames.get(activeFileFrame), {metadata,datasetId:dataset?.id,plane:Number($('frame').value),scale,cx,cy,preview,previewBox,activePng,frameCache,cacheSignature,cacheBytes,
-    cuts:$('cuts').value,low:$('low').value,high:$('high').value,stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,roi,line,selection,annotations});
+    cuts:$('cuts').value,low:$('low').value,high:$('high').value,stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,roi,line,selection,annotations,overlays,roiManager});
 }
 function scheduleTileRefresh(delay=80){if(!tileMode)return;clearTimeout(tileRefreshTimer);tileRefreshTimer=setTimeout(refreshTilePreviews,delay);}
 function refreshTilePreviews(){
@@ -285,7 +297,7 @@ function selectFileFrame(id) {
   scale=state.scale??1; cx=state.cx??dataset.width/2; cy=state.cy??dataset.height/2;
   preview=state.preview||null; previewBox=state.previewBox||null; activePng=state.activePng||'';
   frameCache=state.frameCache||new Map(); cacheSignature=state.cacheSignature||''; cacheBytes=state.cacheBytes||0;
-  roi=state.roi||null; line=state.line||null; selection=state.selection||null;annotations=state.annotations||[];vertices=[];
+  roi=state.roi||null; line=state.line||null; selection=state.selection||null;annotations=state.annotations||[];overlays=state.overlays||[];roiManager=state.roiManager||[];vertices=[];
   for(const key of ['cuts','low','high','stretch','cmap']) $(key).value=state[key]??(key==='cuts'?'percentile':key==='stretch'?'linear':key==='cmap'?'gray':key==='low'?'0':'1');
   $('invert').checked=!!state.invert; $('threshold').checked=!!state.threshold;
   $('frame').value=Math.max(1,Math.min(dataset.frames,Number($('frame').value)));frameLabel();clampCenter();
@@ -302,11 +314,21 @@ function closeFileFrame(){if(fileFrames.size<2)return;const id=activeFileFrame,n
 function chart(values){const c=$('chart'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);const good=values.filter(Number.isFinite);c.classList.toggle('has-data',!!good.length);if(!good.length)return;let min=Math.min(...good),max=Math.max(...good);if(max===min)max=min+1;g.strokeStyle='#72d4b5';g.lineWidth=1;g.beginPath();let pen=false;values.forEach((v,i)=>{if(!Number.isFinite(v)){pen=false;return;}const x=8+i/Math.max(1,values.length-1)*(w-16),y=h-8-(v-min)/(max-min)*(h-16);if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true;});g.stroke();}
 async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI).toFixed(3)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);$('error').textContent='';if(op==='measure'){$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${r.area} px²\nFinite pixels: ${r.count}\nMean: ${r.mean}\nStd (population): ${r.std}\nMin: ${r.min}\nMax: ${r.max}\nSum: ${r.sum}`;chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${r.samples} samples\n${r.sampled?'Sampled; stride '+r.step:'All pixels'}\nX: ${r.edges[0]} … ${r.edges.at(-1)}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${r.values.length} points\nLength: ${r.distance.at(-1).toFixed(3)} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(-e.deltaY*.0015),position(e));},{passive:false});
-function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
-canvas.oncontextmenu=e=>{if(e.altKey)return;showPopup($('imageContextMenu'),e,[['Rename…',()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame})],['Duplicate',()=>vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame})],['Original Scale',()=>$('actual').click()],['Fit to Window',()=>$('fit').click()],['Brightness/Contrast…',openBCDialog],['Measure',()=>analyze('measure')],['Clear Selection',()=>$('clear').click()],['Monitor Memory…',()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame})]]);};
-function selectionBounds(points){
+function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.disabled=!run;if(run)button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
+canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;const point=position(e);const selected=!tileMode&&selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
+  const items=selected?[
+    ['ROI Properties…',()=>openSelectionDialog(true)],['Specify…',()=>openSelectionDialog(false)],
+    ['ROI Defaults…',openRoiDefaults],['Add to Overlay',addSelectionToOverlay],['Add to ROI Manager',addSelectionToManager],
+    ['Duplicate Image…',()=>vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame})],
+    ['Fit Spline',['polygon','freehand','line'].includes(selection.type)?fitSelectionSpline:null],['Create Mask',createSelectionMask],['Measure',()=>analyze('measure')]
+  ]:[['Rename…',()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame})],['Duplicate',()=>vscode.postMessage({type:'imageAction',action:'duplicate',frameId:activeFileFrame})],['Original Scale',()=>$('actual').click()],['Fit to Window',()=>$('fit').click()],['Brightness/Contrast…',openBCDialog],['Measure',()=>analyze('measure')],['Clear Selection',()=>$('clear').click()],['Monitor Memory…',()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame})]];
+  showPopup($('imageContextMenu'),e,items);
+};
+function selectionBounds(points,type=selection?.type){
   const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
-  return [Math.max(0,Math.floor(Math.min(...xs))),Math.max(0,Math.floor(Math.min(...ys))),Math.min(dataset.width,Math.ceil(Math.max(...xs))+1),Math.min(dataset.height,Math.ceil(Math.max(...ys))+1)];
+  const extra=['roi','oval'].includes(type)?0:1;
+  const x0=Math.max(0,Math.floor(Math.min(...xs))),y0=Math.max(0,Math.floor(Math.min(...ys)));
+  return [x0,y0,Math.max(x0+1,Math.min(dataset.width,Math.ceil(Math.max(...xs))+extra)),Math.max(y0+1,Math.min(dataset.height,Math.ceil(Math.max(...ys))+extra))];
 }
 function rectPoints(rect){return [[rect[0],rect[1]],[rect[2],rect[3]]];}
 function selectionRect(){return selection&&['roi','oval'].includes(selection.type)?roiGeometry.normalize([...selection.points[0],...selection.points[1]]):null;}
@@ -335,11 +357,12 @@ function dragEditedSelection(e,point){
     if(['roi','oval'].includes(original.type))selection.points=rectPoints(roiGeometry.moveRect(drag.rect,dx,dy,dataset.width,dataset.height,{shift}));
     else{if(shift){if(Math.abs(dx)>=Math.abs(dy))dy=0;else dx=0;}selection.points=original.points.map(p=>[Math.max(0,Math.min(dataset.width-1,p[0]+dx)),Math.max(0,Math.min(dataset.height-1,p[1]+dy))]);}
   }
+  selection.points=selection.points.map(p=>roiGeometry.pixelPoint(p,dataset.width,dataset.height));
   refreshSelection();
 }
 function finishSelection(type,points){
   if(points.length<2)return;
-  selection={type,variant:toolVariant,points:points.map(p=>[...p])};
+  selection={type,variant:toolVariant,points:points.map(p=>[...p]),...selectionDefaults};
   roi=selectionBounds(points); line=type==='line'?[...points[0],...points.at(-1)]:null;
   $('region').textContent=`${type} · ${roi.join(', ')}`;
   vertices=[];draw();
@@ -348,7 +371,8 @@ canvas.onpointerdown=e=>{
   if(!dataset)return;canvas.focus();
   if(tileMode){const rect=canvas.getBoundingClientRect(),{ids,cols,rows}=tileGeometry(rect.width,rect.height),col=Math.floor((e.clientX-rect.left)/(rect.width/cols)),row=Math.floor((e.clientY-rect.top)/(rect.height/rows)),id=ids[row*cols+col];if(id)selectFileFrame(id);draw();return;}
   if(e.button===2&&!e.altKey)return;
-  stopPlay();const point=bounded(position(e)),tool=e.button===2?'contrast':e.button===1?'pan':$('tool').value;
+  stopPlay();const raw=bounded(position(e)),tool=e.button===2?'contrast':e.button===1?'pan':$('tool').value;
+  const point=['roi','oval','polygon','freehand','line','angle'].includes(tool)?roiGeometry.pixelPoint(raw,dataset.width,dataset.height):raw;
   if(e.button===0&&selection&&['roi','oval','polygon','freehand','line','angle','pointer'].includes(tool)){
     const handle=hitSelectionHandle(e);
     if(handle>=0||insideSelection(point)){
@@ -377,13 +401,14 @@ canvas.onpointermove=e=>{
   if(!dataset)return;
   const p=position(e);
   if(drag){const dx=e.clientX-drag.screen[0],dy=e.clientY-drag.screen[1];
-    if(drag.tool==='editHandle'||drag.tool==='editMove'){dragEditedSelection(e,bounded(p));return;}
+    if(drag.tool==='editHandle'||drag.tool==='editMove'){dragEditedSelection(e,roiGeometry.pixelPoint(p,dataset.width,dataset.height));return;}
     if(drag.tool==='pan'){cx=drag.cx-dx/scale;cy=drag.cy-dy/scale;clampCenter();commitFrameChange('view');scheduleRender(100);}
     else if(drag.tool==='contrast'){const span=Math.max(1e-12,drag.high-drag.low),range=span*Math.exp(dy/150),middle=(drag.low+drag.high)/2-dx/300*span;$('cuts').value='manual';$('low').value=middle-range/2;$('high').value=middle+range/2;commitFrameChange('bc');scheduleRender(100);}
-    else if(selection){let end=bounded(p);if(['roi','oval'].includes(drag.tool))selection.points=rectPoints(roiGeometry.createRect(drag.point,end,{shift:e.shiftKey,center:e.ctrlKey||e.metaKey}));
+    else if(selection){let end=roiGeometry.pixelPoint(p,dataset.width,dataset.height);if(['roi','oval'].includes(drag.tool))selection.points=rectPoints(roiGeometry.createRect(drag.point,end,{shift:e.shiftKey,center:e.ctrlKey||e.metaKey}));
       else if(drag.tool==='line'&&e.shiftKey){const dx=end[0]-drag.point[0],dy=end[1]-drag.point[1],angle=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*Math.PI/4,length=Math.hypot(dx,dy);end=bounded([drag.point[0]+length*Math.cos(angle),drag.point[1]+length*Math.sin(angle)]);selection.points=[drag.point,end];}
       else if(drag.tool==='freehand'||toolVariant==='freeline')selection.points.push(end);else selection.points=[drag.point,end];
-      $('region').textContent=selection.points.map(q=>q.map(n=>n.toFixed(1)).join(',')).join(' → ');draw();}
+      selection.points=selection.points.map(q=>roiGeometry.pixelPoint(q,dataset.width,dataset.height));
+      $('region').textContent=selection.points.map(q=>q.join(',')).join(' → ');draw();}
     return;
   }
   clearTimeout(pixelTimer);const stamp=revision,b=base();
@@ -505,6 +530,53 @@ function openDialog(key,title,content){
   head.onpointerup=e=>{if(head.hasPointerCapture(e.pointerId))head.releasePointerCapture(e.pointerId);head.onpointermove=null;};
   return dialog;
 }
+const cloneSelection=source=>({...source,points:source.points.map(point=>[...point])});
+function fitSelectionSpline(){if(!selection||!['polygon','freehand','line'].includes(selection.type))return;selection.points=roiGeometry.smoothPoints(selection.points,selection.type!=='line').map(([x,y])=>[Math.max(0,Math.min(dataset.width-1,x)),Math.max(0,Math.min(dataset.height-1,y))]);refreshSelection();}
+function createSelectionMask(){if(!selection)return;vscode.postMessage({type:'selectionMask',fileFrame:activeFileFrame,args:{...base(),box:roi,selection:cloneSelection(selection)}});}
+function openRoiDefaults(){
+  document.querySelector('[data-dialog="roi-defaults"]')?.remove();
+  const dialog=openDialog('roi-defaults','ROI Defaults','<label>Stroke <input class="default-stroke" type="color"></label><label>Width <input class="default-width" type="number" min="0.5" max="20" step="any"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="defaults-apply">Apply</button></div>');
+  dialog.querySelector('.default-stroke').value=selectionDefaults.stroke;dialog.querySelector('.default-width').value=selectionDefaults.strokeWidth;
+  dialog.querySelector('.defaults-apply').onclick=()=>{const width=Number(dialog.querySelector('.default-width').value);if(!Number.isFinite(width)||width<.5||width>20){dialog.querySelector('.roi-dialog-error').textContent='Width must be between 0.5 and 20.';return;}selectionDefaults.stroke=dialog.querySelector('.default-stroke').value;selectionDefaults.strokeWidth=width;dialog.remove();};
+}
+function addSelectionToOverlay(){if(!selection)return;overlays.push(cloneSelection(selection));draw();}
+function addSelectionToManager(){if(!selection)return;roiManager.push(cloneSelection(selection));openRoiManager();}
+function openRoiManager(){
+  document.querySelector('[data-dialog="roi-manager"]')?.remove();
+  const dialog=openDialog('roi-manager','ROI Manager','<div class="roi-manager-list"></div><div class="dialog-actions"><button class="roi-manager-add">Add Current</button></div>');
+  const list=dialog.querySelector('.roi-manager-list');
+  function renderList(){list.replaceChildren();roiManager.forEach((item,index)=>{const row=document.createElement('div');row.className='roi-manager-row';const restore=document.createElement('button');restore.textContent=`${index+1} · ${item.variant||item.type}`;restore.title='Select ROI';restore.onclick=()=>{selection=cloneSelection(item);refreshSelection();};const remove=document.createElement('button');remove.textContent='×';remove.title='Remove ROI';remove.onclick=()=>{roiManager.splice(index,1);renderList();};row.append(restore,remove);list.append(row);});if(!roiManager.length)list.textContent='No saved selections.';}
+  dialog.querySelector('.roi-manager-add').onclick=()=>{if(selection){roiManager.push(cloneSelection(selection));renderList();}};
+  renderList();
+}
+function openSelectionDialog(properties=false){
+  if(!dataset)return;
+  document.querySelector('[data-dialog="specify-selection"]')?.remove();
+  const dialog=openDialog('specify-selection',properties?'ROI Properties':'Specify Selection',`<label>Shape <select class="roi-kind"><option value="roi">Rectangle</option><option value="oval">Oval</option><option value="polygon">Polygon</option><option value="freehand">Freehand</option><option value="line">Line</option><option value="angle">Angle</option></select></label><label>Variant <select class="roi-variant"></select></label><div class="roi-box-fields"><label>X <input class="roi-x" type="number" step="any"></label><label>Y <input class="roi-y" type="number" step="any"></label><label>Width <input class="roi-width" type="number" step="any" min="0"></label><label>Height <input class="roi-height" type="number" step="any" min="0"></label><label class="roi-center-label"><input class="roi-centered" type="checkbox"> Centered on X,Y</label></div><label class="roi-points-label">Vertices (X, Y per line)<textarea class="roi-points" rows="6" spellcheck="false"></textarea></label><label>Stroke <input class="roi-stroke" type="color" value="#72ebc4"></label><label>Width <input class="roi-stroke-width" type="number" min="0.5" max="20" step="any" value="1.5"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="roi-cancel">Cancel</button><button class="roi-apply">Apply</button></div>`);
+  const get=cls=>dialog.querySelector('.'+cls),kind=get('roi-kind'),variant=get('roi-variant');
+  const variants={roi:[['Rectangle','roi'],['Rounded rectangle','rounded']],oval:[['Oval','oval'],['Ellipse','ellipse']],polygon:[['Polygon','polygon']],freehand:[['Freehand','freehand']],line:[['Straight','line'],['Segmented','segmented'],['Freehand line','freeline'],['Arrow','arrow']],angle:[['Angle','angle']]};
+  function updateKind(){const shape=kind.value;variant.replaceChildren();for(const [label,value] of variants[shape]){const option=document.createElement('option');option.value=value;option.textContent=label;variant.append(option);}get('roi-box-fields').hidden=!['roi','oval'].includes(shape);get('roi-points-label').hidden=['roi','oval'].includes(shape);}
+  kind.onchange=updateKind;
+  kind.value=selection?.type||'roi';updateKind();variant.value=selection?.variant||variant.options[0].value;
+  const points=selection?.points||[[0,0],[Math.min(20,dataset.width),Math.min(20,dataset.height)]];
+  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),x=Math.min(...xs),y=Math.min(...ys);
+  get('roi-x').value=x;get('roi-y').value=y;get('roi-width').value=Math.max(...xs)-x;get('roi-height').value=Math.max(...ys)-y;
+  get('roi-points').value=points.map(p=>p.join(', ')).join('\n');
+  get('roi-stroke').value=selection?.stroke||selectionDefaults.stroke;get('roi-stroke-width').value=selection?.strokeWidth||selectionDefaults.strokeWidth;
+  get('roi-centered').onchange=()=>{const sign=get('roi-centered').checked?1:-1;get('roi-x').value=Number(get('roi-x').value)+sign*Number(get('roi-width').value)/2;get('roi-y').value=Number(get('roi-y').value)+sign*Number(get('roi-height').value)/2;};
+  get('roi-cancel').onclick=()=>dialog.remove();
+  get('roi-apply').onclick=()=>{try{
+    const shape=kind.value,selectedPoints=['roi','oval'].includes(shape)?roiGeometry.specifiedRect(Number(get('roi-x').value),Number(get('roi-y').value),Number(get('roi-width').value),Number(get('roi-height').value),dataset.width,dataset.height,{centered:get('roi-centered').checked}):roiGeometry.specifiedVertices(get('roi-points').value,shape,dataset.width,dataset.height);
+    const width=Number(get('roi-stroke-width').value);if(!Number.isFinite(width)||width<.5||width>20)throw new Error('Stroke width must be between 0.5 and 20.');
+    selection={type:shape,variant:variant.value,points:selectedPoints,stroke:get('roi-stroke').value,strokeWidth:width};vertices=[];refreshSelection();dialog.remove();
+  }catch(error){get('roi-dialog-error').textContent=error.message;}};
+  get('roi-x').focus();
+}
+$('selectionProperties').onclick=()=>openSelectionDialog(true);
+$('specifySelection').onclick=()=>openSelectionDialog(false);
+$('addSelectionOverlay').onclick=addSelectionToOverlay;
+$('addSelectionManager').onclick=addSelectionToManager;
+$('openRoiManager').onclick=openRoiManager;
 function openBCDialog(){
   vscode.postMessage({type:'focusAdjust'});
 }
