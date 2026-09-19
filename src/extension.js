@@ -21,7 +21,8 @@ function html(webview, context, name) {
   const uri = file => webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', file)).toString();
   return fs.readFile(path.join(context.extensionPath, 'media', `${name}.html`), 'utf8').then(text => text
     .replaceAll('{{nonce}}', nonce).replaceAll('{{csp}}', webview.cspSource)
-    .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css')));
+    .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css'))
+    .replaceAll('{{roiScript}}', uri('roiGeometry.js')));
 }
 
 function activate(context) {
@@ -31,6 +32,8 @@ function activate(context) {
   const managed = file => isManaged(file, config().get('managedExtensions', []));
   const menuItems = () => config().get('explorerContextMenu', []);
   const sessions = [];
+  let activeSession = null;
+  const publishSidebar = session => explorer.view?.webview.postMessage(session?.sidebarState ? {type:'sidebarState',state:session.sidebarState}:{type:'sidebarClear'});
   const newBackend = () => {
     const c = config();
     // python3 is the portable Linux default; Windows installations commonly use python.exe.
@@ -76,9 +79,11 @@ function activate(context) {
         try {
           if (msg.type === 'ready') await this.list(context.workspaceState.get('explorerPath', config().get('defaultPath', '~')),
             0, context.workspaceState.get('explorerSort', 'nameAsc'), context.workspaceState.get('explorerShowHidden', true));
+          if (msg.type === 'ready') publishSidebar(activeSession);
           if (msg.type === 'list') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
           if (msg.type === 'action') await this.action(msg);
+          if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
         } catch (error) { view.webview.postMessage({ type: 'error', message: error.message }); }
       }, undefined, context.subscriptions);
       view.webview.html = await html(view.webview, context, 'explorer');
@@ -171,6 +176,7 @@ function activate(context) {
     let ready = false, disposed = false, nextId = 0, activeId = null;
     const session = {
       panel,
+      sidebarState:null,
       async add(file, generated = false, label = '') {
         if (disposed) throw new Error('Viewer closed.');
         if (!ready) { pendingPaths.push(file); return; }
@@ -187,12 +193,15 @@ function activate(context) {
       }
     };
     sessions.push(session);
+    activeSession=session;
+    panel.onDidChangeViewState(()=>{if(panel.active){activeSession=session;publishSidebar(session);}});
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] };
     panel.onDidDispose(() => {
       disposed = true;
       for (const frame of frames.values()) frame.worker.dispose();
       for (const file of generatedPaths) fs.unlink(file).catch(error => output.appendLine(error.message));
       sessions.splice(sessions.indexOf(session), 1);
+      if(activeSession===session){activeSession=sessions.at(-1)||null;publishSidebar(activeSession);}
     });
     panel.webview.onDidReceiveMessage(async msg => {
       try {
@@ -201,6 +210,31 @@ function activate(context) {
           for (const file of pendingPaths.splice(0)) await session.add(file);
         } else if (msg.type === 'activeFrame') {
           if (frames.has(msg.frameId)) activeId = msg.frameId;
+        } else if (msg.type === 'sidebarState') {
+          session.sidebarState=msg.state;
+          if(activeSession===session)publishSidebar(session);
+        } else if (msg.type === 'focusAdjust') {
+          await vscode.commands.executeCommand('vivi.explorer.focus');
+          explorer.view?.webview.postMessage({type:'focusAdjust'});
+        } else if (msg.type === 'focusLayout') {
+          await vscode.commands.executeCommand('vivi.explorer.focus');
+          explorer.view?.webview.postMessage({type:'focusLayout'});
+        } else if (msg.type === 'imageAction') {
+          const frame=frames.get(msg.frameId||activeId);
+          if(!frame)throw new Error('Select a frame first.');
+          if(msg.action==='rename'){
+            const name=await vscode.window.showInputBox({prompt:'Rename image file',value:path.basename(frame.file)});
+            if(!name||name===path.basename(frame.file))return;
+            if(name!==path.basename(name)||name==='.'||name==='..')throw new Error('Enter one file name.');
+            const destination=path.join(path.dirname(frame.file),name);
+            await fs.rename(frame.file,destination);
+            const data=await frame.worker.request('open',{path:destination,maxPixels:frame.worker.maxPixels});
+            frame.file=destination;
+            panel.webview.postMessage({type:'frameRenamed',frameId:frame.id,...data});
+            if(frames.size===1)panel.title=name;
+            explorer.list(path.dirname(destination)).catch(report);
+          }else if(msg.action==='duplicate')await session.add(frame.file,frame.generated,`Copy · ${path.basename(frame.file)}`);
+          else if(msg.action==='memory')panel.webview.postMessage({type:'memoryInfo',host:process.memoryUsage(),total:os.totalmem(),free:os.freemem()});
         } else if (msg.type === 'openDialog') {
           const uris = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: true, openLabel: 'Add Frame' });
           for (const uri of uris || []) await session.add(uri.fsPath);

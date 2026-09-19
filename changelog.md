@@ -33,3 +33,9 @@
 ## 0.2.0
 - Rename the extension to vivi and make file takeover configurable.
 - Keep server-side image decoding, add fixed multi-format regression fixtures, and compact the viewer UI.
+# 0.5.0
+
+- Moved slice navigation, frame layout and B&C controls into the Explorer sidebar.
+- Added draggable frame order, per-frame visibility, grid dimensions, frame locks and hold-to-play slice buttons.
+- Added hierarchical ImageJ-style menus, selection handles, tool variant popups, an image context menu and more LUTs.
+- Ignored local `.vscode` settings in Git.

@@ -9,6 +9,7 @@ import warnings
 
 import numpy as np
 from PIL import Image
+from luts import apply_lut
 
 
 def finite_number(value, default):
@@ -429,10 +430,8 @@ class Session:
         cmap = req.get("cmap", "gray")
         if scaled.ndim == 3:
             scaled = scaled[..., :3]
-        elif cmap == "heat":
-            scaled = np.stack([np.clip(scaled*3,0,1), np.clip(scaled*3-1,0,1), np.clip(scaled*3-2,0,1)], axis=-1)
-        elif cmap == "cool":
-            scaled = np.stack([scaled, 1-scaled, np.ones_like(scaled)], axis=-1)
+        else:
+            scaled = apply_lut(scaled, cmap)
         scaled[~(finite.all(axis=-1) if finite.ndim == 3 else finite)] = 0
         image = Image.fromarray(np.uint8(np.clip(scaled,0,1)*255))
         image.thumbnail((limit, limit), Image.Resampling.NEAREST)

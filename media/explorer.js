@@ -4,6 +4,63 @@ const $ = id => document.getElementById(id);
 const labels = { open: 'Open', openNewTab: 'Open in New Tab', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true;
+let layoutState = null, heldSlice = null;
+const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
+function renderSidebar(state){
+  layoutState=state;
+  $('layoutEmpty').hidden=!!state;$('layoutControls').hidden=!state;
+  if(!state){$('layoutTitle').textContent='';return;}
+  $('layoutTitle').textContent=state.activeLabel||'';
+  const dataset=$('layoutDataset');
+  if(JSON.stringify([...dataset.options].map(o=>Number(o.value)))!==JSON.stringify(state.datasets.map(d=>d.id))){dataset.replaceChildren();for(const d of state.datasets){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;dataset.append(option);}}
+  dataset.value=String(state.datasetId);
+  $('sliceRange').max=state.total;$('sliceRange').value=state.slice;$('sliceRange').disabled=state.total<2;
+  $('sliceNumber').max=state.total;$('sliceNumber').value=state.slice;$('sliceTotal').textContent=`/ ${state.total}`;
+  $('slicePlay').textContent=state.playing?'Ⅱ':'▶';$('slicePlay').disabled=state.total<2;
+  if(document.activeElement!==$('sliceFps'))$('sliceFps').value=state.fps;
+  $('frameTile').classList.toggle('selected',state.tile);$('frameBlink').classList.toggle('selected',state.blinking);
+  $('frameColumns').value=state.columns||'';$('frameRows').value=state.rows||'';
+  const list=$('frameItems');list.replaceChildren();
+  for(const frame of state.frames){
+    const row=document.createElement('div');row.className='frame-item'+(frame.id===state.active?' active':'');row.draggable=true;row.dataset.id=frame.id;
+    const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='Drag to reorder';
+    const visible=document.createElement('input');visible.type='checkbox';visible.checked=frame.visible;visible.title='Show this frame';visible.setAttribute('aria-label',`Show ${frame.label}`);visible.onchange=()=>sideAction('frameVisible',{id:frame.id,visible:visible.checked});
+    const button=document.createElement('button');button.textContent=`${frame.id}: ${frame.label}`;button.title=frame.label;button.onclick=()=>sideAction('selectFrame',frame.id);
+    row.append(handle,visible,button);
+    row.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(frame.id));e.dataTransfer.effectAllowed='move';row.classList.add('dragging');};
+    row.ondragend=()=>row.classList.remove('dragging');
+    row.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};
+    row.ondrop=e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(from&&from!==frame.id)sideAction('reorderFrame',{from,to:frame.id});};
+    list.append(row);
+  }
+  for(const input of document.querySelectorAll('[data-side-lock]'))input.checked=state.locks.includes(input.dataset.sideLock);
+  const lut=$('adjustLut');if(lut.options.length!==state.luts.length){lut.replaceChildren();for(const [value,label] of state.luts){const option=document.createElement('option');option.value=value;option.textContent=label;lut.append(option);}}
+  for(const [target,key] of [['adjustCuts','cuts'],['adjustLow','low'],['adjustHigh','high'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
+  $('adjustInvert').checked=state.invert;$('adjustThreshold').checked=state.threshold;
+}
+function stopHeldSlice(){if(!heldSlice)return;clearTimeout(heldSlice.timeout);clearInterval(heldSlice.interval);heldSlice=null;}
+for(const [id,delta] of [['slicePrev',-1],['sliceNext',1]]){
+  const button=$(id);
+  button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();stopHeldSlice();sideAction('stepSlice',delta);heldSlice={id,suppress:true};heldSlice.timeout=setTimeout(()=>{heldSlice.interval=setInterval(()=>sideAction('stepSlice',delta),1000/Math.max(1,Math.min(30,Number($('sliceFps').value)||5)));},300);button.setPointerCapture(e.pointerId);};
+  button.onpointerup=e=>{stopHeldSlice();if(button.hasPointerCapture(e.pointerId))button.releasePointerCapture(e.pointerId);};
+  button.onpointercancel=stopHeldSlice;
+  button.onclick=e=>{if(e.detail===0)sideAction('stepSlice',delta);};
+}
+$('sliceRange').oninput=()=>sideAction('setSlice',Number($('sliceRange').value));
+$('sliceNumber').onchange=()=>sideAction('setSlice',Number($('sliceNumber').value));
+$('slicePlay').onclick=()=>sideAction('play');
+$('sliceFps').onchange=()=>sideAction('fps',Number($('sliceFps').value));
+$('layoutDataset').onchange=()=>sideAction('dataset',Number($('layoutDataset').value));
+$('framePrevious').onclick=()=>sideAction('previousFrame');$('frameNext').onclick=()=>sideAction('nextFrame');
+$('frameTile').onclick=()=>sideAction('tile');$('frameBlink').onclick=()=>sideAction('blink');
+for(const id of ['frameColumns','frameRows'])$(id).onchange=()=>sideAction(id==='frameColumns'?'columns':'rows',Number($(id).value)||0);
+$('lockAll').onclick=()=>sideAction('lockAll');$('unlockAllFrames').onclick=()=>sideAction('unlockAll');
+for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=()=>sideAction('lock',{group:input.dataset.sideLock,enabled:input.checked});
+$('adjustApply').onclick=()=>sideAction('adjust',{cuts:$('adjustCuts').value,low:Number($('adjustLow').value),high:Number($('adjustHigh').value),stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});
+$('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';$('adjustApply').click();};
+$('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').value='linear';$('adjustApply').click();};
+for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=()=>{$('adjustApply').click();};
+for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';$('adjustApply').click();};
 function list(path, start = 0) { closeMenu(); $('error').textContent = ''; vscode.postMessage({ type: 'list', path, offset: start, sortMode, showHidden }); }
 function select(item) {
   selectedPath = item.path;
@@ -79,6 +136,10 @@ document.addEventListener('click', event => { if (!$('contextMenu').contains(eve
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 window.addEventListener('message', ({data:message}) => {
   if (message.type === 'error') { $('error').textContent = message.message; return; }
+  if(message.type==='sidebarState'){renderSidebar(message.state);return;}
+  if(message.type==='sidebarClear'){renderSidebar(null);return;}
+  if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}
+  if(message.type==='focusLayout'){$('layoutModule').open=true;$('frameItems').scrollIntoView({block:'nearest'});return;}
   if (message.type !== 'list') return;
   current = message.path; parent = message.parent; offset = message.offset; entries = message.entries; menuItems = message.menuItems || [];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
   $('path').value = current;

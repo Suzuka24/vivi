@@ -39,6 +39,18 @@ class FixtureTests(unittest.TestCase):
         self.open('gray.png')
         self.assertEqual(self.pixel(), 131)
 
+    def test_luts_and_zscale_on_fixed_image(self):
+        self.open('plain.tif')
+        for lut in ('gray', 'fire', 'ice', 'spectrum', 'rgb332', 'red', 'green',
+                    'blue', 'cyan', 'magenta', 'yellow', 'redgreen', 'heat', 'cool',
+                    'sepia', 'viridis', 'plasma', 'magma', 'inferno', 'turbo'):
+            with self.subTest(lut=lut):
+                result = self.session.handle({'op': 'render', 'dataset': 0, 'frame': 0,
+                                              'size': 128, 'cmap': lut, 'cuts': 'zscale'})
+                with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
+                    self.assertEqual(image.size, (32, 24))
+                    self.assertEqual(image.mode, 'L' if lut == 'gray' else 'RGB')
+
     def test_tiff_stack_and_hyperstack(self):
         for name, frames, expected in [('plain.tif', 1, 131), ('stack.tiff', 3, 2131), ('hyperstack.tif', 6, 1331)]:
             with self.subTest(name=name):

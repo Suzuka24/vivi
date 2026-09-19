@@ -5,6 +5,25 @@
 <form id="navigate"><input id="path" placeholder="/path/to/data" aria-label="Directory path"><button class="icon-button go-button" title="Go to path" aria-label="Go to path"><svg><use href="#i-go"/></svg></button></form>
 <input id="filter" placeholder="Filter files…" aria-label="Filter files"><div id="error" role="alert"></div><div id="files" role="list"></div>
 <footer><button id="prev" title="Previous page">‹</button><span id="page"></span><button id="next" title="Next page">›</button></footer>
+<details id="layoutModule" class="side-module" open><summary>LAYOUT <span id="layoutTitle"></span></summary><div class="side-module-body">
+<div id="layoutEmpty" class="muted">Open an image to arrange frames.</div>
+<div id="layoutControls" hidden>
+<select id="layoutDataset" aria-label="Dataset"></select>
+<div class="slice-controls"><button id="slicePrev" title="Previous slice; hold to play backward">‹</button><input id="sliceRange" type="range" min="1" max="1" value="1" aria-label="Slice position"><button id="sliceNext" title="Next slice; hold to play forward">›</button></div>
+<div class="slice-controls"><input id="sliceNumber" type="number" min="1" value="1" aria-label="Slice number"><span id="sliceTotal">/ 1</span><button id="slicePlay" title="Play or pause slices">▶</button><label>FPS <input id="sliceFps" type="number" min="1" max="30" value="5"></label></div>
+<div class="frame-heading"><span>Frames</span><button id="framePrevious" title="Previous file frame">‹</button><button id="frameNext" title="Next file frame">›</button><button id="frameTile" title="Toggle tiled layout">Tile</button><button id="frameBlink" title="Blink file frames">Blink</button></div>
+<div class="grid-controls"><label>Columns <input id="frameColumns" type="number" min="1" max="16" value="0" placeholder="Auto"></label><label>Rows <input id="frameRows" type="number" min="1" max="16" value="0" placeholder="Auto"></label></div>
+<div id="frameItems" class="frame-items" aria-label="Drag to reorder frames"></div>
+<div class="lock-controls"><button id="lockAll" title="Lock all parameters">All lock</button><button id="unlockAllFrames" title="Unlock all parameters">Unlock</button><label><input type="checkbox" data-side-lock="bc">B&amp;C</label><label><input type="checkbox" data-side-lock="color">LUT</label><label><input type="checkbox" data-side-lock="view">View</label><label><input type="checkbox" data-side-lock="scale">Zoom</label><label><input type="checkbox" data-side-lock="slice">Slice</label></div>
+</div></div></details>
+<details id="adjustModule" class="side-module" open><summary>ADJUST</summary><div class="side-module-body adjust-grid">
+<label>Auto <select id="adjustCuts"><option value="percentile">ImageJ 99%</option><option value="zscale">DS9 ZScale</option><option value="p90">DS9 90%</option><option value="p95">DS9 95%</option><option value="p99">DS9 99%</option><option value="p999">DS9 99.9%</option><option value="minmax">Min / Max</option><option value="manual">Manual</option></select></label>
+<label>Min <input id="adjustLow" type="number" step="any"></label><label>Max <input id="adjustHigh" type="number" step="any"></label>
+<label>Stretch <select id="adjustStretch"><option>linear</option><option>log</option><option>sqrt</option><option>asinh</option><option>histeq</option><option>power</option><option>squared</option><option>sinh</option></select></label>
+<label>LUT <select id="adjustLut"></select></label>
+<div class="adjust-options"><label><input id="adjustInvert" type="checkbox">Invert</label><label><input id="adjustThreshold" type="checkbox">Threshold</label></div>
+<div class="adjust-actions"><button id="adjustAuto">Auto</button><button id="adjustReset">Reset</button><button id="adjustApply">Apply</button></div>
+</div></details>
 <div id="contextMenu" class="context-menu" role="menu" hidden></div>
 <div id="sortMenu" class="context-menu" role="menu" hidden></div>
 <script nonce="{{nonce}}" src="{{script}}"></script></body></html>
