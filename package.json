@@ -1,0 +1,183 @@
+{
+  "name": "vivi",
+  "displayName": "vivi",
+  "description": "Remote-first, extensible data viewer with configurable file takeover and scientific image support.",
+  "version": "0.4.3",
+  "publisher": "local-science",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Suzuka24/vivi.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "activationEvents": [
+    "onCustomEditor:vivi.viewer",
+    "onView:vivi.explorer"
+  ],
+  "scripts": {
+    "check": "node --check src/extension.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
+    "test": "node --test tests/*.test.js",
+    "test:python": "python -m unittest discover -s tests -p test_*.py -v",
+    "package": "vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "vivi.open",
+        "title": "vivi: Open File by Path"
+      },
+      {
+        "command": "vivi.browse",
+        "title": "vivi: Browse Data Path"
+      },
+      {
+        "command": "vivi.diagnostics",
+        "title": "vivi: Check Python Backend"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vivi",
+          "title": "vivi",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "vivi": [
+        {
+          "id": "vivi.explorer",
+          "name": "Explorer",
+          "type": "webview"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "vivi.viewer",
+        "displayName": "vivi",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.{fits,fit,fts,fz,tif,tiff,png,jpg,jpeg,bmp,gif,avi,mp4,mov,mkv,FITS,TIF,TIFF,PNG,JPG}"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "vivi",
+      "properties": {
+        "vivi.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Python on the extension host. Empty uses the previous imageViewer.pythonPath setting, then python3."
+        },
+        "vivi.defaultPath": {
+          "type": "string",
+          "default": "~",
+          "description": "Initial data explorer path on the extension host."
+        },
+        "vivi.maxPreviewSize": {
+          "type": "number",
+          "default": 1600,
+          "minimum": 256,
+          "maximum": 2048,
+          "description": "Maximum transmitted preview dimension in pixels."
+        },
+        "vivi.maxDecodedPixels": {
+          "type": "number",
+          "default": 64000000,
+          "minimum": 1000000,
+          "maximum": 500000000,
+          "description": "Guard for full-frame decoders (PNG/JPEG/video). FITS/TIFF use region access."
+        },
+        "vivi.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 10,
+          "maximum": 1800,
+          "description": "Backend timeout. A timeout stops the worker; reopen the image to restart."
+        },
+        "vivi.managedExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": [
+            "png",
+            "tif",
+            "tiff",
+            "jpg",
+            "jpeg",
+            "fits",
+            "fit",
+            "fts",
+            "fz"
+          ],
+          "description": "File extensions opened by vivi on double-click. Remove one to use the editor default; video and other supported types can be added."
+        },
+        "vivi.explorerContextMenu": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "open",
+              "openNewTab",
+              "copyPath",
+              "copyToTerminal",
+              "copyName",
+              "rename",
+              "delete",
+              "newFile",
+              "newFolder",
+              "refresh"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "open",
+            "openNewTab",
+            "copyPath",
+            "copyToTerminal",
+            "copyName",
+            "rename",
+            "delete",
+            "newFile",
+            "newFolder",
+            "refresh"
+          ],
+          "description": "Explorer context menu items, in display order. Remove entries to hide them."
+        },
+        "vivi.preloadMaxMiB": {
+          "type": "number",
+          "default": 512,
+          "minimum": 32,
+          "maximum": 4096,
+          "description": "Approximate maximum decoded preview memory for stack preloading. When exceeded, vivi preloads nearby frames and keeps the previous frame visible while loading others."
+        }
+      }
+    }
+  }
+}

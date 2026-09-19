@@ -1,0 +1,11 @@
+.venv/**
+.venv-mac/**
+.venv-local/**
+node_modules/**
+tests/**
+.vscode/**
+.git/**
+*.vsix
+pnpm-lock.yaml
+.gitignore
+**/__pycache__/**

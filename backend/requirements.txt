@@ -1,0 +1,9 @@
+numpy>=1.26,<3
+Pillow>=10.4,<13
+astropy>=6.1,<9
+# Zarr 2 stack keeps compatibility with the servers' Python 3.10.
+tifffile==2025.3.30
+zarr==2.18.3
+numcodecs>=0.12,<0.16
+imagecodecs>=2024.6.1
+opencv-python-headless>=4.10,<5
