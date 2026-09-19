@@ -221,11 +221,17 @@ class FixtureTests(unittest.TestCase):
                                        'selection': {'type': 'polygon', 'points': [[0, 0], [19, 0], [0, 19]]}})
         self.assertLess(polygon['count'], full['count'])
         result = self.session.handle({'op': 'montage', 'dataset': 0, 'start': 1, 'end': 3,
-                                      'columns': 2, 'tile': 64, 'cuts': 'p99', 'stretch': 'sinh'})
-        self.assertEqual((result['width'], result['height'], result['slices']), (128, 128, 3))
-        self.assertTrue(result['png'])
-        image = Image.open(io.BytesIO(base64.b64decode(result['png'])))
-        self.assertNotEqual(image.getpixel((30, 30)), (0, 0, 0))
+                                      'columns': 2, 'scalePercent': 100})
+        self.assertEqual((result['width'], result['height'], result['slices']), (64, 48, 3))
+        try:
+            image = tifffile.imread(result['path'])
+            self.assertEqual(image.dtype, np.uint16)
+            source = self.session.source.dataset(0)
+            for frame, (y, x) in enumerate(((0, 0), (0, 32), (24, 0))):
+                np.testing.assert_array_equal(image[y:y+24, x:x+32],
+                                              self.session.source.read(source, frame, [0, 0, 32, 24]))
+        finally:
+            os.unlink(result['path'])
         profile = self.session.handle({'op': 'profile', 'dataset': 0, 'frame': 0,
                                        'selection': {'type': 'line', 'points': [[0, 0], [10, 0], [10, 10]]},
                                        'points': [0, 0, 10, 10]})

@@ -264,8 +264,42 @@ class Session:
         self.source = None
         self.cuts = {}
 
+    @staticmethod
+    def stack_range(d, req):
+        start, end = int(req.get("start", 1)), int(req.get("end", d["frames"]))
+        if not 1 <= start <= end <= d["frames"] or end - start + 1 > 256:
+            raise ValueError("Expected an inclusive 1-based range of at most 256 slices")
+        return start - 1, end
+
+    @staticmethod
+    def stack_limit(pixels):
+        if pixels > 64_000_000:
+            raise ValueError("Stack output exceeds 64 million pixels")
+
+    @staticmethod
+    def write_tiff(data, prefix, axes=None):
+        import tifffile
+        array = np.ascontiguousarray(data)
+        descriptor, destination = tempfile.mkstemp(prefix=prefix, suffix=".tif")
+        os.close(descriptor)
+        try:
+            tifffile.imwrite(destination, array, bigtiff=True,
+                             photometric="rgb" if array.ndim >= 3 and array.shape[-1] in (3, 4) and
+                             (axes == "TYXS" or (axes is None and array.ndim == 3)) else "minisblack",
+                             metadata={"axes": axes} if axes else None)
+        except Exception:
+            os.unlink(destination)
+            raise
+        return destination
+
     def handle(self, req):
         op = req["op"]
+        if op == "stack":
+            action = req.get("action")
+            op = {"imagesToStack": "imagesToStack", "stackToImages": "stackToImages",
+                  "reslice": "reslice", "zAxisProfile": "zAxisProfile",
+                  "measureStack": "measureStack", "statistics": "stackStatistics",
+                  "stackStatistics": "stackStatistics"}.get(action, "stack")
         if op == "diagnostics":
             import importlib.metadata
             packages = ["numpy", "Pillow", "astropy", "tifffile", "zarr", "imagecodecs", "opencv-python-headless"]
@@ -276,6 +310,12 @@ class Session:
                 except importlib.metadata.PackageNotFoundError:
                     versions[package] = "MISSING"
             return dict(python=sys.executable, versions=versions)
+        if op == "lutPreview":
+            cmap = req.get("cmap", "gray")
+            values = apply_lut(np.linspace(0, 1, 256), cmap)
+            if values.ndim == 1:
+                values = np.repeat(values[:, None], 3, axis=1)
+            return {"cmap": cmap, "rgb": np.rint(np.clip(values, 0, 1) * 255).astype(np.uint8).tolist()}
         if op == "open":
             if self.source:
                 self.source.close()
@@ -318,7 +358,7 @@ class Session:
         if op == "derive":
             import tifffile
             action = req.get("action")
-            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"}
+            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"}
             if action not in supported:
                 raise ValueError("Unsupported image operation")
             area = (box[2]-box[0])*(box[3]-box[1])
@@ -348,6 +388,10 @@ class Session:
                     result = result[::-1]
                 elif action in ("rotateLeft", "rotateRight", "rotate180"):
                     result = np.rot90(result, {"rotateLeft":1,"rotateRight":3,"rotate180":2}[action])
+                elif action in ("channelRed", "channelGreen", "channelBlue"):
+                    if result.ndim != 3 or result.shape[-1] < 3:
+                        raise ValueError("Channel split requires an RGB image")
+                    result = result[..., {"channelRed": 0, "channelGreen": 1, "channelBlue": 2}[action]]
                 elif action == "resize":
                     import cv2
                     factor=finite_number(req.get("value"),1)
@@ -384,6 +428,21 @@ class Session:
                     finite = result[np.isfinite(result)]
                     low, high = (float(finite.min()), float(finite.max())) if finite.size else (0., 1.)
                     result = np.clip((result.astype(np.float32)-low)/(high-low or 1.), 0, 1)
+                elif action == "equalizeHistogram":
+                    data = result.astype(np.float64)
+                    channels = [data[..., index] for index in range(data.shape[-1])] if data.ndim == 3 else [data]
+                    output = []
+                    for channel in channels:
+                        finite = channel[np.isfinite(channel)]
+                        if finite.size < 2 or float(finite.min()) == float(finite.max()):
+                            output.append(channel)
+                            continue
+                        low, high = float(finite.min()), float(finite.max())
+                        counts, edges = np.histogram(finite, bins=256, range=(low, high))
+                        cdf = np.cumsum(counts) / finite.size
+                        equalized = np.interp(channel, edges[1:], low + cdf * (high - low))
+                        output.append(np.where(np.isfinite(channel), equalized, channel))
+                    result = (np.stack(output, axis=-1) if data.ndim == 3 else output[0]).astype(result.dtype)
                 elif action in ("smooth", "sharpen", "findEdges", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"):
                     import cv2
                     data = np.ascontiguousarray(result.astype(np.float32))
@@ -448,7 +507,7 @@ class Session:
                         binary = np.uint8(np.any(data > 0, axis=-1) if data.ndim == 3 else data > 0) * 255
                         kernel = np.ones((3,3), dtype=np.uint8)
                         result = {"binaryErode":lambda:cv2.erode(binary,kernel),"binaryDilate":lambda:cv2.dilate(binary,kernel),"binaryOpen":lambda:cv2.morphologyEx(binary,cv2.MORPH_OPEN,kernel),"binaryClose":lambda:cv2.morphologyEx(binary,cv2.MORPH_CLOSE,kernel)}[action]()
-                elif action in ("invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "fftPower"):
+                elif action in ("invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "fftPower", "fftPowerImageJ"):
                     data = result.astype(np.float64)
                     if action == "invertPixels": result = np.nanmax(data) + np.nanmin(data) - data
                     elif action == "sqrt": result = np.sqrt(np.maximum(data, 0))
@@ -459,9 +518,14 @@ class Session:
                     elif action == "thresholdBinary":
                         threshold = finite_number(req.get("value"), 0)
                         result = np.uint8(data >= threshold) * 255
-                    elif action == "fftPower":
+                    elif action in ("fftPower", "fftPowerImageJ"):
                         if data.ndim == 3: data = np.mean(data[...,:3], axis=-1)
-                        result = np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(data))))
+                        shape = data.shape
+                        if action == "fftPowerImageJ":
+                            shape = tuple(1 << (size - 1).bit_length() for size in shape)
+                            if math.prod(shape) > self.source.max_pixels:
+                                raise ValueError("Padded FFT exceeds maxDecodedPixels")
+                        result = np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(data, s=shape))))
                 elif action in ("gaussian", "median", "unsharp"):
                     import cv2
                     radius = finite_number(req.get("value"), 1)
@@ -480,8 +544,27 @@ class Session:
             os.close(descriptor)
             try:
                 result = np.ascontiguousarray(result)
-                tifffile.imwrite(destination, result, bigtiff=True,
-                                 photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack")
+                if req.get("preserveStack") and action in ("flipHorizontal", "flipVertical", "rotateLeft", "rotateRight", "rotate180") and d["frames"] > 1:
+                    output_shape = list(d["shape"])
+                    output_shape[d["y"]], output_shape[d["x"]] = result.shape[:2]
+                    output_axes = d["axes"] or "Q" * len(d["extra"]) + "YX"
+                    def transformed_planes():
+                        for plane in range(d["frames"]):
+                            if plane == frame:
+                                yield result
+                                continue
+                            image = np.asarray(self.source.read(d, plane, box))
+                            if action == "flipHorizontal": image = image[:, ::-1]
+                            elif action == "flipVertical": image = image[::-1]
+                            else: image = np.rot90(image, {"rotateLeft":1,"rotateRight":3,"rotate180":2}[action])
+                            yield np.ascontiguousarray(image)
+                    with tifffile.TiffWriter(destination, bigtiff=True) as writer:
+                        writer.write(transformed_planes(), shape=tuple(output_shape), dtype=result.dtype,
+                                     photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack",
+                                     metadata={"axes": output_axes})
+                else:
+                    tifffile.imwrite(destination, result, bigtiff=True,
+                                     photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack")
             except Exception:
                 os.unlink(destination)
                 raise
@@ -501,29 +584,109 @@ class Session:
             image.save(data, format="PNG")
             return {"png": base64.b64encode(data.getvalue()).decode("ascii"), "width": image.width, "height": image.height}
         if op == "montage":
-            start = max(0, min(d["frames"] - 1, int(req.get("start", 1)) - 1))
-            end = max(start + 1, min(d["frames"], int(req.get("end", d["frames"]))))
-            if end - start > 256:
-                raise ValueError("Montage supports at most 256 slices per operation")
-            columns = max(1, min(32, int(req.get("columns", 5))))
-            tile = max(32, min(512, int(req.get("tile", 160))))
+            start, end = self.stack_range(d, req)
+            columns = int(req.get("columns", 5))
+            if not 1 <= columns <= 32:
+                raise ValueError("Columns must be between 1 and 32")
+            scale = finite_number(req.get("scalePercent"), 100)
+            if not 1 <= scale <= 1000:
+                raise ValueError("Scale percent must be between 1 and 1000")
+            width = max(1, round(d["width"] * scale / 100))
+            height = max(1, round(d["height"] * scale / 100))
             rows = math.ceil((end - start) / columns)
-            if columns * rows * tile * tile > 64_000_000:
-                raise ValueError("Montage output exceeds 64 million pixels")
-            output = Image.new("RGB", (columns * tile, rows * tile), "black")
+            self.stack_limit(columns * width * rows * height)
+            first = np.asarray(self.source.read(d, start, bounds(d)))
+            output = np.zeros((rows * height, columns * width) + first.shape[2:], dtype=first.dtype)
             for index, plane in enumerate(range(start, end)):
-                result = self.render(d, plane, bounds(d), {**req, "size": tile})
-                with Image.open(io.BytesIO(base64.b64decode(result["png"]))) as image:
-                    picture = image.convert("RGB")
-                    factor = min(tile / picture.width, tile / picture.height)
-                    picture = picture.resize((max(1, round(picture.width * factor)),
-                                              max(1, round(picture.height * factor))), Image.Resampling.NEAREST)
-                    output.paste(picture, ((index % columns) * tile + (tile - picture.width) // 2,
-                                           (index // columns) * tile + (tile - picture.height) // 2))
-            data = io.BytesIO()
-            output.save(data, format="PNG")
-            return {"png": base64.b64encode(data.getvalue()).decode("ascii"),
-                    "width": output.width, "height": output.height, "slices": end - start}
+                image = first if plane == start else np.asarray(self.source.read(d, plane, bounds(d)))
+                if scale != 100:
+                    # Nearest neighbour keeps the source dtype and never creates display-scaled pixels.
+                    yy = np.minimum(d["height"] - 1, np.floor(np.arange(height) * d["height"] / height).astype(int))
+                    xx = np.minimum(d["width"] - 1, np.floor(np.arange(width) * d["width"] / width).astype(int))
+                    image = image[np.ix_(yy, xx)]
+                y, x = divmod(index, columns)
+                output[y*height:(y+1)*height, x*width:(x+1)*width] = image
+            path = self.write_tiff(output, "vivi-montage-")
+            return {"path": path, "width": output.shape[1], "height": output.shape[0],
+                    "slices": end - start, "scalePercent": scale}
+        if op == "imagesToStack":
+            paths = req.get("paths")
+            if not isinstance(paths, list) or not paths or len(paths) > 256 or not all(isinstance(p, str) for p in paths):
+                raise ValueError("Expected 1 to 256 image paths")
+            images = []
+            for path in paths:
+                source = Source(path, self.source.max_pixels)
+                try:
+                    item = source.datasets[0]
+                    if item["frames"] != 1:
+                        raise ValueError("Each input image must contain one plane")
+                    self.stack_limit(item["width"] * item["height"] * len(paths))
+                    image = np.array(source.read(item, 0, bounds(item)), copy=True)
+                    if images and (image.shape != images[0].shape or image.dtype != images[0].dtype):
+                        raise ValueError("Images must have matching shape and dtype")
+                    images.append(image)
+                finally:
+                    source.close()
+            data = np.stack(images)
+            return {"path": self.write_tiff(data, "vivi-stack-", axes="TYXS" if data.ndim == 4 else "TYX"),
+                    "frames": len(images), "width": data.shape[2], "height": data.shape[1]}
+        if op == "stackToImages":
+            start, end = self.stack_range(d, req)
+            self.stack_limit(d["width"] * d["height"])
+            paths = []
+            try:
+                for plane in range(start, end):
+                    paths.append(self.write_tiff(self.source.read(d, plane, bounds(d)), "vivi-slice-"))
+            except Exception:
+                for path in paths:
+                    os.unlink(path)
+                raise
+            return {"paths": paths, "frames": list(range(start + 1, end + 1))}
+        if op == "reslice":
+            start, end = self.stack_range(d, req)
+            axis = req.get("axis", "y")
+            if axis not in ("x", "y"):
+                raise ValueError("Reslice axis must be x or y")
+            position = int(req.get("position", 0))
+            limit = d["width"] if axis == "x" else d["height"]
+            if not 0 <= position < limit:
+                raise ValueError("Reslice position out of bounds")
+            length = d["height"] if axis == "x" else d["width"]
+            self.stack_limit(length * (end - start))
+            line_box = [position, 0, position + 1, d["height"]] if axis == "x" else [0, position, d["width"], position + 1]
+            lines = [np.asarray(self.source.read(d, plane, line_box))[0 if axis == "y" else slice(None),
+                                                                    slice(None) if axis == "y" else 0]
+                     for plane in range(start, end)]
+            data = np.stack(lines)
+            return {"path": self.write_tiff(data, "vivi-reslice-"), "width": length,
+                    "height": end - start, "axis": axis, "position": position}
+        if op == "zAxisProfile":
+            start, end = self.stack_range(d, req)
+            x, y = int(req["x"]), int(req["y"])
+            if not (0 <= x < d["width"] and 0 <= y < d["height"]):
+                raise ValueError("Pixel out of bounds")
+            values = [np.asarray(self.source.read(d, plane, [x, y, x+1, y+1])[0, 0], dtype=float)
+                      for plane in range(start, end)]
+            return {"frames": list(range(start + 1, end + 1)),
+                    "values": [np.where(np.isfinite(v), v, None).tolist() for v in values],
+                    "x": x, "y": y, "dataset": d["id"]}
+        if op == "measureStack":
+            start, end = self.stack_range(d, req)
+            return {"results": [self.measure(d, plane, box, req.get("selection")) for plane in range(start, end)],
+                    "dataset": d["id"], "box": box}
+        if op == "stackStatistics":
+            start, end = self.stack_range(d, req)
+            results = [self.measure(d, plane, box, req.get("selection")) for plane in range(start, end)]
+            count = sum(item["count"] for item in results)
+            total = sum(item["sum"] for item in results)
+            mean = total / count if count else None
+            variance = sum(item["count"] * (item["std"] ** 2 + (item["mean"] - mean) ** 2)
+                           for item in results if item["count"]) / count if count else None
+            return {"dataset": d["id"], "box": box, "frames": end - start,
+                    "count": count, "area": sum(item["area"] for item in results),
+                    "mean": mean, "std": math.sqrt(max(0, variance)) if count else None,
+                    "min": min((item["min"] for item in results if item["count"]), default=None),
+                    "max": max((item["max"] for item in results if item["count"]), default=None), "sum": total}
         if op == "pixel":
             x, y = int(req["x"]), int(req["y"])
             if not (0 <= x < d["width"] and 0 <= y < d["height"]):
@@ -537,8 +700,26 @@ class Session:
             image = scalar(self.source.read(d, frame, box, step))
             a = image[selection_mask(req.get("selection"), box, image.shape, step)].ravel()
             a = a[np.isfinite(a)]
-            counts, edges = np.histogram(a, bins=128)
-            return dict(counts=counts.tolist(), edges=edges.tolist(), sampled=step > 1, step=step, samples=int(a.size), dataset=d["id"], frame=frame, box=box)
+            bins = int(req.get("bins", 256))
+            if not 1 <= bins <= 4096:
+                raise ValueError("Histogram bins must be between 1 and 4096")
+            minimum = float(a.min()) if a.size else None
+            maximum = float(a.max()) if a.size else None
+            low = finite_number(req.get("xMin"), minimum if minimum is not None else 0)
+            high = finite_number(req.get("xMax"), maximum if maximum is not None else 1)
+            if high <= low:
+                if "xMin" in req or "xMax" in req:
+                    raise ValueError("Histogram xMax must exceed xMin")
+                high = low + 1
+            counts, edges = np.histogram(a, bins=bins, range=(low, high))
+            mode_index = int(np.argmax(counts)) if a.size else None
+            return dict(counts=counts.tolist(), edges=edges.tolist(), sampled=step > 1, step=step,
+                        samples=int(a.size), dataset=d["id"], frame=frame, box=box,
+                        min=minimum, max=maximum, mean=float(a.mean()) if a.size else None,
+                        std=float(a.std()) if a.size else None,
+                        mode=float((edges[mode_index] + edges[mode_index+1]) / 2) if mode_index is not None else None,
+                        modeCount=int(counts[mode_index]) if mode_index is not None else 0,
+                        binWidth=float(edges[1] - edges[0]))
         if op == "profile":
             selected = req.get("selection") or {}
             path = selected.get("points") if selected.get("type") == "line" else None

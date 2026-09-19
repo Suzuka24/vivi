@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "Remote-first, extensible data viewer with configurable file takeover and scientific image support.",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "publisher": "local-science",
   "license": "MIT",
   "repository": {
@@ -176,6 +176,21 @@
           "minimum": 32,
           "maximum": 4096,
           "description": "Approximate maximum decoded preview memory for stack preloading. When exceeded, vivi preloads nearby frames and keeps the previous frame visible while loading others."
+        },
+        "vivi.keyboardShortcuts": {
+          "type": "object",
+          "default": {
+            "fit": "f",
+            "pan": "p",
+            "roi": "r",
+            "oval": "o",
+            "line": "l",
+            "measure": "m",
+            "clear": "escape",
+            "undoTransform": "z"
+          },
+          "additionalProperties": { "type": "string" },
+          "description": "Viewer shortcuts by action. Use a single key name; customize this object in settings.json."
         }
       }
     }

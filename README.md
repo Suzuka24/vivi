@@ -10,7 +10,8 @@ vivi 是面向 Cursor / VS Code 的文件与数据查看扩展。目前提供图
 - 在同一标签页内管理多个文件 Frame，支持单帧、平铺、切换、删除，以及 B&C、色彩、视野、缩放和切片的独立锁定。每个 Frame 可单独勾选是否参与锁定；新加入的 Frame 继承已参与 Frame 的锁定参数。Explorer、Layout 和 Adjust 可分别折叠。
 - Explorer 下方的 Layout 可拖拽 Frame 顺序、选择显示的 Frame、设置平铺行列和拖动切片进度条；按住左右切片键会按 FPS 连续切换。
 - Adjust 提供 ImageJ Auto、DS9 ZScale 和百分位色阶。初次自动计算的 B&C 在切换切片时保持固定；另有原有色表及 ImageJ 官方 LUT 归档的 68 个 LUT。矩形和椭圆选区提供八个编辑点；Shift 约束比例，Ctrl/Cmd 从中心绘制，Alt 在调整时维持比例。
-- 提供测量、直方图、线剖面和 Montage。Duplicate 会在扩展所在主机生成独立 TIFF：2D 可指定标题，stack 可选择当前切片或指定范围，选区可裁切或忽略。Crop、翻转、四则运算、归一化和 Z 投影的结果也作为新 Frame 打开。源图像数据按只读方式打开；重命名会修改文件名。
+- 提供测量、带参数设置及统计值的直方图、线剖面和 Montage。Montage 使用缩放比例，保留灰度图像的像素类型与数值。Stacks 菜单还提供 Images to Stack、Stack to Images、Reslice、Z Project、Z-axis Profile、Measure Stack 和 Statistics。Duplicate 会在扩展所在主机生成独立 TIFF：2D 可指定标题，stack 可选择当前切片或指定范围，选区可裁切或忽略。Crop、四则运算、归一化和 Z 投影的结果作为新 Frame 打开；翻转与 90°/180° 旋转在当前 Frame 生效，可撤销最多十步。源文件按只读方式打开；重命名会修改文件名。
+- Adjust 提供 Min、Max、Brightness、Contrast 滑块和曲线；Process 的 FFT 有原尺寸与 ImageJ 补齐至 2 的幂两种模式。键盘命令可在 `vivi.keyboardShortcuts` 中配置。
 - 右键选区会显示 ROI 专用菜单，可编辑属性和精确坐标、加入 Overlay 或 ROI Manager、拟合样条、生成蒙版和测量。也可通过 Edit → Selection → Specify 创建选区。鼠标绘制与拖动控制点对齐整数像素；在坐标对话框中输入的小数会保留。
 
 菜单中置灰的命令尚未实现；同名但简化的命令也有范围限制，逐项状态见 [ImageJ 菜单覆盖情况](docs/imagej-menu-coverage.md)。

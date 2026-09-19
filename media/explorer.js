@@ -5,7 +5,13 @@ const labels = { open: 'Open', openNewTab: 'Open in New Tab', copyPath: 'Copy Pa
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null;
+let adjustRangeBounds = [0, 1], adjustDragStart = null;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
+function frameIcon(symbol,title,pressed,action){
+  const button=document.createElement('button');button.type='button';button.className='frame-icon';button.title=title;button.setAttribute('aria-label',title);button.setAttribute('aria-pressed',String(pressed));
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('aria-hidden','true');
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href',`#${symbol}`);svg.append(use);button.append(svg);button.onclick=action;return button;
+}
 function renderSidebar(state){
   layoutState=state;
   $('layoutEmpty').hidden=!!state;$('layoutControls').hidden=!state;
@@ -27,8 +33,8 @@ function renderSidebar(state){
   for(const frame of state.frames){
     const row=document.createElement('div');row.className='frame-item'+(frame.id===state.active?' active':'');row.draggable=true;row.dataset.id=frame.id;
     const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='Drag to reorder';
-    const visible=document.createElement('input');visible.type='checkbox';visible.checked=frame.visible;visible.title='Show this frame';visible.setAttribute('aria-label',`Show ${frame.label}`);visible.onchange=()=>sideAction('frameVisible',{id:frame.id,visible:visible.checked});
-    const locked=document.createElement('input');locked.type='checkbox';locked.checked=frame.locked;locked.title='Include this frame in locks';locked.setAttribute('aria-label',`Include ${frame.label} in locks`);locked.onchange=()=>sideAction('frameLockMember',{id:frame.id,enabled:locked.checked});
+    const visible=frameIcon(frame.visible?'i-eye':'i-eye-off',`${frame.visible?'Hide':'Show'} ${frame.label}`,frame.visible,()=>sideAction('frameVisible',{id:frame.id,visible:!frame.visible}));
+    const locked=frameIcon(frame.locked?'i-frame-lock':'i-frame-unlock',`${frame.locked?'Remove':'Include'} ${frame.label} ${frame.locked?'from':'in'} parameter locks`,frame.locked,()=>sideAction('frameLockMember',{id:frame.id,enabled:!frame.locked}));
     const button=document.createElement('button');button.textContent=`${frame.id}: ${frame.label}`;button.title=frame.label;button.onclick=()=>sideAction('selectFrame',frame.id);
     const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';remove.title=`Close Frame ${frame.id}: ${frame.label}`;remove.setAttribute('aria-label',remove.title);remove.onclick=()=>sideAction('closeFrame',frame.id);
     row.append(handle,visible,locked,button,remove);
@@ -42,6 +48,7 @@ function renderSidebar(state){
   const lut=$('adjustLut');if(lut.options.length!==state.luts.length){lut.replaceChildren();for(const [value,label] of state.luts){const option=document.createElement('option');option.value=value;option.textContent=label;lut.append(option);}}
   for(const [target,key] of [['adjustCuts','cuts'],['adjustLow','low'],['adjustHigh','high'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
   $('adjustInvert').checked=state.invert;$('adjustThreshold').checked=state.threshold;
+  syncAdjustRanges();
 }
 function stopHeldSlice(){if(!heldSlice)return;clearTimeout(heldSlice.timeout);clearInterval(heldSlice.interval);heldSlice=null;}
 for(const [id,delta] of [['slicePrev',-1],['sliceNext',1]]){
@@ -62,6 +69,32 @@ for(const id of ['frameColumns','frameRows'])$(id).onchange=()=>sideAction(id===
 $('lockAll').onclick=()=>sideAction('lockAll');$('unlockAllFrames').onclick=()=>sideAction('unlockAll');
 for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=()=>sideAction('lock',{group:input.dataset.sideLock,enabled:input.checked});
 function sendAdjust(){sideAction('adjust',{cuts:$('adjustCuts').value,low:Number($('adjustLow').value),high:Number($('adjustHigh').value),stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});}
+function syncAdjustRanges(){
+  const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);
+  if(!Number.isFinite(low)||!Number.isFinite(high))return;
+  const width=Math.max(Math.abs(high-low),1e-9);
+  if(!['adjustMinRange','adjustMaxRange'].includes(document.activeElement?.id))adjustRangeBounds=[low-width,high+width];
+  const [start,end]=adjustRangeBounds,toStep=value=>Math.max(0,Math.min(1000,Math.round((value-start)/(end-start)*1000)));
+  if(document.activeElement!==$('adjustMinRange'))$('adjustMinRange').value=toStep(low);
+  if(document.activeElement!==$('adjustMaxRange'))$('adjustMaxRange').value=toStep(high);
+  const canvas=$('adjustCurve'),ctx=canvas.getContext('2d');if(!ctx)return;
+  const w=canvas.width,h=canvas.height,x=value=>(value-start)/(end-start)*w;
+  ctx.clearRect(0,0,w,h);ctx.strokeStyle='#66778866';ctx.beginPath();ctx.moveTo(0,h);ctx.lineTo(w,0);ctx.stroke();
+  ctx.strokeStyle='#72d4b5';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,h);ctx.lineTo(Math.max(0,Math.min(w,x(low))),h);ctx.lineTo(Math.max(0,Math.min(w,x(high))),0);ctx.lineTo(w,0);ctx.stroke();
+}
+for(const [id,key,other] of [['adjustMinRange','adjustLow','adjustHigh'],['adjustMaxRange','adjustHigh','adjustLow']]){
+  $(id).oninput=()=>{const [start,end]=adjustRangeBounds,value=start+(end-start)*Number($(id).value)/1000;$(key).value=id==='adjustMinRange'?Math.min(value,Number($(other).value)):Math.max(value,Number($(other).value));$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
+}
+for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastRange','contrast']]){
+  const input=$(id);
+  const capture=()=>{adjustDragStart={low:Number($('adjustLow').value),high:Number($('adjustHigh').value)};};
+  input.onpointerdown=capture;input.onfocus=capture;
+  input.oninput=()=>{if(!adjustDragStart)capture();const {low,high}=adjustDragStart,span=Math.max(Math.abs(high-low),1e-9),delta=(Number(input.value)-50)/50;
+    if(kind==='brightness'){const shift=delta*span;$('adjustLow').value=low+shift;$('adjustHigh').value=high+shift;}
+    else{const center=(low+high)/2,next=span*Math.pow(2,-delta);$('adjustLow').value=center-next/2;$('adjustHigh').value=center+next/2;}
+    $('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
+  input.onchange=()=>{adjustDragStart=null;input.value=50;};
+}
 $('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
 $('adjustReset').onclick=()=>{$('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
 for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=sendAdjust;
@@ -161,6 +194,7 @@ $('sort').onclick = event => {
 $('filter').oninput = render;
 for(const button of document.querySelectorAll('.icon-button')) button.dataset.tip = button.title;
 document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
+$('contextMenu').addEventListener('mouseleave', closeMenu);
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 window.addEventListener('message', ({data:message}) => {
   if (message.type === 'error') { loading=false;$('error').textContent = message.message; return; }

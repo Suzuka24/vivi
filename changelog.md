@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+- Add stack assembly, splitting, montage with pixel-preserving scale, reslicing, projection, profiles, measurements and statistics.
+- Keep flips and right-angle rotations in the active Frame with ten undo steps while preserving stack slices.
+- Add four B&C sliders and curve, detailed configurable histogram windows, extra Color previews, and original-size plus ImageJ-padded FFT.
+- Compact Layout and Adjust, move slice controls to the image toolbar, and add editable keyboard shortcuts.
+
 ## 0.5.8
 - Replace Explorer paging with continuous scroll loading; fix the flex layout so long lists remain visible and scrollable.
 - Give each Frame a separate lock participation checkbox and copy enabled lock settings when a Frame joins the group.

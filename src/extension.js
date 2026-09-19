@@ -22,6 +22,7 @@ function html(webview, context, name) {
   return fs.readFile(path.join(context.extensionPath, 'media', `${name}.html`), 'utf8').then(text => text
     .replaceAll('{{nonce}}', nonce).replaceAll('{{csp}}', webview.cspSource)
     .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css'))
+    .replaceAll('{{extraStyle}}', uri(`${name}.css`))
     .replaceAll('{{roiScript}}', uri('roiGeometry.js')));
 }
 
@@ -186,11 +187,12 @@ function activate(context) {
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels });
           const id = ++nextId;
-          frames.set(id, { id, file, label, worker, generated, latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, undoPaths: [], redoPaths: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
-          panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, ...data,
-            maxSize: config().get('maxPreviewSize', 1600), preloadMaxMiB: config().get('preloadMaxMiB', 512) });
+          panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
+            maxSize: config().get('maxPreviewSize', 1600), preloadMaxMiB: config().get('preloadMaxMiB', 512),
+            keyboardShortcuts: config().get('keyboardShortcuts', {}) });
         } catch (error) { worker.dispose(); throw error; }
       }
     };
@@ -251,10 +253,72 @@ function activate(context) {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
           const result = await frame.worker.request('montage', msg.args);
-          const destination = path.join(os.tmpdir(), `vivi-montage-${crypto.randomUUID()}.png`);
-          await fs.writeFile(destination, Buffer.from(result.png, 'base64'), { flag: 'wx' });
-          generatedPaths.push(destination);
-          await session.add(destination, true, `Montage · ${path.basename(frame.file)}`);
+          if (!result?.path) throw new Error('Montage did not return a file path.');
+          generatedPaths.push(result.path);
+          await session.add(result.path, true, `Montage · ${path.basename(frame.file)}`);
+        } else if (msg.type === 'stack' && ['imagesToStack','stackToImages','reslice'].includes(msg.args?.action)) {
+          const frame = frames.get(msg.fileFrame || activeId);
+          if (!frame) throw new Error('Select a frame first.');
+          const args = {...msg.args};
+          if (args.action === 'imagesToStack' && !args.paths) {
+            const uris = await vscode.window.showOpenDialog({canSelectFiles:true,canSelectFolders:false,canSelectMany:true,openLabel:'Create Stack'});
+            if (!uris?.length) return;
+            args.paths = uris.map(uri => uri.fsPath);
+          }
+          const result = await frame.worker.request('stack', args);
+          const paths = result?.paths || (result?.path ? [result.path] : []);
+          if (!Array.isArray(paths) || !paths.length || paths.some(file => typeof file !== 'string'))
+            throw new Error(`${args.action} did not return file paths.`);
+          for (const file of paths) {
+            generatedPaths.push(file);
+            await session.add(file, true, `${args.action} · ${path.basename(frame.file)}`);
+          }
+          if (msg.id != null) panel.webview.postMessage({type:'result',id:msg.id,op:'stack',result});
+        } else if (msg.type === 'transformFrame') {
+          const frame = frames.get(msg.fileFrame || activeId);
+          if (!frame) throw new Error('Select a frame first.');
+          const action = msg.action;
+          if (!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180','undo','redo'].includes(action))
+            throw new Error('Unsupported frame transform.');
+          const update = async () => {
+            if (!frames.has(frame.id)) throw new Error('Frame closed.');
+            if (action === 'undo' && !frame.undoPaths.length) throw new Error('Nothing to undo.');
+            if (action === 'redo' && !frame.redoPaths.length) throw new Error('Nothing to redo.');
+            const previous = frame.file;
+            let destination;
+            if (action === 'undo') destination = frame.undoPaths.at(-1);
+            else if (action === 'redo') destination = frame.redoPaths.at(-1);
+            else {
+              const result = await frame.worker.request('derive', {...msg.args, action, preserveStack:true});
+              destination = result?.path;
+              if (!destination) throw new Error('Transform did not return a file path.');
+              generatedPaths.push(destination);
+            }
+            let data;
+            try { data = await frame.worker.request('open', {path: destination, maxPixels: frame.worker.maxPixels}); }
+            catch (error) {
+              await frame.worker.request('open', {path: previous, maxPixels: frame.worker.maxPixels}).catch(restoreError => output.appendLine(restoreError.stack || restoreError.message));
+              throw error;
+            }
+            if (action === 'undo') {
+              frame.undoPaths.pop();
+              frame.redoPaths = [...frame.redoPaths, previous].slice(-10);
+            } else {
+              if (action === 'redo') frame.redoPaths.pop();
+              else frame.redoPaths = [];
+              frame.undoPaths = [...frame.undoPaths, previous].slice(-10);
+            }
+            if (!frame.label) frame.label = path.basename(frame.undoPaths[0] || previous);
+            frame.file = destination;
+            frame.generated = true;
+            frame.latestPng = null;
+            frame.lastResult = null;
+            panel.webview.postMessage({type:'frameUpdated',frameId:frame.id,label:frame.label,
+              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,...data});
+          };
+          const queued = frame.transformQueue.then(update);
+          frame.transformQueue = queued.catch(() => {});
+          await queued;
         } else if (msg.type === 'selectionMask') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
@@ -280,7 +344,7 @@ function activate(context) {
             if (!frames.has(activeId)) activeId = frames.keys().next().value;
             panel.title = frames.size === 1 ? (frames.get(activeId).label || path.basename(frames.get(activeId).file)) : `vivi · ${frames.size} frames`;
           } else panel.dispose();
-        } else if (msg.type === 'request' && ['render','pixel','measure','histogram','profile'].includes(msg.op)) {
+        } else if (msg.type === 'request' && ['render','pixel','measure','histogram','profile','stack','lutPreview'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
           const args = { ...msg.args };

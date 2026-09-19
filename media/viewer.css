@@ -1,0 +1,16 @@
+/* Viewer-only additions to the shared webview stylesheet. */
+.viewer .tool-bar{flex-wrap:nowrap;overflow-x:auto;gap:4px}
+.viewer .toolbar-control-group{display:inline-flex;align-items:center;flex:none;gap:4px;height:28px}
+.viewer .toolbar-control-group label{font-size:10px;color:var(--vscode-descriptionForeground,#9ca8b4)}
+.viewer #viewerDataset{min-width:95px;max-width:180px;height:25px;padding:2px 4px}
+.viewer #viewerSliceRange{width:clamp(70px,12vw,160px);accent-color:var(--vscode-focusBorder,#65c9ae)}
+.viewer #viewerSliceNumber{width:49px;height:25px;padding:2px 3px;text-align:center}
+.viewer #viewerSliceCount{font-size:10px;color:var(--vscode-descriptionForeground,#9ca8b4)}
+.viewer #viewerSliceFps{width:43px;height:25px;padding:2px 3px}
+.viewer #viewerSlicePrev,.viewer #viewerSliceNext,.viewer #viewerSlicePlay{font-size:16px;line-height:1}
+.viewer #cacheStatus{flex:none;margin-left:6px}
+.viewer footer{align-items:center}
+.viewer footer #pixel{flex:0 1 auto}
+.viewer footer #region{flex:1;min-width:0}
+.viewer footer #imageSummary{flex:0 1 auto;max-width:45%;text-align:right}
+@media(max-width:850px){.viewer footer #imageSummary{display:block}}
