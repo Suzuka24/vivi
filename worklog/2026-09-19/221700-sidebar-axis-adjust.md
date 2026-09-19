@@ -20,3 +20,9 @@
 - 完成上述内容，打包 `vivi-0.6.2.vsix` 并在本地 Cursor 安装；看到三个原生一级模块、FITS Viewer 的新工具栏和四轴选择框。仅为本地开发安装，没有发布商店。
 - `npm run check`、`npm test`（7 项）、Python 回归（24 项）和 `npm run package` 全部通过。
 - 远端 hyh-batchcom2 仍运行其原先的开发版，本轮未部署新版到远端；远端 UI 的实际交互需在部署后复核。
+
+## 2026-09-19 远端部署补充
+
+- 将本地 0.6.2 VSIX 通过 SSH 传至 hyh-batchcom2，以当前 Cursor Server CLI 安装；确认扩展列表为 `suzuka24.vivi@0.6.2`，再卸载旧 `local-science.vivi`。安装包临时副本已从远端删除。
+- 用远端已配置的 `/home/hyh/.venvs/image-viewer/bin/python` 调用新版 worker，成功打开服务器上的 795×795 TIFF 并生成 114×114 预览。
+- 当前已打开的远端 Cursor 窗口需要重新加载以切换仍驻留内存的旧 Webview；远端图形界面的新侧栏尚未直接验证。
