@@ -73,5 +73,4 @@ body.explorer .frame-items{max-height:220px}
 .viewer #stage #orthYZ::after{left:0;top:0;width:1px;height:100%}
 .viewer #stage #orthXZ::after{left:0;top:0;width:100%;height:1px}
 .viewer #stage .orth-view canvas{display:block;width:100%;height:100%}
-.viewer #tool-actions :is(#toolMontage,#toolOrthogonal,#toolHistogram,#toolMeasure,#toolFlipHorizontal,#toolFlipVertical,#toolRotateLeft,#toolRotateRight){width:29px;padding:2px}
-.viewer #tool-actions :is(#toolMontage,#toolOrthogonal,#toolHistogram,#toolMeasure,#toolFlipHorizontal,#toolFlipVertical,#toolRotateLeft,#toolRotateRight) svg{width:23px;height:23px;stroke-width:1.1}
+.viewer #tool-actions :is(#toolMontage,#toolOrthogonal,#toolHistogram,#toolMeasure,#toolFlipHorizontal,#toolFlipVertical,#toolRotateLeft,#toolRotateRight) svg{width:15px;height:15px;stroke-width:1.65}

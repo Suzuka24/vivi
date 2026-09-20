@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.14 (development build; not published)
+- Match the visible size of the eight right-hand toolbar icons to the earlier drawing tools.
+
 ## 0.6.13 (development build; not published)
 - Simplify the eight right-hand toolbar icons, match their visible stroke weight to the earlier tools, and remove the divider within this group.
 
