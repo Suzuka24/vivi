@@ -1,7 +1,7 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
-const labels = { open: 'Open', openNewTab: 'Open in New Tab', openStack: 'Open as Image Stack', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
+const labels = { open: 'Open', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
@@ -49,7 +49,9 @@ function renderSidebar(state){
       const menu=$('contextMenu'),rename=document.createElement('button');
       rename.type='button';rename.role='menuitem';rename.textContent='Rename…';
       rename.onclick=()=>{closeMenu();sideAction('renameFrame',frame.id);};
-      menu.append(rename);menu.hidden=false;
+      const duplicate=document.createElement('button');duplicate.type='button';duplicate.role='menuitem';duplicate.textContent='Duplicate Frame';duplicate.onclick=()=>{closeMenu();sideAction('duplicateFrame',frame.id);};
+      const removeFrame=document.createElement('button');removeFrame.type='button';removeFrame.role='menuitem';removeFrame.textContent='Close Frame';removeFrame.onclick=()=>{closeMenu();sideAction('closeFrame',frame.id);};
+      menu.append(rename,duplicate,removeFrame);menu.hidden=false;
       menu.style.left=Math.min(e.clientX,document.body.clientWidth-menu.offsetWidth-4)+'px';
       menu.style.top=Math.min(e.clientY,document.body.clientHeight-menu.offsetHeight-4)+'px';
       rename.focus();

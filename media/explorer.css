@@ -64,3 +64,4 @@ body.view-adjust .adjust-options #adjustAuto{margin-left:0}
 body.view-layout #layoutModule{position:absolute;inset:0;display:block;height:100vh;max-height:100vh;overflow:hidden}
 body.view-layout #layoutModule>.side-module-body{height:100vh;max-height:100vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 body.view-adjust #adjustToggleBC[aria-pressed="true"]{border-color:var(--vscode-focusBorder,#65c9ae);color:var(--vscode-foreground,#eee)}
+body.view-explorer #files .file{padding:2px 5px;line-height:1.35;min-height:21px;border:0;border-radius:0;font-size:12px}

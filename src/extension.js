@@ -57,19 +57,19 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.openWith', uri, 'default', editorOptions(newTab));
     }
   }
-  async function open(input, newTab = false, sequence = false) {
+  async function open(input, newTab = false, sequence = false, sequenceMode = '2d') {
     const file = nativePath(input);
     if (sequence ? !(await fs.stat(file)).isDirectory() : !(await fs.stat(file)).isFile()) throw new Error(sequence ? 'Select an image folder.' : 'Select a file.');
     const uri = uriFor(file);
     if (sequence || managed(file)) {
       if (!newTab && sessions.length) {
         const session = sessions.at(-1);
-        await session.add(file);
+        await session.add(file,false,'',null,sequenceMode);
         session.panel.reveal();
       } else {
         const panel = vscode.window.createWebviewPanel('vivi.session', path.basename(file), vscode.ViewColumn.Active,
           { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] });
-        createSession(panel, file);
+        createSession(panel, file, sequenceMode);
       }
     } else await openNormally(uri, newTab);
   }
@@ -87,7 +87,10 @@ function activate(context) {
           if (msg.type === 'ready') publishSidebar(activeSession);
           if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
-          if (msg.type === 'openSequence') await open(msg.path, msg.newTab === true, true);
+          if (msg.type === 'openSequence') {
+            const choice=await vscode.window.showQuickPick([{label:'Only 2D images',mode:'2d',description:'Skip files containing multiple slices'},{label:'All image planes',mode:'all',description:'Expand every 2D or 3D file into slices'}],{title:'Open Folder as Stack',placeHolder:'Choose which images to include'});
+            if(choice)await open(msg.path,msg.newTab===true,true,choice.mode);
+          }
           if (msg.type === 'action') await this.action(msg);
           if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
         } catch (error) { view.webview.postMessage({ type: 'error', message: error.message }); }
@@ -131,16 +134,9 @@ function activate(context) {
         return this.list(path.dirname(target));
       }
       if (action === 'delete') {
-        const choice = await vscode.window.showWarningMessage(`Move ${path.basename(target)} to Trash?`, { modal: true }, 'Move to Trash');
-        if (choice !== 'Move to Trash') return;
-        try { await vscode.workspace.fs.delete(uriFor(target), { recursive: true, useTrash: true }); }
-        catch {
-          const confirm = await vscode.window.showWarningMessage(
-            `Could not move ${path.basename(target)} to Trash. Delete permanently?`,
-            { modal: true }, 'Delete Permanently');
-          if (confirm !== 'Delete Permanently') return;
-          await vscode.workspace.fs.delete(uriFor(target), { recursive: true, useTrash: false });
-        }
+        const choice = await vscode.window.showWarningMessage(`Permanently remove ${target} and its contents?`, { modal: true }, 'Remove Permanently');
+        if (choice !== 'Remove Permanently') return;
+        await fs.rm(target, { recursive: true, force: true });
         return this.list(path.dirname(target));
       }
       throw new Error('Unknown Explorer action.');
@@ -180,23 +176,23 @@ function activate(context) {
     catch (error) { report(error); output.show(); }
     finally { worker.dispose(); }
   }));
-  function createSession(panel, firstFile) {
+  function createSession(panel, firstFile, firstMode = '2d') {
     const frames = new Map();
-    const pendingPaths = [firstFile];
+    const pendingPaths = [{file:firstFile,mode:firstMode}];
     const generatedPaths = [];
     let ready = false, disposed = false, nextId = 0, activeId = null;
     const session = {
       panel,
       sidebarState:null,
-      async add(file, generated = false, label = '', initialSelection = null) {
+      async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d') {
         if (disposed) throw new Error('Viewer closed.');
-        if (!ready) { pendingPaths.push(file); return; }
+        if (!ready) { pendingPaths.push({file,mode:sequenceMode}); return; }
         const worker = newBackend();
         try {
-          const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels });
+          const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels, sequenceMode });
           const id = ++nextId;
           label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
-          frames.set(id, { id, file, label, worker, generated, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, sequenceMode, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
@@ -220,7 +216,7 @@ function activate(context) {
       try {
         if (msg.type === 'ready') {
           ready = true;
-          for (const file of pendingPaths.splice(0)) await session.add(file);
+          for (const item of pendingPaths.splice(0)) await session.add(item.file,false,'',null,item.mode);
         } else if (msg.type === 'activeFrame') {
           if (frames.has(msg.frameId)) activeId = msg.frameId;
         } else if (msg.type === 'sidebarState') {
@@ -255,7 +251,10 @@ function activate(context) {
           for (const uri of uris || []) await session.add(uri.fsPath);
         } else if (msg.type === 'importSequence') {
           const uris = await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,openLabel:'Open Image Sequence'});
-          if (uris?.[0]) await session.add(uris[0].fsPath);
+          if (uris?.[0]) {
+            const choice=await vscode.window.showQuickPick([{label:'Only 2D images',mode:'2d'},{label:'All image planes',mode:'all'}],{title:'Open Folder as Stack'});
+            if(choice)await session.add(uris[0].fsPath,false,'',null,choice.mode);
+          }
         } else if (msg.type === 'montage') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
@@ -263,6 +262,12 @@ function activate(context) {
           if (!result?.path) throw new Error('Montage did not return a file path.');
           generatedPaths.push(result.path);
           await session.add(result.path, true, `Montage · ${path.basename(frame.file)}`);
+        } else if (msg.type === 'orthogonalDuplicate') {
+          const frame = frames.get(msg.fileFrame || activeId);
+          if (!frame) throw new Error('Select a frame first.');
+          const result = await frame.worker.request('orthogonalDuplicate', msg.args);
+          generatedPaths.push(result.path);
+          await session.add(result.path, true, `${msg.args.plane.toUpperCase()} · ${frame.label}`);
         } else if (msg.type === 'stack' && ['imagesToStack','stackToImages','reslice'].includes(msg.args?.action)) {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
@@ -285,7 +290,7 @@ function activate(context) {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
           const action = msg.action;
-          if (!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180','undo','redo'].includes(action))
+          if (!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180','rotate','undo','redo'].includes(action))
             throw new Error('Unsupported frame transform.');
           const update = async () => {
             if (!frames.has(frame.id)) throw new Error('Frame closed.');
@@ -293,7 +298,7 @@ function activate(context) {
             if (action === 'redo' && !frame.redoPaths.length) throw new Error('Nothing to redo.');
             const previous = frame.file;
             let destination;
-            const inverse = {flipHorizontal:'flipHorizontal',flipVertical:'flipVertical',rotateLeft:'rotateRight',rotateRight:'rotateLeft',rotate180:'rotate180'};
+            const inverse = {flipHorizontal:'flipHorizontal',flipVertical:'flipVertical',rotateLeft:'rotateRight',rotateRight:'rotateLeft',rotate180:'rotate180',rotate:'rotate'};
             const displayTransform = action === 'undo' ? inverse[frame.undoActions.at(-1)] : action === 'redo' ? frame.redoActions.at(-1) : action;
             if (action === 'undo') destination = frame.undoPaths.at(-1);
             else if (action === 'redo') destination = frame.redoPaths.at(-1);
@@ -347,7 +352,12 @@ function activate(context) {
           await session.add(result.path, true, `${msg.label} · ${path.basename(frame.file)}`);
         } else if (msg.type === 'cloneFrame') {
           const frame = frames.get(msg.frameId || activeId);
-          if (frame) await session.add(frame.file, frame.generated, `Copy · ${path.basename(frame.file)}`);
+          if (frame) {
+            const source=(frame.label||path.basename(frame.file)).replace(/ \[copy \d+\]$/,'');
+            const labels=new Set([...frames.values()].map(item=>item.label));
+            let serial=1;while(labels.has(`${source} [copy ${serial}]`))serial++;
+            await session.add(frame.file, frame.generated, `${source} [copy ${serial}]`, null, frame.sequenceMode);
+          }
         } else if (msg.type === 'closeFrame') {
           const frame = frames.get(msg.frameId);
           if (!frame) return;

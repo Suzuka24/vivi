@@ -132,10 +132,10 @@ class FixtureTests(unittest.TestCase):
         section = self.session.handle({'op': 'orthogonal', 'dataset': 0, 'frame': 4,
                                        'axis': 1, 'x': 3, 'y': 4})
         xz = np.frombuffer(base64.b64decode(section['xz']['raw']), np.float32).reshape(3, 32)
-        yz = np.frombuffer(base64.b64decode(section['yz']['raw']), np.float32).reshape(3, 24)
+        yz = np.frombuffer(base64.b64decode(section['yz']['raw']), np.float32).reshape(24, 3)
         for z in range(3):
             self.assertEqual(xz[z, 3], self.pixel(frame=3 + z, x=3, y=4))
-            self.assertEqual(yz[z, 4], self.pixel(frame=3 + z, x=3, y=4))
+            self.assertEqual(yz[4, z], self.pixel(frame=3 + z, x=3, y=4))
 
     def test_duplicate_current_slice_range_and_selection(self):
         self.open('stack.tiff')

@@ -3,6 +3,7 @@
 .venv-local/**
 node_modules/**
 tests/**
+worklog/**
 .vscode/**
 .git/**
 *.vsix

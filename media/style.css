@@ -65,3 +65,10 @@ body.explorer .frame-items{max-height:220px}
 .viewer #orthXZ{grid-column:1;grid-row:2}
 .viewer .orth-view span{height:20px;flex:none;padding:2px 6px;color:var(--vscode-descriptionForeground,#aeb9c5);font-size:11px}
 .viewer .orth-view canvas{display:block;width:100%;height:0;flex:1;min-height:0;touch-action:none;cursor:crosshair}
+.viewer #stage.orthogonal{display:block}
+.viewer #stage.orthogonal #canvas{width:100%;height:100%}
+.viewer #stage .orth-view{position:absolute;display:block;border:0;z-index:2;overflow:hidden}
+.viewer #stage .orth-view[hidden]{display:none}
+.viewer #stage #orthYZ{border-left:1px solid #f4cf65}
+.viewer #stage #orthXZ{border-top:1px solid #f4cf65}
+.viewer #stage .orth-view canvas{display:block;width:100%;height:100%}

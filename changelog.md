@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.11 (development build; not published)
+- Align XY, YZ, and XZ at the same pixel scale; transpose YZ and allow either section to be duplicated as a 2D Frame.
+- Add menu actions to the toolbar, arbitrary rotation with preview and undo, and Frame context actions.
+- Expand image folders as stacks with a 2D-only or all-planes choice and per-plane source labels.
+- Compact Explorer rows, remove files and directories permanently on confirmation, and expose viewer action shortcuts in settings.
+
 ## 0.6.10 (development build; not published)
 - Add an ADJUST button to show or hide the B&C graph.
 - Match tile pan movement to mouse movement in screen pixels.

@@ -21,13 +21,41 @@ def finite_number(value, default):
     return value
 
 
+def rotate_image(image, options):
+    import cv2
+    angle = finite_number(options.get("angle"), 0)
+    if abs(angle) > 3600:
+        raise ValueError("Rotation angle must be within ±3600 degrees")
+    method = options.get("interpolation", "bilinear")
+    interpolation = {"nearest": cv2.INTER_NEAREST, "bilinear": cv2.INTER_LINEAR,
+                     "bicubic": cv2.INTER_CUBIC}.get(method)
+    if interpolation is None:
+        raise ValueError("Choose nearest, bilinear, or bicubic interpolation")
+    height, width = image.shape[:2]
+    matrix = cv2.getRotationMatrix2D(((width - 1) / 2, (height - 1) / 2), -angle, 1)
+    output_width, output_height = width, height
+    if options.get("enlarge"):
+        cosine, sine = abs(matrix[0, 0]), abs(matrix[0, 1])
+        output_width = max(1, math.ceil(height * sine + width * cosine))
+        output_height = max(1, math.ceil(height * cosine + width * sine))
+        matrix[0, 2] += (output_width - width) / 2
+        matrix[1, 2] += (output_height - height) / 2
+    background = 0
+    if options.get("fillBackground"):
+        background = np.iinfo(image.dtype).max if np.issubdtype(image.dtype, np.integer) else 1.0
+    return cv2.warpAffine(np.ascontiguousarray(image), matrix, (output_width, output_height),
+                          flags=interpolation, borderMode=cv2.BORDER_CONSTANT,
+                          borderValue=(background,) * min(4, image.shape[-1]) if image.ndim == 3 else background)
+
+
 class Source:
-    def __init__(self, path, max_pixels=64_000_000):
+    def __init__(self, path, max_pixels=64_000_000, sequence_mode="2d"):
         self.path = os.path.abspath(os.path.expanduser(path))
         self.handles = []
         self.datasets = []
         self.levels = {}
         self.max_pixels = max_pixels
+        self.sequence_mode = sequence_mode
         self.frame_cache = None
         self.frame_index = -1
         self.sequence_source = None
@@ -42,25 +70,34 @@ class Source:
 
     def _open(self):
         if os.path.isdir(self.path):
+            if self.sequence_mode not in ("2d", "all"):
+                raise ValueError("Choose 2D images or all image planes")
             extensions = ('.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.gif', '.fits', '.fit', '.fts', '.fz')
             files = [entry.path for entry in os.scandir(self.path) if entry.is_file() and entry.name.lower().endswith(extensions)]
             files.sort(key=lambda name: [int(part) if part.isdigit() else part.casefold() for part in re.split(r'(\d+)', os.path.basename(name))])
             if not files:
                 raise ValueError('Folder contains no supported images')
-            first = Source(files[0], self.max_pixels)
-            try:
-                d = first.datasets[0]
-                if d['frames'] != 1:
-                    raise ValueError('Image Sequence requires one plane per file')
-                self.kind = 'sequence'
-                self.sequence_files = files
-                self.slice_labels = [os.path.basename(file) for file in files]
-                self.sequence_shape = (d['width'], d['height'], d['dtype'], d['channel'] is not None)
-                shape = (len(files), d['height'], d['width']) + ((first.source_channels(d),) if d['channel'] is not None else ())
-                self._add(0, 'Image Sequence', shape, 'TYXS' if d['channel'] is not None else 'TYX', d['dtype'])
-                self.warning = 'Image Sequence reads each file as a slice and retains its filename as a slice label.'
-            finally:
-                first.close()
+            frames=[];labels=[];reference=None
+            for file in files:
+                try:
+                    source=Source(file,self.max_pixels)
+                    try:
+                        d=source.datasets[0]
+                        if self.sequence_mode=="2d" and d['frames']!=1: continue
+                        signature=(d['width'],d['height'],d['dtype'],source.source_channels(d))
+                        if reference is None: reference=signature
+                        elif signature!=reference: raise ValueError(f'Image Sequence dimensions, type, and channels must match: {os.path.basename(file)}')
+                        for plane in range(d['frames']):
+                            frames.append((file,plane))
+                            labels.append(f'{os.path.basename(file)} · slice {plane+1}/{d["frames"]}' if self.sequence_mode=="all" else os.path.basename(file))
+                    finally: source.close()
+                except ValueError:
+                    raise
+            if not frames: raise ValueError('Folder contains no matching 2D images')
+            self.kind='sequence';self.sequence_frames=frames;self.slice_labels=labels;self.sequence_shape=reference
+            width,height,dtype,channels=reference
+            self._add(0,'Image Sequence',(len(frames),height,width)+(channels,) if channels>1 else (len(frames),height,width),'TYXS' if channels>1 else 'TYX',dtype)
+            self.warning='Image Sequence reads source planes on demand and shows their original filenames.'
             return
         ext = os.path.splitext(self.path)[1].lower()
         if ext in (".fits", ".fit", ".fts", ".fz"):
@@ -144,15 +181,16 @@ class Source:
             raise ValueError("Frame out of range")
         x0, y0, x1, y1 = box
         if self.kind == 'sequence':
-            if frame != self.sequence_index:
+            file,plane=self.sequence_frames[frame]
+            if file != self.sequence_index:
                 if self.sequence_source:
                     self.sequence_source.close()
-                self.sequence_source = Source(self.sequence_files[frame], self.max_pixels)
-                self.sequence_index = frame
+                self.sequence_source = Source(file, self.max_pixels)
+                self.sequence_index = file
                 item = self.sequence_source.datasets[0]
-                if item['frames'] != 1 or (item['width'], item['height'], item['dtype'], item['channel'] is not None) != self.sequence_shape:
+                if (item['width'], item['height'], item['dtype'], self.sequence_source.source_channels(item)) != self.sequence_shape:
                     raise ValueError(f'Image Sequence slice differs in size, type, or channels: {self.slice_labels[frame]}')
-            return self.sequence_source.read(self.sequence_source.datasets[0], 0, box, step, pyramid)
+            return self.sequence_source.read(self.sequence_source.datasets[0], plane, box, step, pyramid)
         if self.kind in ("raster", "video"):
             if self.frame_index != frame:
                 if self.kind == "video":
@@ -363,7 +401,7 @@ class Session:
                 self.source.close()
                 self.source = None
             self.cuts.clear()
-            self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)))
+            self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)),req.get("sequenceMode","2d"))
             return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets, warning=self.source.warning,
                         sliceLabels=self.source.slice_labels)
         if not self.source:
@@ -371,6 +409,24 @@ class Session:
         d = self.source.dataset(req.get("dataset", self.source.datasets[0]["id"]))
         frame = int(req.get("frame", 0))
         box = bounds(d, req.get("box"))
+        if op == "orthogonalDuplicate":
+            import tifffile
+            plane = req.get("plane")
+            if plane not in ("xz", "yz"):
+                raise ValueError("Choose XZ or YZ for duplication")
+            section = self.handle({**req, "op": "orthogonal"})[plane]
+            values = np.frombuffer(base64.b64decode(section["raw"]), dtype=np.float32)
+            values = values.reshape(section["height"], section["width"], -1)
+            if values.shape[-1] == 1:
+                values = values[..., 0]
+            descriptor, destination = tempfile.mkstemp(prefix="vivi-orthogonal-", suffix=".tif")
+            os.close(descriptor)
+            try:
+                tifffile.imwrite(destination, values, photometric="rgb" if values.ndim == 3 and values.shape[-1] in (3, 4) else "minisblack")
+            except Exception:
+                os.unlink(destination)
+                raise
+            return {"path": destination, "width": section["width"], "height": section["height"]}
         if op == "orthogonal":
             if not d["extra"]:
                 raise ValueError("Orthogonal Views requires an image stack")
@@ -396,10 +452,10 @@ class Session:
                 xz.append(np.asarray(self.source.read(d, plane, [0, y, d["width"], y + 1]))[0])
                 yz.append(np.asarray(self.source.read(d, plane, [x, 0, x + 1, d["height"]]))[:, 0])
             xz = np.ascontiguousarray(np.stack(xz).astype(np.float32))
-            yz = np.ascontiguousarray(np.stack(yz).astype(np.float32))
+            yz = np.ascontiguousarray(np.swapaxes(np.stack(yz), 0, 1).astype(np.float32))
             return dict(x=x, y=y, axis=axis, depth=depth, channels=channels,
                         xz=dict(width=d["width"], height=depth, raw=base64.b64encode(xz.tobytes()).decode("ascii")),
-                        yz=dict(width=d["height"], height=depth, raw=base64.b64encode(yz.tobytes()).decode("ascii")))
+                        yz=dict(width=depth, height=d["height"], raw=base64.b64encode(yz.tobytes()).decode("ascii")))
         if op == "render":
             return self.render(d, frame, box, req)
         if op == "duplicate":
@@ -430,7 +486,7 @@ class Session:
         if op == "derive":
             import tifffile
             action = req.get("action")
-            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"}
+            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "rotate", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"}
             if action not in supported:
                 raise ValueError("Unsupported image operation")
             area = (box[2]-box[0])*(box[3]-box[1])
@@ -460,6 +516,8 @@ class Session:
                     result = result[::-1]
                 elif action in ("rotateLeft", "rotateRight", "rotate180"):
                     result = np.rot90(result, {"rotateLeft":1,"rotateRight":3,"rotate180":2}[action])
+                elif action == "rotate":
+                    result = rotate_image(result, req)
                 elif action in ("channelRed", "channelGreen", "channelBlue"):
                     if result.ndim != 3 or result.shape[-1] < 3:
                         raise ValueError("Channel split requires an RGB image")
@@ -616,7 +674,7 @@ class Session:
             os.close(descriptor)
             try:
                 result = np.ascontiguousarray(result)
-                if req.get("preserveStack") and action in ("flipHorizontal", "flipVertical", "rotateLeft", "rotateRight", "rotate180") and d["frames"] > 1:
+                if req.get("preserveStack") and action in ("flipHorizontal", "flipVertical", "rotateLeft", "rotateRight", "rotate180", "rotate") and d["frames"] > 1:
                     output_shape = list(d["shape"])
                     output_shape[d["y"]], output_shape[d["x"]] = result.shape[:2]
                     output_axes = d["axes"] or "Q" * len(d["extra"]) + "YX"
@@ -628,6 +686,7 @@ class Session:
                             image = np.asarray(self.source.read(d, plane, box))
                             if action == "flipHorizontal": image = image[:, ::-1]
                             elif action == "flipVertical": image = image[::-1]
+                            elif action == "rotate": image = rotate_image(image, req)
                             else: image = np.rot90(image, {"rotateLeft":1,"rotateRight":3,"rotate180":2}[action])
                             yield np.ascontiguousarray(image)
                     with tifffile.TiffWriter(destination, bigtiff=True) as writer:

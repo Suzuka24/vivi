@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.6.10",
+  "version": "0.6.11",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -204,10 +204,732 @@
             "line": "l",
             "measure": "m",
             "clear": "escape",
-            "undoTransform": "z"
+            "undoTransform": "z",
+            "pointer": "",
+            "polygon": "",
+            "freehand": "",
+            "angle": "",
+            "text": "",
+            "zoomTool": "",
+            "zoomIn": "",
+            "zoomOut": "",
+            "actual": "",
+            "play": "",
+            "nextSlice": "",
+            "previousSlice": "",
+            "toggleBC": "",
+            "redoTransform": "",
+            "openFile": "",
+            "importSequence": "",
+            "closeFileFrame": "",
+            "savePng": "",
+            "saveCsv": "",
+            "selectAll": "",
+            "clearSelectionMenu": "",
+            "restoreSelection": "",
+            "enlargeSelection": "",
+            "fitSpline": "",
+            "selectionProperties": "",
+            "specifySelection": "",
+            "addSelectionOverlay": "",
+            "addSelectionManager": "",
+            "type8": "",
+            "type16": "",
+            "type32": "",
+            "typeRgb": "",
+            "openBC": "",
+            "autoCuts": "",
+            "resetCuts": "",
+            "thresholdMenu": "",
+            "colorShowLut": "",
+            "colorDisplayLuts": "",
+            "colorInvertLuts": "",
+            "colorSplitChannels": "",
+            "colorMergeChannels": "",
+            "colorChannelsTool": "",
+            "colorStackToRgb": "",
+            "colorMakeComposite": "",
+            "stackImagesToStack": "",
+            "stackToImages": "",
+            "stackReslice": "",
+            "stackZProfile": "",
+            "stackMeasure": "",
+            "stackStatistics": "",
+            "montage": "",
+            "stackOrthogonal": "",
+            "zProject": "",
+            "flipHorizontal": "",
+            "flipVertical": "",
+            "rotateLeft": "",
+            "rotateRight": "",
+            "rotate180": "",
+            "rotateArbitrary": "",
+            "imageCrop": "",
+            "imageDuplicate": "",
+            "imageRename": "",
+            "imageScale": "",
+            "imageInfo": "",
+            "processSmooth": "",
+            "processSharpen": "",
+            "processEdges": "",
+            "processMaxima": "",
+            "filterGaussian": "",
+            "filterMedian": "",
+            "filterUnsharp": "",
+            "filterMean": "",
+            "filterMin": "",
+            "filterMax": "",
+            "filterVariance": "",
+            "processAuto": "",
+            "processNormalize": "",
+            "processEqualize": "",
+            "processNoise": "",
+            "processSaltPepper": "",
+            "shadowNorth": "",
+            "shadowSouth": "",
+            "shadowEast": "",
+            "shadowWest": "",
+            "processBinary": "",
+            "processErode": "",
+            "processDilate": "",
+            "processOpen": "",
+            "processClose": "",
+            "processFillHoles": "",
+            "processSkeletonize": "",
+            "mathAdd": "",
+            "mathSubtract": "",
+            "mathMultiply": "",
+            "mathDivide": "",
+            "mathInvert": "",
+            "mathSqrt": "",
+            "mathSquare": "",
+            "mathLog": "",
+            "mathExp": "",
+            "mathAbs": "",
+            "processFft": "",
+            "processFftNative": "",
+            "processBandpass": "",
+            "summarize": "",
+            "distribution": "",
+            "clearResults": "",
+            "setMeasurements": "",
+            "setScale": "",
+            "histogram": "",
+            "profile": "",
+            "openRoiManager": "",
+            "labelSelection": ""
           },
-          "additionalProperties": { "type": "string" },
-          "description": "Viewer shortcuts by action. Use a single key name; customize this object in settings.json."
+          "properties": {
+            "fit": {
+              "type": "string",
+              "default": "f",
+              "description": "Key or modifier combination for fit; empty disables it."
+            },
+            "pan": {
+              "type": "string",
+              "default": "p",
+              "description": "Key or modifier combination for pan; empty disables it."
+            },
+            "roi": {
+              "type": "string",
+              "default": "r",
+              "description": "Key or modifier combination for roi; empty disables it."
+            },
+            "oval": {
+              "type": "string",
+              "default": "o",
+              "description": "Key or modifier combination for oval; empty disables it."
+            },
+            "line": {
+              "type": "string",
+              "default": "l",
+              "description": "Key or modifier combination for line; empty disables it."
+            },
+            "measure": {
+              "type": "string",
+              "default": "m",
+              "description": "Key or modifier combination for measure; empty disables it."
+            },
+            "clear": {
+              "type": "string",
+              "default": "escape",
+              "description": "Key or modifier combination for clear; empty disables it."
+            },
+            "undoTransform": {
+              "type": "string",
+              "default": "z",
+              "description": "Key or modifier combination for undoTransform; empty disables it."
+            },
+            "pointer": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for pointer; empty disables it."
+            },
+            "polygon": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for polygon; empty disables it."
+            },
+            "freehand": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for freehand; empty disables it."
+            },
+            "angle": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for angle; empty disables it."
+            },
+            "text": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for text; empty disables it."
+            },
+            "zoomTool": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for zoomTool; empty disables it."
+            },
+            "zoomIn": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for zoomIn; empty disables it."
+            },
+            "zoomOut": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for zoomOut; empty disables it."
+            },
+            "actual": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for actual; empty disables it."
+            },
+            "play": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for play; empty disables it."
+            },
+            "nextSlice": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for nextSlice; empty disables it."
+            },
+            "previousSlice": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for previousSlice; empty disables it."
+            },
+            "toggleBC": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for toggleBC; empty disables it."
+            },
+            "redoTransform": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for redoTransform; empty disables it."
+            },
+            "openFile": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for openFile; empty disables it."
+            },
+            "importSequence": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for importSequence; empty disables it."
+            },
+            "closeFileFrame": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for closeFileFrame; empty disables it."
+            },
+            "savePng": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for savePng; empty disables it."
+            },
+            "saveCsv": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for saveCsv; empty disables it."
+            },
+            "selectAll": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for selectAll; empty disables it."
+            },
+            "clearSelectionMenu": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for clearSelectionMenu; empty disables it."
+            },
+            "restoreSelection": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for restoreSelection; empty disables it."
+            },
+            "enlargeSelection": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for enlargeSelection; empty disables it."
+            },
+            "fitSpline": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for fitSpline; empty disables it."
+            },
+            "selectionProperties": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for selectionProperties; empty disables it."
+            },
+            "specifySelection": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for specifySelection; empty disables it."
+            },
+            "addSelectionOverlay": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for addSelectionOverlay; empty disables it."
+            },
+            "addSelectionManager": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for addSelectionManager; empty disables it."
+            },
+            "type8": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for type8; empty disables it."
+            },
+            "type16": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for type16; empty disables it."
+            },
+            "type32": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for type32; empty disables it."
+            },
+            "typeRgb": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for typeRgb; empty disables it."
+            },
+            "openBC": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for openBC; empty disables it."
+            },
+            "autoCuts": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for autoCuts; empty disables it."
+            },
+            "resetCuts": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for resetCuts; empty disables it."
+            },
+            "thresholdMenu": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for thresholdMenu; empty disables it."
+            },
+            "colorShowLut": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorShowLut; empty disables it."
+            },
+            "colorDisplayLuts": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorDisplayLuts; empty disables it."
+            },
+            "colorInvertLuts": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorInvertLuts; empty disables it."
+            },
+            "colorSplitChannels": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorSplitChannels; empty disables it."
+            },
+            "colorMergeChannels": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorMergeChannels; empty disables it."
+            },
+            "colorChannelsTool": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorChannelsTool; empty disables it."
+            },
+            "colorStackToRgb": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorStackToRgb; empty disables it."
+            },
+            "colorMakeComposite": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for colorMakeComposite; empty disables it."
+            },
+            "stackImagesToStack": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackImagesToStack; empty disables it."
+            },
+            "stackToImages": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackToImages; empty disables it."
+            },
+            "stackReslice": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackReslice; empty disables it."
+            },
+            "stackZProfile": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackZProfile; empty disables it."
+            },
+            "stackMeasure": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackMeasure; empty disables it."
+            },
+            "stackStatistics": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackStatistics; empty disables it."
+            },
+            "montage": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for montage; empty disables it."
+            },
+            "stackOrthogonal": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for stackOrthogonal; empty disables it."
+            },
+            "zProject": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for zProject; empty disables it."
+            },
+            "flipHorizontal": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for flipHorizontal; empty disables it."
+            },
+            "flipVertical": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for flipVertical; empty disables it."
+            },
+            "rotateLeft": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for rotateLeft; empty disables it."
+            },
+            "rotateRight": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for rotateRight; empty disables it."
+            },
+            "rotate180": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for rotate180; empty disables it."
+            },
+            "rotateArbitrary": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for rotateArbitrary; empty disables it."
+            },
+            "imageCrop": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for imageCrop; empty disables it."
+            },
+            "imageDuplicate": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for imageDuplicate; empty disables it."
+            },
+            "imageRename": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for imageRename; empty disables it."
+            },
+            "imageScale": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for imageScale; empty disables it."
+            },
+            "imageInfo": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for imageInfo; empty disables it."
+            },
+            "processSmooth": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processSmooth; empty disables it."
+            },
+            "processSharpen": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processSharpen; empty disables it."
+            },
+            "processEdges": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processEdges; empty disables it."
+            },
+            "processMaxima": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processMaxima; empty disables it."
+            },
+            "filterGaussian": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterGaussian; empty disables it."
+            },
+            "filterMedian": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterMedian; empty disables it."
+            },
+            "filterUnsharp": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterUnsharp; empty disables it."
+            },
+            "filterMean": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterMean; empty disables it."
+            },
+            "filterMin": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterMin; empty disables it."
+            },
+            "filterMax": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterMax; empty disables it."
+            },
+            "filterVariance": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for filterVariance; empty disables it."
+            },
+            "processAuto": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processAuto; empty disables it."
+            },
+            "processNormalize": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processNormalize; empty disables it."
+            },
+            "processEqualize": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processEqualize; empty disables it."
+            },
+            "processNoise": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processNoise; empty disables it."
+            },
+            "processSaltPepper": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processSaltPepper; empty disables it."
+            },
+            "shadowNorth": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for shadowNorth; empty disables it."
+            },
+            "shadowSouth": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for shadowSouth; empty disables it."
+            },
+            "shadowEast": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for shadowEast; empty disables it."
+            },
+            "shadowWest": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for shadowWest; empty disables it."
+            },
+            "processBinary": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processBinary; empty disables it."
+            },
+            "processErode": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processErode; empty disables it."
+            },
+            "processDilate": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processDilate; empty disables it."
+            },
+            "processOpen": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processOpen; empty disables it."
+            },
+            "processClose": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processClose; empty disables it."
+            },
+            "processFillHoles": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processFillHoles; empty disables it."
+            },
+            "processSkeletonize": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processSkeletonize; empty disables it."
+            },
+            "mathAdd": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathAdd; empty disables it."
+            },
+            "mathSubtract": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathSubtract; empty disables it."
+            },
+            "mathMultiply": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathMultiply; empty disables it."
+            },
+            "mathDivide": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathDivide; empty disables it."
+            },
+            "mathInvert": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathInvert; empty disables it."
+            },
+            "mathSqrt": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathSqrt; empty disables it."
+            },
+            "mathSquare": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathSquare; empty disables it."
+            },
+            "mathLog": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathLog; empty disables it."
+            },
+            "mathExp": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathExp; empty disables it."
+            },
+            "mathAbs": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for mathAbs; empty disables it."
+            },
+            "processFft": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processFft; empty disables it."
+            },
+            "processFftNative": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processFftNative; empty disables it."
+            },
+            "processBandpass": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for processBandpass; empty disables it."
+            },
+            "summarize": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for summarize; empty disables it."
+            },
+            "distribution": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for distribution; empty disables it."
+            },
+            "clearResults": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for clearResults; empty disables it."
+            },
+            "setMeasurements": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for setMeasurements; empty disables it."
+            },
+            "setScale": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for setScale; empty disables it."
+            },
+            "histogram": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for histogram; empty disables it."
+            },
+            "profile": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for profile; empty disables it."
+            },
+            "openRoiManager": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for openRoiManager; empty disables it."
+            },
+            "labelSelection": {
+              "type": "string",
+              "default": "",
+              "description": "Key or modifier combination for labelSelection; empty disables it."
+            }
+          },
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Keyboard shortcuts for viewer actions. Empty leaves an action unbound; use forms such as Ctrl+Shift+H."
         }
       }
     }

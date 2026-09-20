@@ -87,13 +87,23 @@ class StackTests(unittest.TestCase):
         result = self.session.handle({"op": "orthogonal", "dataset": 0, "frame": 1,
                                       "axis": 0, "x": 2, "y": 1})
         self.assertEqual((result["xz"]["width"], result["xz"]["height"]), (5, 3))
-        self.assertEqual((result["yz"]["width"], result["yz"]["height"]), (4, 3))
+        self.assertEqual((result["yz"]["width"], result["yz"]["height"]), (3, 4))
         xz = np.frombuffer(base64.b64decode(result["xz"]["raw"]), np.float32).reshape(3, 5)
-        yz = np.frombuffer(base64.b64decode(result["yz"]["raw"]), np.float32).reshape(3, 4)
+        yz = np.frombuffer(base64.b64decode(result["yz"]["raw"]), np.float32).reshape(4, 3)
         np.testing.assert_array_equal(xz, self.data[:, 1, :])
-        np.testing.assert_array_equal(yz, self.data[:, :, 2])
+        np.testing.assert_array_equal(yz, self.data[:, :, 2].T)
         with self.assertRaisesRegex(ValueError, "outside"):
             self.session.handle({"op": "orthogonal", "dataset": 0, "x": 5, "y": 1})
+
+        duplicate = self.session.handle({"op": "orthogonalDuplicate", "dataset": 0,
+                                         "frame": 1, "axis": 0, "x": 2, "y": 1,
+                                         "plane": "yz"})
+        try:
+            image = tifffile.imread(duplicate["path"])
+            self.assertEqual(image.ndim, 2)
+            np.testing.assert_array_equal(image, self.data[:, :, 2].T)
+        finally:
+            os.unlink(duplicate["path"])
 
     def test_invalid_range_and_mixed_image_dtype(self):
         with self.assertRaises(ValueError):
@@ -105,6 +115,17 @@ class StackTests(unittest.TestCase):
             paths.append(path)
         with self.assertRaisesRegex(ValueError, "matching shape and dtype"):
             self.call("imagesToStack", paths=paths)
+
+    def test_arbitrary_rotation_preserves_stack_and_can_enlarge(self):
+        result=self.session.handle({'op':'derive','dataset':0,'frame':0,'action':'rotate',
+                                    'angle':90,'interpolation':'nearest','enlarge':True,
+                                    'preserveStack':True})
+        try:
+            image=tifffile.imread(result['path'])
+            self.assertEqual(image.shape,(3,5,4))
+            np.testing.assert_array_equal(image,np.rot90(self.data,3,axes=(1,2)))
+        finally:
+            os.unlink(result['path'])
 
     def test_histogram_parameters_and_statistics(self):
         result = self.session.handle({"op": "histogram", "dataset": 0, "frame": 0})
