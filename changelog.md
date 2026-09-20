@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.19 (development build; not published)
+- Finish coloring each stack slice during preload so the ready count represents display-ready images and first playback does not flash blank frames.
+- Reuse the colored image while its display settings remain unchanged, avoiding repeated pixel conversion on every slice switch.
+
 ## 0.6.18 (development build; not published)
 - Transfer preview pixels as binary bytes in the source dtype. Optional reversible byte shuffle and zlib compression reduces Remote SSH traffic; incompressible data stays uncompressed.
 - Preserve FITS stored pixel dtype and byte order during transfer, with display scaling applied only after decode.

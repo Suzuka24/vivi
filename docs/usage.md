@@ -39,4 +39,4 @@ Duplicate、Crop、Montage、投影及多项 Process 命令会创建新 Frame。
 
 后端配置见[安装指南](installation.md)，主机数据存储与传输见[隐私说明](../PRIVACY.md)。
 
-当前帧显示后，vivi 从当前帧向两侧立即预载全部 stack 切片，不再设预览尺寸或缓存内存预算。**Image → Copy Image** 和图像右键菜单中的 **Copy Image** 复制当前画面里可见的图像区域，包含画面上的选区及叠加标记。
+当前帧显示后，vivi 从当前帧向两侧立即预载全部 stack 切片，并为每帧生成可直接显示的画面；状态中的“ready”表示该帧已完成解码和着色。不设预览尺寸或缓存内存预算。**Image → Copy Image** 和图像右键菜单中的 **Copy Image** 复制当前画面里可见的图像区域，包含画面上的选区及叠加标记。

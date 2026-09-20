@@ -39,4 +39,4 @@ Image operations such as Duplicate, Crop, Montage, projections, and many Process
 
 See [installation](installation.en.md) for backend setup and [privacy](../PRIVACY.md) for host storage and data transfer.
 
-After the active slice appears, vivi immediately preloads all stack slices outward from it without a preview-size or memory-budget limit. **Image → Copy Image** and the image context menu copy the visible rendered image region, including on-screen selections and overlays, as a PNG image.
+After the active slice appears, vivi immediately preloads all stack slices outward from it and builds a display-ready image for each one. The ready count includes decoding and coloring. There is no preview-size or memory-budget limit. **Image → Copy Image** and the image context menu copy the visible rendered image region, including on-screen selections and overlays, as a PNG image.

@@ -246,11 +246,13 @@ async function recolorEntry(entry,args){
   if(!entry.raw)return;
   const limits=args.cuts==='manual'?[args.low,args.high]:args.cuts===entry.baseMode?entry.baseLimits:autoLimits(entry.raw,entry.channels,args.cuts);
   const [low,high]=limits;
+  const colorKey=JSON.stringify([low,high,args.stretch,args.cmap,args.invert,args.threshold]);
+  if(entry.image&&entry.colorKey===colorKey)return;
   const lut=entry.channels>1&&!args.threshold?null:await lutTable(args.cmap);
   const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high},lut);
   const image=entry.image||document.createElement('canvas');image.width=entry.result.width;image.height=entry.result.height;
   image.getContext('2d').putImageData(new ImageData(pixels,image.width,image.height),0,0);
-  entry.image=image;entry.result.low=low;entry.result.high=high;
+  entry.image=image;entry.result.low=low;entry.result.high=high;entry.colorKey=colorKey;
 }
 async function decodePreview(result,args,paint=true) {
   if(result.payload instanceof ArrayBuffer){
@@ -321,7 +323,7 @@ async function preloadFrames() {
       if (frameCache.has(key)) continue;
       if (signatureOf(args) !== signature) break;
       try {
-        const entry = await decodePreview(await request('render',args,true),args,false);
+        const entry = await decodePreview(await request('render',args,true),args);
         if (generation !== cacheGeneration) break;
         frameCache.set(key,entry); cacheBytes += entry.bytes; updateCacheStatus();
       } catch (error) { showError(error); break; }
