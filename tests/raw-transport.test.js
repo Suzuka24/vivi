@@ -40,6 +40,38 @@ test('big-endian uint16 preserves wire bytes and paints decoded values',async()=
   assert.equal(renderPixels(raw,3,1,1,{low:1,high:65535})[8],255);
 });
 
+test('Python lossy previews decode locally, with or without the separate zlib stage',async()=>{
+  globalThis.ViviZfp=require('../media/vendor/zfp.js');
+  const expected=[0,.1,.2,.3,.4,.5];
+  const fixtures={
+    zfp:['emZwBSYAABAAAEDK/3AIBAtTBDPJNFIEM8k0UgQzyTRSBDMBAAAAAA==','<f4',{}],
+    float16:['AABmLmYyzTRmNgA4','<f2',{}],
+    bfloat16:['AADNPU0+mj7NPgA/','<u2',{}],
+    block8:['AAAAAAAAAD8AM2aZzP8=','<f4',{blockSize:64,limitBytes:4}],
+    block12:['AAAAAAAAAD8AMDNmlpnM/P8=','<f4',{blockSize:64,limitBytes:4}],
+    block16:['AAAAAAAAAD8AADMzZmaZmczM//8=','<f4',{blockSize:64,limitBytes:4}]
+  };
+  for(const [method,[base64,dtype,metadata]] of Object.entries(fixtures))for(const compress of [false,true]){
+    const original=Buffer.from(base64,'base64'),wire=compress?zlib.deflateSync(original):original;
+    const result={payload:wire.buffer.slice(wire.byteOffset,wire.byteOffset+wire.byteLength),
+      codec:compress?'zlib':'none',shuffle:0,byteLength:original.length,dtype,
+      width:3,height:2,channels:1,lossy:{method,...metadata}};
+    const {raw}=await decodeRawPayload(result);
+    assert.equal(raw.length,expected.length);
+    const maxError=Math.max(...expected.map((value,index)=>Math.abs(value-raw[index])));
+    assert.ok(maxError<=((method==='block8'||method==='bfloat16')?.003:.0002),`${method}: ${maxError}`);
+  }
+  delete globalThis.ViviZfp;
+});
+
+test('12-bit block packing decodes odd pixel counts',async()=>{
+  const bytes=Buffer.from('AAAAAAAAgD8AAID/DwA=','base64');
+  const {raw}=await decodeRawPayload({payload:bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),
+    codec:'none',shuffle:0,byteLength:bytes.length,dtype:'<f4',width:3,height:1,channels:1,
+    lossy:{method:'block12',blockSize:64,limitBytes:4}});
+  assert.deepEqual([...raw],[0,Math.fround(2048/4095),1]);
+});
+
 test('backend framing accepts fragmented binary with newline bytes and adjacent JSON',()=>{
   const backend=Object.create(Backend.prototype);
   backend.headerParts=[];backend.headerBytes=0;backend.binaryMessage=null;backend.dead=false;

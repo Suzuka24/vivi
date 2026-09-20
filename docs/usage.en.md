@@ -35,8 +35,14 @@ Image operations such as Duplicate, Crop, Montage, projections, and many Process
 | `vivi.managedExtensions` | File suffixes opened by vivi on double-click. |
 | `vivi.explorerContextMenu` | Checkboxes for visible first- and second-level viewer menu items, including planned commands; all shown by default. Also available through **vivi: Configure Menu Visibility**. |
 | `vivi.losslessCompression` | On by default: reversibly byte-shuffle and zlib-compress source-dtype pixel bytes. Off: transmit the source bytes directly. Incompressible data automatically stays raw. |
+| `vivi.lossyCompression` | Off by default. When enabled, encode floating-point previews from source files above the threshold with a lossy codec. Source files and host-side measurements remain exact. |
+| `vivi.lossyMinFileMiB` | Source file threshold for lossy previews, 128 MiB by default. Only strictly larger files qualify. |
+| `vivi.lossyMethod` | ZFP by default; alternatives are float16, bfloat16, and 64×64 blockwise 8/12/16-bit quantization. Integer and nonfinite planes use the original-byte path. |
+| `vivi.lossyTolerance` | ZFP absolute error target as a fraction of the preview plane's min–max range; 0.0001 by default. Not used by other methods. |
 | `vivi.keyboardShortcuts` | Action shortcuts such as `shift+p` or `ctrl+shift+h`; macOS Command is `cmd`. Defaults: `=` / `-` zoom, Left/Right switch slices, Up/Down switch Frames, `m` toggles Single/Tile, and `shift+p` selects Pointer. An empty string disables an action. Shortcuts work while the image view, but no text field, has focus. |
 
 See [installation](installation.en.md) for backend setup and [privacy](../PRIVACY.md) for host storage and data transfer.
 
 After the active slice appears, vivi immediately preloads all stack slices outward from it and builds a display-ready image for each one. The ready count includes decoding and coloring. There is no preview-size or memory-budget limit. **Image → Copy Image** and the image context menu copy the visible rendered image region, including on-screen selections and overlays, as a PNG image.
+
+The lossy and lossless switches are independent: eligible previews are first encoded by the lossy method, then optionally compressed reversibly. The receiver decodes in reverse order. With lossy previews enabled, on-screen pixel readings reflect approximate preview values; turn it off when exact readings are needed. The threshold uses source file size, rather than stack memory size. SZ3 compressed the reference TIFF more tightly, but is not offered until a compatible browser decoder is available. See the [reference TIFF benchmark](../worklog/2026-09-20/203247_lossy-preview-compression.md).

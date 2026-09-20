@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.22 (development build; not published)
+- Benchmark all 101 slices of the reference float32 TIFF with ZFP, SZ3, float16, bfloat16, and 8/12/16-bit block quantization; record size, error, and timing in the worklog.
+- Add optional lossy preview transport with source-file size threshold and method selection. Default to ZFP when enabled; the lossy switch remains off by default.
+- Keep the existing reversible compression as an independent second stage and decode both stages in the Webview. Preserve original files and host-side analysis values.
+
 ## 0.6.21 (development build; not published)
 - Align portable vivi defaults with the current Cursor profile, including a 256-million-pixel full-frame decoder limit, direct zoom keys, and slice/tool bindings.
 - Configure Up/Down to switch Frames and M to toggle Single/Tile; remove unconditional Shift+plus/minus zoom handling so shortcut settings take precedence.

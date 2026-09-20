@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.6.21",
+  "version": "0.6.22",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -38,7 +38,7 @@
     "onView:vivi.adjust"
   ],
   "scripts": {
-    "check": "node --check src/extension.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
+    "check": "node --check src/extension.js && node --check src/compressionPolicy.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
     "test": "node --test tests/*.test.js",
     "test:python": "python -m unittest discover -s tests -p test_*.py -v",
     "package": "vsce package --no-dependencies --allow-missing-repository"
@@ -278,7 +278,33 @@
         "vivi.losslessCompression": {
           "type": "boolean",
           "default": true,
-          "description": "Compress preview pixels with reversible byte shuffle and zlib before Remote SSH transfer. Uncheck to transmit the source dtype bytes directly. Both modes preserve the transmitted pixel values and original dtype; compression falls back to raw bytes when it would grow the payload. 通过 Remote SSH 传输前使用可逆字节重排和 zlib 压缩预览像素；取消勾选则直接传输源 dtype 字节。两种模式均保留原始像素值及数据类型；压缩后体积反而增大时自动改传原始字节。"
+          "description": "Apply reversible byte shuffle and zlib to the preview bytes after optional lossy encoding. Independent of the lossy switch. 可选有损编码之后，对预览字节应用可逆字节重排和 zlib；与有损开关相互独立。"
+        },
+        "vivi.lossyCompression": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow lossy compression for floating-point preview planes when the source file exceeds the configured size threshold. Source files and backend measurements remain exact. 当源文件超过设定大小时，允许浮点预览平面进行有损压缩；源文件及后端测量仍保持原值。"
+        },
+        "vivi.lossyMinFileMiB": {
+          "type": "number",
+          "default": 128,
+          "minimum": 0,
+          "maximum": 1048576,
+          "description": "Use lossy preview encoding only when the source file is larger than this many MiB; folders and non-float images stay on the raw path. 仅当源文件大于此 MiB 阈值时启用有损预览；文件夹和非浮点图像仍走原始传输路径。"
+        },
+        "vivi.lossyMethod": {
+          "type": "string",
+          "default": "zfp",
+          "enum": ["zfp", "float16", "bfloat16", "block8", "block12", "block16"],
+          "enumDescriptions": ["ZFP with configurable error tolerance. 使用可配置误差容限的 ZFP。", "IEEE float16 precision. IEEE 半精度浮点。", "BFloat16 range with low precision. BFloat16 大范围低精度。", "64×64 blockwise 8-bit quantization. 64×64 分块 8 位量化。", "64×64 blockwise 12-bit quantization. 64×64 分块 12 位量化。", "64×64 blockwise 16-bit quantization. 64×64 分块 16 位量化。"],
+          "description": "Lossy preview method; ZFP is the default balance of size and error on the reference TIFF. 有损预览方法；目标 TIFF 上默认选用兼顾体积与误差的 ZFP。"
+        },
+        "vivi.lossyTolerance": {
+          "type": "number",
+          "default": 0.0001,
+          "exclusiveMinimum": 0,
+          "maximum": 0.1,
+          "description": "ZFP absolute error target as a fraction of the current preview plane's min–max range, default 0.0001. Only used by ZFP. ZFP 绝对误差目标相对于当前预览平面最小最大值范围的比例，默认 0.0001；仅适用于 ZFP。"
         },
         "vivi.keyboardShortcuts": {
           "type": "object",

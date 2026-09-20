@@ -35,8 +35,14 @@ Duplicate、Crop、Montage、投影及多项 Process 命令会创建新 Frame。
 | `vivi.managedExtensions` | 双击时由 vivi 接管的文件后缀。 |
 | `vivi.explorerContextMenu` | 图像视图一级、二级菜单的显隐勾选；默认全部显示，包括待实现的灰色命令。也可运行 **vivi: Configure Menu Visibility**。 |
 | `vivi.losslessCompression` | 默认开启，原始 dtype 的像素字节经可逆重排和 zlib 压缩后传输；关闭则直接传原始字节。压缩无收益时会自动使用原始字节。 |
+| `vivi.lossyCompression` | 默认关闭。开启后仅对超过阈值的浮点图像预览进行有损编码；源文件、服务端测量和导出数据保持原值。 |
+| `vivi.lossyMinFileMiB` | 有损编码的源文件大小阈值，默认 128 MiB；只有严格大于阈值的文件才启用。 |
+| `vivi.lossyMethod` | 默认 ZFP，也可选 float16、bfloat16 或 64×64 分块的 8/12/16 位量化。整数图像和非有限值帧保留原始字节。 |
+| `vivi.lossyTolerance` | ZFP 绝对误差目标占当前预览帧最大值与最小值之差的比例，默认 0.0001；其他方法不使用该设置。 |
 | `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。默认 `=` / `-` 缩放、左右方向键切换切片、上下方向键切换 Frame、`m` 切换 Single/Tile、`shift+p` 选 Pointer。空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
 
 后端配置见[安装指南](installation.md)，主机数据存储与传输见[隐私说明](../PRIVACY.md)。
 
 当前帧显示后，vivi 从当前帧向两侧立即预载全部 stack 切片，并为每帧生成可直接显示的画面；状态中的“ready”表示该帧已完成解码和着色。不设预览尺寸或缓存内存预算。**Image → Copy Image** 和图像右键菜单中的 **Copy Image** 复制当前画面里可见的图像区域，包含画面上的选区及叠加标记。
+
+有损与无损开关独立：符合条件时先做有损编码，再按无损开关决定是否对编码字节进行可逆压缩；接收端按相反次序解码。有损开启后，画面上的像素值读数来自近似预览数据；需要精确数值时请关闭有损开关。当前版本对源文件大小而非整个 stack 的内存大小判断阈值。SZ3 在参考 TIFF 的基准中压缩率更高，但尚无本预览窗口可使用的浏览器解码链路，因此暂未列入可选方法。详见[目标 TIFF 基准结果](../worklog/2026-09-20/203247_lossy-preview-compression.md)。

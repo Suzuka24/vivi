@@ -1,6 +1,48 @@
 'use strict';
 (function(){
 
+let zfpLoading;
+async function zfpDecoder(){
+  if(!globalThis.ViviZfp){
+    if(!zfpLoading)zfpLoading=new Promise((resolve,reject)=>{
+      if(typeof document==='undefined'||!globalThis.ViviZfpScriptUrl){reject(new Error('ZFP preview decoder is unavailable'));return;}
+      const script=document.createElement('script');script.src=globalThis.ViviZfpScriptUrl;
+      script.nonce=globalThis.ViviNonce;script.onload=resolve;script.onerror=()=>reject(new Error('Unable to load ZFP preview decoder'));
+      document.head.append(script);
+    });
+    await zfpLoading;
+  }
+  await globalThis.ViviZfp.isLoaded;
+  return globalThis.ViviZfp;
+}
+
+function decodeBlocks(bytes,result){
+  const {method,blockSize,limitBytes}=result.lossy;
+  const bits=Number(method.slice(5)),width=result.width,height=result.height;
+  if(![8,12,16].includes(bits)||blockSize!==64||![4,8].includes(limitBytes))throw new Error('Invalid block preview format');
+  const count=width*height,columns=Math.ceil(width/blockSize),rows=Math.ceil(height/blockSize),headerBytes=columns*rows*2*limitBytes;
+  const pixelBytes=bits===12?Math.ceil(count/2)*3:count*bits/8;
+  if(bytes.byteLength!==headerBytes+pixelBytes)throw new Error('Block preview length mismatch');
+  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const raw=limitBytes===4?new Float32Array(count):new Float64Array(count);
+  const levels=(1<<bits)-1;
+  for(let row=0;row<rows;row++)for(let column=0;column<columns;column++){
+    const meta=(row*columns+column)*2*limitBytes;
+    const low=limitBytes===4?view.getFloat32(meta,true):view.getFloat64(meta,true);
+    const high=limitBytes===4?view.getFloat32(meta+limitBytes,true):view.getFloat64(meta+limitBytes,true);
+    for(let y=row*blockSize;y<Math.min(height,(row+1)*blockSize);y++)
+      for(let x=column*blockSize;x<Math.min(width,(column+1)*blockSize);x++){
+        const i=y*width+x,offset=headerBytes;
+        let q;
+        if(bits===8)q=bytes[offset+i];
+        else if(bits===16)q=view.getUint16(offset+i*2,true);
+        else{const pair=offset+Math.floor(i/2)*3;q=i%2?((bytes[pair+1]>>4)|(bytes[pair+2]<<4)):(bytes[pair]|((bytes[pair+1]&15)<<8));}
+        raw[i]=low+q*(high-low)/levels;
+      }
+  }
+  return raw;
+}
+
 async function decodeRawPayload(result) {
   if (!(result.payload instanceof ArrayBuffer)) throw new Error('Missing binary image payload');
   let bytes = new Uint8Array(result.payload);
@@ -16,6 +58,27 @@ async function decodeRawPayload(result) {
     for (let part = 0; part < width; part++)
       for (let pixel = 0; pixel < count; pixel++) restored[pixel * width + part] = bytes[part * count + pixel];
     bytes = restored;
+  }
+  if(result.lossy?.method==='zfp'){
+    const decoder=await zfpDecoder(),buffer=decoder.createBuffer();
+    try{
+      const decoded=decoder.decompress(buffer,bytes),raw=decoded.data;
+      if(raw.length!==result.width*result.height*result.channels||
+         !(raw instanceof Float32Array||raw instanceof Float64Array))throw new Error('ZFP preview shape or type mismatch');
+      return {raw,sourceBytes:new Uint8Array(raw.buffer,raw.byteOffset,raw.byteLength)};
+    }finally{decoder.freeBuffer(buffer);}
+  }
+  if(result.lossy?.method?.startsWith('block')){
+    const raw=decodeBlocks(bytes,result);
+    return {raw,sourceBytes:new Uint8Array(raw.buffer,raw.byteOffset,raw.byteLength)};
+  }
+  if(result.lossy?.method==='bfloat16'){
+    const count=result.width*result.height*result.channels;
+    if(bytes.byteLength!==count*2)throw new Error('BFloat16 preview length mismatch');
+    const input=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),bits=new Uint32Array(count);
+    for(let i=0;i<count;i++)bits[i]=input.getUint16(i*2,true)<<16;
+    const raw=new Float32Array(bits.buffer);
+    return {raw,sourceBytes:new Uint8Array(raw.buffer)};
   }
   const sourceBytes = bytes;
   const match = /^([<>=|])([uifb])(1|2|4|8)$/.exec(result.dtype);

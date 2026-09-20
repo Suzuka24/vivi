@@ -13,6 +13,7 @@ import zlib
 import numpy as np
 from PIL import Image, ImageDraw
 from luts import apply_lut
+from lossy_preview import encode_lossy
 
 
 def finite_number(value, default):
@@ -22,21 +23,25 @@ def finite_number(value, default):
     return value
 
 
-def encode_raw_preview(raw, compress=False):
-    """Keep the source dtype and byte order; only rearrange bytes reversibly for compression."""
+def encode_raw_preview(raw, compress=False, lossy_method=None, relative_tolerance=1e-4):
+    """Optionally quantize, then optionally apply reversible byte shuffle and zlib."""
     array = np.ascontiguousarray(raw)
-    original = array.tobytes()
+    lossy = encode_lossy(array, lossy_method, relative_tolerance) if lossy_method else None
+    original, dtype, itemsize, lossy_meta = (lossy if lossy else
+        (array.tobytes(), array.dtype.str, array.dtype.itemsize, None))
     payload, codec = original, 'none'
     shuffle = 0
     if compress:
-        itemsize = array.dtype.itemsize
         candidate = (np.frombuffer(original, dtype=np.uint8).reshape(-1, itemsize).T.copy().tobytes()
                      if itemsize > 1 else original)
         packed = zlib.compress(candidate, level=1)
         if len(packed) < len(original):
             payload, codec, shuffle = packed, 'zlib', itemsize if itemsize > 1 else 0
-    return dict(dtype=array.dtype.str, byteLength=len(original), codec=codec, shuffle=shuffle,
-                _binary=payload)
+    result = dict(dtype=dtype, byteLength=len(original), codec=codec, shuffle=shuffle,
+                  _binary=payload)
+    if lossy_meta:
+        result['lossy'] = lossy_meta
+    return result
 
 
 def rotate_image(image, options):
@@ -964,7 +969,8 @@ class Session:
                           low=low, high=high, step=step,
                           bscale=bscale, bzero=bzero, blank=str(blank) if blank is not None else None)
             if req.get('binary'):
-                result.update(encode_raw_preview(preview, bool(req.get('compress'))))
+                result.update(encode_raw_preview(preview, bool(req.get('compress')),
+                                                 req.get('lossyMethod'), req.get('lossyTolerance', 1e-4)))
             else:
                 result.update(raw=base64.b64encode(preview.tobytes()).decode('ascii'),
                               dtype=preview.dtype.str)

@@ -7,3 +7,4 @@ zarr==2.18.3
 numcodecs>=0.12,<0.16
 imagecodecs>=2024.6.1
 opencv-python-headless>=4.10,<5
+zfpy>=1.0.1,<2

@@ -9,6 +9,7 @@ const { viewerFor, isManaged, nativeEditorFor } = require('./formats');
 const { listDirectory } = require('./explorerListing');
 const { uniqueFrameLabel } = require('./frameLabels');
 const { menuPaths } = require('./menuVisibility');
+const { previewCompressionOptions } = require('./compressionPolicy');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -27,7 +28,9 @@ function html(webview, context, name) {
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
     .replaceAll('{{formatScript}}', uri('numberFormat.js'))
     .replaceAll('{{displayScript}}', uri('display.js'))
-    .replaceAll('{{roiScript}}', uri('roiGeometry.js')));
+    .replaceAll('{{roiScript}}', uri('roiGeometry.js'))
+    .replaceAll('{{zfpScript}}', uri('vendor/zfp.js'))
+    .replaceAll('{{zfpWasm}}', uri('vendor/wasm-zfp.wasm')));
 }
 
 function activate(context) {
@@ -226,9 +229,11 @@ function activate(context) {
         const worker = newBackend();
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels, sequenceMode });
+          const sourceStat = await fs.stat(file).catch(() => null);
+          const sourceFileBytes = sourceStat?.isFile() ? sourceStat.size : 0;
           const id = ++nextId;
           label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
-          frames.set(id, { id, file, label, worker, generated, sequenceMode, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, sequenceMode, sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
@@ -409,7 +414,13 @@ function activate(context) {
           const args = { ...msg.args };
           if (msg.op === 'render') {
             args.binary = true;
-            args.compress = config().get('losslessCompression', true);
+            Object.assign(args, previewCompressionOptions({
+              lossless: config().get('losslessCompression', true),
+              lossy: config().get('lossyCompression', false),
+              minMiB: config().get('lossyMinFileMiB', 128),
+              method: config().get('lossyMethod', 'zfp'),
+              tolerance: config().get('lossyTolerance', 1e-4)
+            }, frame.sourceFileBytes));
           }
           const result = await frame.worker.request(msg.op, args);
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;

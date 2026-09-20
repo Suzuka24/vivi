@@ -37,7 +37,7 @@ Version 0.6.1 changes the extension publisher from `local-science` to `Suzuka24`
 - **No vivi icon or viewer:** confirm the extension is enabled on the correct local/remote host, then run **Developer: Reload Window**.
 - **Python process exits or a module is missing:** run **vivi: Check Python Backend** and verify the exact interpreter configured in `vivi.pythonPath` can import the packages. Review the **vivi** Output channel.
 - **Remote path opens locally or cannot be found:** check that the current window is connected through Remote SSH and that vivi is installed on that SSH host. Explorer paths refer to the extension host filesystem.
-- **Large image takes time to pan or scrub:** FITS and TIFF normally use host-side region reads; PNG/JPEG and video may require full decoding. Pixels transfer in their source dtype; `vivi.losslessCompression` toggles reversible compression. `vivi.maxDecodedPixels` still guards formats requiring full-frame decoding.
+- **Large image takes time to pan or scrub:** FITS and TIFF normally use host-side region reads; PNG/JPEG and video may require full decoding. Preview pixels retain the source dtype by default. `vivi.losslessCompression` toggles reversible compression, and `vivi.lossyCompression` can reduce transfers for sufficiently large floating-point files. The ZFP option requires `zfpy`, included in the requirements. `vivi.maxDecodedPixels` still guards formats requiring full-frame decoding.
 - **A video does not open:** its codec may not be available in the remote OpenCV build. Try a supported image or install a compatible codec on that host.
 
 For reproducible bugs, see [SUPPORT.md](../SUPPORT.md).
