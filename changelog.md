@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.12 (development build; not published)
+- Make All lock and Unlock change only Frame membership, leaving B&C, LUT, View, Zoom, and Slice synchronization choices intact.
+- Rename the floating B&C window and Adjust toggle to Curve, and remove Threshold from the Adjust sidebar.
+- Replace the requested tool icons with larger SVGs and align orthogonal sections at the same displayed pixel scale.
+
 ## 0.6.11 (development build; not published)
 - Align XY, YZ, and XZ at the same pixel scale; transpose YZ and allow either section to be duplicated as a 2D Frame.
 - Add menu actions to the toolbar, arbitrary rotation with preview and undo, and Frame context actions.

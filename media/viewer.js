@@ -152,8 +152,8 @@ async function colorOrthogonal(){
   view.images=images;view.colorKey=key;drawOrthogonalViews();
 }
 function orthogonalRect(name,canvas){
-  const width=name==='xz'?dataset.width:orthogonal.depth, height=name==='xz'?orthogonal.depth:dataset.height,w=canvas.clientWidth,h=canvas.clientHeight;
-  const ratio=Math.min(w/width,h/height);return {left:(w-width*ratio)/2,top:(h-height*ratio)/2,ratio,width,height};
+  const width=name==='xz'?dataset.width:orthogonal.depth, height=name==='xz'?orthogonal.depth:dataset.height;
+  return {left:0,top:0,ratio:scale,width,height};
 }
 function drawOrthogonalViews(){
   if(!orthogonal)return;
@@ -162,9 +162,9 @@ function drawOrthogonalViews(){
     const panel=$(id);panel.style.left=`${x}px`;panel.style.top=`${y}px`;panel.style.width=`${w}px`;panel.style.height=`${h}px`;
   }
   for(const name of ['yz','xz']){
-    const canvas=$(name==='yz'?'orthYZCanvas':'orthXZCanvas'),g=canvas.getContext('2d'),w=canvas.clientWidth,h=canvas.clientHeight,dpr=window.devicePixelRatio||1;
+    const canvas=$(name==='yz'?'orthYZCanvas':'orthXZCanvas'),g=canvas.getContext('2d'),rect=canvas.getBoundingClientRect(),w=rect.width,h=rect.height,dpr=window.devicePixelRatio||1;
     if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
-    g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+    g.setTransform(canvas.width/w,0,0,canvas.height/h,0,0);g.clearRect(0,0,w,h);
     const r=orthogonalRect(name,canvas);if(orthogonal.images?.[name]){g.imageSmoothingEnabled=false;g.drawImage(orthogonal.images[name],r.left,r.top,r.width*r.ratio,r.height*r.ratio);}
     g.save();g.strokeStyle='#f4cf65';g.lineWidth=1;g.setLineDash([4,3]);g.beginPath();
     if(name==='xz'){g.moveTo(r.left+(orthogonal.x+.5)*r.ratio,r.top);g.lineTo(r.left+(orthogonal.x+.5)*r.ratio,r.top+r.height*r.ratio);g.moveTo(r.left,r.top+(orthogonal.z+.5)*r.ratio);g.lineTo(r.left+r.width*r.ratio,r.top+(orthogonal.z+.5)*r.ratio);}
@@ -843,12 +843,12 @@ function applySidebarAction(action,value){
   else if(action==='frameVisible')setFrameVisible(Number(value.id),!!value.visible);
   else if(action==='frameLockMember')setFrameLockMember(Number(value.id),!!value.enabled);
   else if(action==='lock')setFrameLock(value.group,!!value.enabled);
-  else if(action==='lockAll'){saveFileFrame();for(const state of fileFrames.values())state.lockMember=true;for(const group of Object.keys(lockGroups))setFrameLock(group,true);}
-  else if(action==='unlockAll'){$('unlockAll').click();}
+  else if(action==='lockAll'){for(const id of fileFrames.keys())setFrameLockMember(id,true);}
+  else if(action==='unlockAll'){for(const state of fileFrames.values())state.lockMember=false;frameList();if(tileMode)scheduleTileRefresh(0);}
   else if(action==='toggleBC'){transferVisible=!transferVisible;$('transferPanel').hidden=!transferVisible;publishSidebar();}
   else if(action==='adjust'){
     for(const key of ['cuts','low','high','stretch','cmap'])$(key).value=value[key];
-    $('invert').checked=!!value.invert;$('threshold').checked=!!value.threshold;
+    $('invert').checked=!!value.invert;if('threshold' in value)$('threshold').checked=!!value.threshold;
     drawTransferCurve();commitFrameChange('bc');commitFrameChange('color');scheduleRender(0);publishSidebar();
   }
 }

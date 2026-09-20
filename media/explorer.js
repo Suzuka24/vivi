@@ -63,9 +63,9 @@ function renderSidebar(state){
   const lut=$('adjustLut');if(lut.options.length!==state.luts.length){lut.replaceChildren();for(const [value,label] of state.luts){const option=document.createElement('option');option.value=value;option.textContent=label;lut.append(option);}}
   for(const [target,key] of [['adjustCuts','cuts'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
   for(const [target,key] of [['adjustLow','low'],['adjustHigh','high']])if(document.activeElement!==$(target))$(target).value=formatAdjust(Number(state[key]));
-  $('adjustInvert').checked=state.invert;$('adjustThreshold').checked=state.threshold;
+  $('adjustInvert').checked=state.invert;
   $('adjustToggleBC').setAttribute('aria-pressed',String(state.bcVisible!==false));
-  $('adjustToggleBC').title=state.bcVisible===false?'Show B&C graph':'Hide B&C graph';
+  $('adjustToggleBC').title=state.bcVisible===false?'Show Curve':'Hide Curve';
   $('adjustToggleBC').setAttribute('aria-label',$('adjustToggleBC').title);
   syncAdjustRanges();
 }
@@ -87,7 +87,7 @@ $('frameTile').onclick=()=>sideAction('tile');
 for(const id of ['frameColumns','frameRows'])$(id).onchange=()=>sideAction(id==='frameColumns'?'columns':'rows',Number($(id).value)||0);
 $('lockAll').onclick=()=>sideAction('lockAll');$('unlockAllFrames').onclick=()=>sideAction('unlockAll');
 for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=()=>sideAction('lock',{group:input.dataset.sideLock,enabled:input.checked});
-function sendAdjust(){const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);if(!Number.isFinite(low)||!Number.isFinite(high)||high<=low)return;sideAction('adjust',{cuts:$('adjustCuts').value,low,high,stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked,threshold:$('adjustThreshold').checked});}
+function sendAdjust(){const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);if(!Number.isFinite(low)||!Number.isFinite(high)||high<=low)return;sideAction('adjust',{cuts:$('adjustCuts').value,low,high,stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked});}
 function syncAdjustRanges(){
   const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);
   if(!Number.isFinite(low)||!Number.isFinite(high)||!(high>low))return;
@@ -118,8 +118,7 @@ for(const [id,slider] of [['adjustBrightnessValue','adjustBrightnessRange'],['ad
 $('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
 $('adjustReset').onclick=()=>{if(adjustSource&&adjustSource.max>adjustSource.min){$('adjustCuts').value='manual';$('adjustLow').value=formatAdjust(adjustSource.min);$('adjustHigh').value=formatAdjust(adjustSource.max);syncAdjustRanges();}else $('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
 $('adjustToggleBC').onclick=()=>sideAction('toggleBC');
-for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=sendAdjust;
-$('adjustThreshold').onchange=()=>{if($('adjustThreshold').checked)$('adjustCuts').value='manual';sendAdjust();};
+for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert'])$(id).onchange=sendAdjust;
 for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
 function list(path, start = 0) {
   if(start && (loading || !more))return;

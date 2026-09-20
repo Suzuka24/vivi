@@ -16,7 +16,7 @@
 
 
 <div id="frameItems" class="frame-items" aria-label="Drag to reorder frames"></div>
-<div class="lock-controls"><button id="lockAll" title="Lock all parameters">All lock</button><button id="unlockAllFrames" title="Unlock all parameters">Unlock</button><label><input type="checkbox" data-side-lock="bc">B&amp;C</label><label><input type="checkbox" data-side-lock="color">LUT</label><label><input type="checkbox" data-side-lock="view">View</label><label><input type="checkbox" data-side-lock="scale">Zoom</label><label><input type="checkbox" data-side-lock="slice">Slice</label></div>
+<div class="lock-controls"><button id="lockAll" title="Include all Frames in locks">All lock</button><button id="unlockAllFrames" title="Remove all Frames from locks">Unlock</button><label><input type="checkbox" data-side-lock="bc">B&amp;C</label><label><input type="checkbox" data-side-lock="color">LUT</label><label><input type="checkbox" data-side-lock="view">View</label><label><input type="checkbox" data-side-lock="scale">Zoom</label><label><input type="checkbox" data-side-lock="slice">Slice</label></div>
 </div></div></details>
 <details id="adjustModule" class="side-module" open><summary>ADJUST</summary><div class="side-module-body adjust-grid">
 <label>Auto <select id="adjustCuts"><option value="percentile">ImageJ 99%</option><option value="zscale">DS9 ZScale</option><option value="p90">DS9 90%</option><option value="p95">DS9 95%</option><option value="p99">DS9 99%</option><option value="p999">DS9 99.9%</option><option value="minmax">Min / Max</option><option value="manual">Manual</option></select></label>
@@ -24,7 +24,7 @@
 
 <label>Stretch <select id="adjustStretch"><option>linear</option><option>log</option><option>sqrt</option><option>asinh</option><option>histeq</option><option>power</option><option>squared</option><option>sinh</option></select></label>
 <label>LUT <select id="adjustLut"></select></label>
-<div class="adjust-options"><label><input id="adjustInvert" type="checkbox">Invert</label><label title="Pixels from Min through Max appear white; pixels outside appear black"><input id="adjustThreshold" type="checkbox">Threshold</label><button id="adjustAuto">Auto</button><button id="adjustReset">Reset</button><button id="adjustToggleBC" type="button" title="Hide B&C graph" aria-label="Hide B&C graph" aria-pressed="true">B&amp;C</button></div>
+<div class="adjust-options"><label><input id="adjustInvert" type="checkbox">Invert</label><button id="adjustAuto">Auto</button><button id="adjustReset">Reset</button><button id="adjustToggleBC" type="button" title="Hide Curve" aria-label="Hide Curve" aria-pressed="true">Curve</button></div>
 </div></details>
 <div id="contextMenu" class="context-menu" role="menu" hidden></div>
 <div id="sortMenu" class="context-menu" role="menu" hidden></div>

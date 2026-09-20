@@ -69,6 +69,9 @@ body.explorer .frame-items{max-height:220px}
 .viewer #stage.orthogonal #canvas{width:100%;height:100%}
 .viewer #stage .orth-view{position:absolute;display:block;border:0;z-index:2;overflow:hidden}
 .viewer #stage .orth-view[hidden]{display:none}
-.viewer #stage #orthYZ{border-left:1px solid #f4cf65}
-.viewer #stage #orthXZ{border-top:1px solid #f4cf65}
+.viewer #stage #orthYZ::after,.viewer #stage #orthXZ::after{content:'';position:absolute;pointer-events:none;background:#f4cf65}
+.viewer #stage #orthYZ::after{left:0;top:0;width:1px;height:100%}
+.viewer #stage #orthXZ::after{left:0;top:0;width:100%;height:1px}
 .viewer #stage .orth-view canvas{display:block;width:100%;height:100%}
+.viewer #tool-actions :is(#toolMontage,#toolOrthogonal,#toolHistogram,#toolMeasure,#toolFlipHorizontal,#toolFlipVertical,#toolRotateLeft,#toolRotateRight){width:29px;padding:2px}
+.viewer #tool-actions :is(#toolMontage,#toolOrthogonal,#toolHistogram,#toolMeasure,#toolFlipHorizontal,#toolFlipVertical,#toolRotateLeft,#toolRotateRight) svg{width:23px;height:23px;stroke-width:1.45}
