@@ -88,11 +88,11 @@ function draw() {
     });
     const active=tileViewport();if(active){ctx.save();ctx.beginPath();ctx.rect(active.left+3,active.top+22,active.tw-6,active.th-25);ctx.clip();}
   }
-  if(!tileMode){const frame=Number($('frame').value)-1;
+  if(!tileMode){const frame=Number($('frame').value)-1;let painted=false;
   const overview=overviewCache.get(overviewKey(cacheSignature,frame));
-  if(overview)drawEntry(overview);
-  for(const [key,entry] of frameCache)if(key.startsWith(`${frame}:`))drawEntry(entry);
-  if(!overview&&!frameCache.size&&preview&&previewBox)drawEntry({image:preview,result:{box:previewBox}});
+  if(overview?.image){drawEntry(overview);painted=true;}
+  for(const [key,entry] of frameCache)if(key.startsWith(`${frame}:`)&&entry.image){drawEntry(entry);painted=true;}
+  if(!painted&&preview&&previewBox)drawEntry({image:preview,result:{box:previewBox}});
   }
   for(const item of overlays)drawOverlay(item);
   ctx.strokeStyle=selection?.stroke||'#72ebc4';ctx.lineWidth=selection?.strokeWidth||1.5;ctx.setLineDash([5,3]);
@@ -244,15 +244,36 @@ async function lutTable(name){
 }
 async function recolorEntry(entry,args){
   if(!entry.raw)return;
+  const paintVersion=entry.paintVersion=(entry.paintVersion||0)+1;
   const limits=args.cuts==='manual'?[args.low,args.high]:args.cuts===entry.baseMode?entry.baseLimits:autoLimits(entry.raw,entry.channels,args.cuts);
   const [low,high]=limits;
   const colorKey=JSON.stringify([low,high,args.stretch,args.cmap,args.invert,args.threshold]);
   if(entry.image&&entry.colorKey===colorKey)return;
   const lut=entry.channels>1&&!args.threshold?null:await lutTable(args.cmap);
   const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high},lut);
-  const image=entry.image||document.createElement('canvas');image.width=entry.result.width;image.height=entry.result.height;
+  const image=document.createElement('canvas');image.width=entry.result.width;image.height=entry.result.height;
   image.getContext('2d').putImageData(new ImageData(pixels,image.width,image.height),0,0);
+  if(entry.paintVersion!==paintVersion)return;
   entry.image=image;entry.result.low=low;entry.result.high=high;entry.colorKey=colorKey;
+}
+function scheduleCachedRecolor(id,state){
+  if(!state?.frameCache?.size&&!state?.tileEntry)return;
+  const ticket=state.recolorTicket=(state.recolorTicket||0)+1;
+  const entries=[...new Set([...(state.frameCache?.values()||[]),state.tileEntry,...[...overviewCache].filter(([key])=>key.startsWith(`${id}:`)).map(([,entry])=>entry)])]
+    .filter(entry=>entry?.raw&&entry.sourceDataset===(state.datasetId??state.metadata.datasets[0].id));
+  entries.sort((a,b)=>Math.abs(a.sourceFrame-(state.plane||1)+1)-Math.abs(b.sourceFrame-(state.plane||1)+1));
+  const args={cuts:state.cuts||'manual',low:Number(state.low),high:Number(state.high),stretch:state.stretch||'linear',cmap:state.cmap||'gray',invert:!!state.invert,threshold:!!state.threshold};
+  let index=0;
+  async function next(){
+    if(state.recolorTicket!==ticket||fileFrames.get(id)!==state)return;
+    const entry=entries[index++];if(!entry)return;
+    try{await recolorEntry(entry,args);if(state.recolorTicket!==ticket)return;
+      if(state.tileEntry===entry)state.tilePreview=entry.image;
+      if(id===activeFileFrame&&entry.sourceFrame===Number($('frame').value)-1){preview=entry.image;previewBox=entry.result.box;draw();}
+    }catch(error){showError(error);return;}
+    setTimeout(next,0);
+  }
+  setTimeout(next,0);
 }
 async function decodePreview(result,args,paint=true) {
   if(result.payload instanceof ArrayBuffer){
@@ -295,7 +316,9 @@ function scheduleOverview() {
   if(overviewCache.has(key))return;
   overviewRunning=true;
   const args={...renderArgs(frame),box:fullBox()};
-  request('render',args,true).then(result=>decodePreview(result,args)).then(entry=>{
+  request('render',args,true).then(result=>decodePreview(result,args)).then(async entry=>{
+    if(cacheSignature!==signature)return;
+    await recolorEntry(entry,renderArgs(frame));
     if(cacheSignature!==signature)return;
     overviewCache.set(key,entry);overviewBytes+=entry.bytes;
     while(overviewBytes>128*1024*1024&&overviewCache.size>1){const oldest=overviewCache.keys().next().value;overviewBytes-=overviewCache.get(oldest).bytes;overviewCache.delete(oldest);}
@@ -324,6 +347,8 @@ async function preloadFrames() {
       if (signatureOf(args) !== signature) break;
       try {
         const entry = await decodePreview(await request('render',args,true),args);
+        if (generation !== cacheGeneration) break;
+        await recolorEntry(entry,renderArgs(frame));
         if (generation !== cacheGeneration) break;
         frameCache.set(key,entry); cacheBytes += entry.bytes; updateCacheStatus();
       } catch (error) { showError(error); break; }
@@ -462,6 +487,7 @@ function commitFrameChange(group){
   if(!activeFileFrame||!fileFrames.has(activeFileFrame))return;
   saveFileFrame();
   publishSidebar();
+  if(group==='bc'||group==='color')scheduleCachedRecolor(activeFileFrame,fileFrames.get(activeFileFrame));
   if(!frameLocks.has(group)||!fileFrames.get(activeFileFrame)?.lockMember){
     if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
     return;
@@ -476,6 +502,7 @@ function commitFrameChange(group){
       state.plane=Math.max(1,Math.min(d.frames,active.plane));
     }
     if(group==='bc'||group==='color'||group==='slice')state.tileSignature='';
+    if(group==='bc'||group==='color')scheduleCachedRecolor(id,state);
   }
   if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
 }
@@ -496,7 +523,7 @@ function setFrameLockMember(id,enabled){
     }
     const source=[...fileFrames].find(([other,item])=>other!==id&&item.lockMember)?.[1];
     if(source)for(const group of frameLocks)for(const key of lockGroups[group])state[key]=source[key];
-    if(source){state.frameCache?.clear();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';}
+    if(source){state.tileSignature='';scheduleCachedRecolor(id,state);}
   }
   state.lockMember=enabled;
   if(wasActive&&activeFileFrame!==id)selectFileFrame(id);
@@ -516,22 +543,38 @@ function frameList() {
   for(const input of document.querySelectorAll('[data-frame-lock]'))input.checked=frameLocks.has(input.dataset.frameLock);
   publishSidebar();
 }
+function transformCachedImage(image,action){
+  if(!image)return null;
+  const width=image.width,height=image.height,rotated=action==='rotateLeft'||action==='rotateRight';
+  const output=document.createElement('canvas');output.width=rotated?height:width;output.height=rotated?width:height;
+  const context=output.getContext('2d');context.imageSmoothingEnabled=false;
+  if(action==='flipHorizontal'){context.translate(width,0);context.scale(-1,1);}
+  else if(action==='flipVertical'){context.translate(0,height);context.scale(1,-1);}
+  else if(action==='rotate180'){context.translate(width,height);context.rotate(Math.PI);}
+  else if(action==='rotateLeft'){context.translate(0,width);context.rotate(-Math.PI/2);}
+  else if(action==='rotateRight'){context.translate(height,0);context.rotate(Math.PI/2);}
+  context.drawImage(image,0,0);
+  return output;
+}
 function transformCachedState(id,state,action,oldDataset){
   if(!oldDataset||!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180'].includes(action))return false;
-  const transformed=new Set();
+  const transformed=new Set(),images=new Map();
   const update=entry=>{
     if(!entry?.raw||transformed.has(entry))return;
     transformed.add(entry);
     const result=transformRaw(entry.raw,entry.result.width,entry.result.height,entry.channels,action);
     entry.raw=result.raw;entry.result.box=transformBox(entry.result.box,oldDataset.width,oldDataset.height,action);
-    entry.result.width=result.width;entry.result.height=result.height;entry.image=null;
+    entry.result.width=result.width;entry.result.height=result.height;
+    if(entry.image){const old=entry.image;entry.image=transformCachedImage(old,action);images.set(old,entry.image);}
   };
   const next=new Map();
   for(const entry of state.frameCache?.values()||[]){update(entry);next.set(cacheKey(entry.sourceFrame,entry.result.box),entry);}
   state.frameCache=next;
   update(state.tileEntry);
   for(const [key,entry] of overviewCache)if(key.startsWith(`${id}:`))update(entry);
-  state.preview=null;state.previewBox=null;state.tilePreview=null;state.tileSignature='';
+  if(state.preview)state.preview=images.get(state.preview)||transformCachedImage(state.preview,action);
+  if(state.previewBox)state.previewBox=transformBox(state.previewBox,oldDataset.width,oldDataset.height,action);
+  state.tilePreview=state.tileEntry?.image||null;state.tileSignature='';
   return transformed.size>0;
 }
 function selectFileFrame(id) {
@@ -1230,6 +1273,7 @@ window.addEventListener('message',({data:m})=>{
     if(!retained){state.preview=null;state.tilePreview=null;state.previewBox=null;state.frameCache=new Map();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';}
     state.plane=Math.min(state.plane||1,state.metadata.datasets[0].frames);
     if(m.frameId===activeFileFrame){activeFileFrame=null;selectFileFrame(m.frameId);}else{frameList();scheduleTileRefresh(0);}
+    if(retained)scheduleCachedRecolor(m.frameId,state);
   }else if(m.type==='menuVisibility'){
     applyMenuVisibility(m.items);
   }else if(m.type==='sideAction'){

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.23 (development build; not published)
+- Repaint cached stack slices promptly when B&C, stretch, LUT, invert, or threshold changes, including synchronized Frames; keep the existing canvas visible until its replacement is complete.
+- Transform cached canvases with flips and 90-degree rotations so already loaded slices remain ready to display. Newly arriving preload results pick up the latest display settings.
+
 ## 0.6.22 (development build; not published)
 - Benchmark all 101 slices of the reference float32 TIFF with ZFP, SZ3, float16, bfloat16, and 8/12/16-bit block quantization; record size, error, and timing in the worklog.
 - Add optional lossy preview transport with source-file size threshold and method selection. Default to ZFP when enabled; the lossy switch remains off by default.
