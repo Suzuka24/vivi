@@ -2,7 +2,7 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {autoLimits,renderPixels,transformRaw,transformBox} = window.ViviDisplay;
+const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -23,6 +23,7 @@ let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelR
 let playing = false, playbackTimer, analysisRunning = false, blinking = false, blinkTimer;
 const pending = new Map();
 let cacheSignature = '', cacheGeneration = 0, cacheBytes = 0, preloadRunning = false, preloadRestartWanted = false, preloadTimer, activePng = '';
+let sliceHoldTimer, sliceRepeatTimer;
 const overviewCache = new Map(), transferHistograms = new Map(), displayBounds = new Map();
 const lutTables = new Map();
 let overviewBytes = 0, overviewRunning = false;
@@ -134,7 +135,8 @@ function ensureCache(signature) {
   clearTimeout(preloadTimer); updateCacheStatus();
 }
 function updateCacheStatus() {
-  $('cacheStatus').textContent = dataset?.frames > 1 ? `${new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size}/${dataset.frames} ready` : '';
+  const count=new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size;
+  $('cacheStatus').textContent=dataset?.frames>512?`${count} nearby cached`:dataset?.frames>1?`${count}/${dataset.frames} ready`:'';
 }
 async function lutTable(name){
   if(name==='gray')return null;
@@ -203,15 +205,17 @@ async function preloadFrames() {
   if (preloadRunning || renderRunning || renderWanted || !dataset || dataset.frames < 2) return;
   preloadRunning = true;
   const generation = cacheGeneration, signature = cacheSignature, active = Number($('frame').value)-1;
-  const order = Array.from({length:dataset.frames}, (_,frame)=>frame).sort((a,b)=>Math.abs(a-active)-Math.abs(b-active));
   const limit = Math.max(32,Number(metadata.preloadMaxMiB)||768)*1024*1024;
+  const estimate = Math.min(dataset.width,metadata.maxSize)*Math.min(dataset.height,metadata.maxSize)*4;
+  // Large FITS cubes can contain thousands of slices. Bound background SSH traffic,
+  // while continuing to preload every slice of ordinary-sized stacks.
+  const order=preloadFrameOrder(dataset.frames,active,estimate);
   try {
     for (const frame of order) {
       if (generation !== cacheGeneration || renderRunning || renderWanted) break;
       const args = renderArgs(frame),key=cacheKey(frame,args.box);
       if (frameCache.has(key)) continue;
       if (signatureOf(args) !== signature) break;
-      const estimate = Math.min(dataset.width,metadata.maxSize)*Math.min(dataset.height,metadata.maxSize)*4;
       if (cacheBytes + estimate > limit) break;
       try {
         const entry = await decodePreview(await request('render',args,true),args,false);
@@ -428,7 +432,7 @@ function transformCachedState(id,state,action,oldDataset){
 function selectFileFrame(id) {
   id=Number(id); if(!fileFrames.has(id)||id===activeFileFrame)return;
   const oldId=activeFileFrame;
-  saveFileFrame(); stopPlay(); clearTimeout(renderTimer); clearTimeout(preloadTimer); revision++; cacheGeneration++;
+  saveFileFrame(); stopPlay(); stopSliceHold(); clearTimeout(renderTimer); clearTimeout(preloadTimer); revision++; cacheGeneration++;
   activeFileFrame=id;
   const state=fileFrames.get(id); metadata=state.metadata;
   if($('editUndo'))$('editUndo').disabled=!metadata.canUndo;
@@ -938,8 +942,25 @@ if($('viewerDataset'))$('viewerDataset').onchange=()=>{$('dataset').value=$('vie
 $('viewerAxis').onchange=()=>{sliceAxis=Number($('viewerAxis').value);frameLabel();saveFileFrame();};
 if($('viewerSliceRange'))$('viewerSliceRange').oninput=()=>{setAxisSlice(Number($('viewerSliceRange').value));$('frame').onchange();};
 if($('viewerSliceNumber'))$('viewerSliceNumber').onchange=()=>{setAxisSlice(Number($('viewerSliceNumber').value));$('frame').onchange();};
-if($('viewerSlicePrev'))$('viewerSlicePrev').onclick=()=>changeFrame(-1);
-if($('viewerSliceNext'))$('viewerSliceNext').onclick=()=>changeFrame(1);
+function stopSliceHold(){clearTimeout(sliceHoldTimer);clearInterval(sliceRepeatTimer);sliceHoldTimer=null;sliceRepeatTimer=null;}
+for(const [id,delta] of [['viewerSlicePrev',-1],['viewerSliceNext',1]]){
+  const button=$(id);
+  let suppressClick=false;
+  button.onpointerdown=event=>{
+    if(event.button!==0||button.disabled)return;
+    event.preventDefault();suppressClick=true;stopSliceHold();stopPlay();changeFrame(delta);
+    button.setPointerCapture(event.pointerId);
+    sliceHoldTimer=setTimeout(()=>{
+      const interval=1000/Math.max(1,Math.min(30,Number($('fps').value)||5));
+      changeFrame(delta,true);
+      sliceRepeatTimer=setInterval(()=>changeFrame(delta,true),interval);
+    },350);
+  };
+  button.onpointerup=()=>{stopSliceHold();setTimeout(()=>{suppressClick=false;},0);};
+  button.onpointercancel=()=>{stopSliceHold();suppressClick=false;};
+  button.onlostpointercapture=stopSliceHold;
+  button.onclick=()=>{if(suppressClick){suppressClick=false;return;}stopPlay();changeFrame(delta);};
+}
 if($('viewerSlicePlay'))$('viewerSlicePlay').onclick=()=>{$('play').click();syncViewerToolbar();};
 if($('viewerSliceFps'))$('viewerSliceFps').onchange=()=>{$('fps').value=$('viewerSliceFps').value;publishSidebar();};
 $('minimizeTransfer').onclick=()=>{const panel=$('transferPanel');panel.classList.toggle('minimized');$('minimizeTransfer').textContent=panel.classList.contains('minimized')?'+':'−';$('minimizeTransfer').title=panel.classList.contains('minimized')?'Show curve':'Minimize curve';};
@@ -998,7 +1019,7 @@ document.addEventListener('keydown',e=>{
   if(matches('fit'))fit();else if(matches('pan'))setTool('pan');else if(matches('roi'))setTool('roi');else if(matches('oval'))setTool('oval');else if(matches('line'))setTool('line');else if(matches('measure'))analyze('measure');else if(matches('undoTransform'))vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'undo',args:base()});else if(matches('clear')){$('clear').click();stopPlay();stopBlink();for(const menu of document.querySelectorAll('.menu'))menu.open=false;}
 });
 new ResizeObserver(()=>{if(dataset)scheduleRender(80);}).observe($('stage'));
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlay();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlay();stopSliceHold();}});
 window.addEventListener('message',({data:m})=>{
   if(m.type==='frameAdded'){
     if(m.keyboardShortcuts)keyboardShortcuts={...keyboardShortcuts,...m.keyboardShortcuts};

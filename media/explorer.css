@@ -62,6 +62,6 @@ body.view-adjust .adjust-ranges input[type=text]{width:82px;min-width:82px;heigh
 body.view-adjust .adjust-options{justify-content:flex-start;font-size:11px}
 body.view-adjust .adjust-options #adjustAuto{margin-left:0}
 body.view-layout #layoutModule{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden}
-body.view-layout #layoutModule>.side-module-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
-body.view-layout #layoutControls{height:auto;min-height:min-content}
-body.view-layout .frame-items{flex:none;min-height:0;overflow:visible}
+body.view-layout #layoutModule>.side-module-body{display:flex;flex:1;min-height:0;overflow:hidden}
+body.view-layout #layoutControls{flex:1;min-height:0;height:100%}
+body.view-layout .frame-items{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}

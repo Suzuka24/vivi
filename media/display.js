@@ -87,6 +87,16 @@ function transformBox(box,width,height,action){
   return [...box];
 }
 
-if(typeof module!=='undefined')module.exports={autoLimits,renderPixels,transformRaw,transformBox};
-if(typeof window!=='undefined')window.ViviDisplay={autoLimits,renderPixels,transformRaw,transformBox};
+function preloadFrameOrder(total,active,estimate){
+  const count=total>512?Math.min(48,Math.max(2,Math.floor(64*1024*1024/estimate))):total;
+  const order=[];
+  for(let distance=0;order.length<count&&distance<total;distance++){
+    if(active+distance<total)order.push(active+distance);
+    if(distance&&active-distance>=0&&order.length<count)order.push(active-distance);
+  }
+  return order;
+}
+
+if(typeof module!=='undefined')module.exports={autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
+if(typeof window!=='undefined')window.ViviDisplay={autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
 })();

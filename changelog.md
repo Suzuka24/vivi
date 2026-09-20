@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.7 (development build; not published)
+- Limit background preloading for very large stacks to nearby slices, keeping the current view responsive over Remote SSH.
+- Hold the slice previous/next buttons to step continuously at the configured FPS.
+- Scroll long Frame lists within Layout while keeping its controls visible.
+
 ## 0.6.6 (development build; not published)
 - Scroll the Layout view and show slice controls only when the selected Frame has more than one plane.
 - Keep raw preview pixels in the stack cache so Adjust, Auto, LUT, and display transforms can update previews locally without rereading the image.
