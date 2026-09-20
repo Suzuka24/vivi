@@ -145,7 +145,7 @@ function run(action, item) {
 function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false');$('historyMenu').hidden=true;$('pathHistory').setAttribute('aria-expanded','false'); }
 function showMenu(event, item) {
   event.preventDefault(); closeMenu();select(item);
-  const allowed = [...menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder'].includes(action)) && (action !== 'openNewTab' || !item.directory)),...(item.directory?['openStack']:[])];
+  const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder','openStack'].includes(action)) && (action !== 'openNewTab' || !item.directory));
   if (!allowed.length) return;
   const menu = $('contextMenu');
   for (const action of allowed) {
@@ -224,6 +224,7 @@ window.addEventListener('message', ({data:message}) => {
   if(message.type==='sidebarClear'){renderSidebar(null);return;}
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}
   if(message.type==='focusLayout'){$('layoutModule').open=true;$('frameItems').scrollIntoView({block:'nearest'});return;}
+  if(message.type==='menuItems'){menuItems=message.items;closeMenu();return;}
   if (message.type !== 'list') return;
   const append=message.path===current&&message.offset===entries.length&&message.offset>0;
   current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;

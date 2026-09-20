@@ -17,7 +17,7 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane']};
 let tileRefreshTimer, sidebarTimer, layoutColumns=0, layoutRows=0;
-let keyboardShortcuts={fit:'f',pan:'p',roi:'r',oval:'o',line:'l',measure:'m',clear:'escape',undoTransform:'z'};
+let keyboardShortcuts={fit:'f',pan:'p',pointer:'shift+p',roi:'r',oval:'o',line:'l',measure:'m',clear:'escape',undoTransform:'z'};
 let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
 const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
 let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelRunning = false;

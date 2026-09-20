@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.17 (development build; not published)
+- Add a checkable Explorer context-menu chooser and include Open Folder as Stack among its default-visible actions.
+- Document modifier-key shortcut syntax and bind the Pointer tool to Shift+P by default.
+
 ## 0.6.16 (development build; not published)
 - Highlight the Orthogonal Views toolbar button while the view is active, and clear it when the view closes.
 

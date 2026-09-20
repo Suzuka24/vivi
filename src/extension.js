@@ -35,6 +35,12 @@ function activate(context) {
   const config = () => vscode.workspace.getConfiguration('vivi');
   const managed = file => isManaged(file, config().get('managedExtensions', []));
   const menuItems = () => config().get('explorerContextMenu', []);
+  const explorerMenuOptions = [
+    ['open', 'Open'], ['openNewTab', 'Open in New Tab'], ['openStack', 'Open Folder as Stack…'],
+    ['copyPath', 'Copy Path'], ['copyToTerminal', 'Insert Path into Terminal'], ['copyName', 'Copy Name'],
+    ['rename', 'Rename…'], ['delete', 'Remove Permanently…'], ['newFile', 'New File…'],
+    ['newFolder', 'New Folder…'], ['refresh', 'Refresh']
+  ];
   const sessions = [];
   let activeSession = null;
   const sidebarViews = [];
@@ -163,6 +169,19 @@ function activate(context) {
   for (const provider of sidebarViews) context.subscriptions.push(vscode.window.registerWebviewViewProvider(`vivi.${provider.kind}`, provider, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand('vivi.browse', async () => {
     await vscode.commands.executeCommand('vivi.explorer.focus');
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('vivi.configureExplorerContextMenu', async () => {
+    const enabled = menuItems();
+    const picked = await vscode.window.showQuickPick(explorerMenuOptions.map(([id, label]) => ({ id, label, picked: enabled.includes(id) })),
+      { canPickMany: true, title: 'Explorer Context Menu', placeHolder: 'Check the actions to show; uncheck to hide', ignoreFocusOut: true });
+    if (!picked) return;
+    const inspection = config().inspect('explorerContextMenu');
+    const target = inspection?.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder
+      : inspection?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+    await config().update('explorerContextMenu', picked.map(item => item.id), target);
+  }));
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+    if (event.affectsConfiguration('vivi.explorerContextMenu')) explorer.view?.webview.postMessage({ type: 'menuItems', items: menuItems() });
   }));
   context.subscriptions.push(vscode.commands.registerCommand('vivi.open', async uri => {
     try {

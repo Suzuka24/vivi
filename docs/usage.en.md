@@ -4,7 +4,7 @@
 
 Click the vivi activity-bar icon and enter a directory on the **extension host**. In a Remote SSH window this is a path on the server. The toolbar provides parent/home/refresh, create, delete, hidden-file visibility, terminal path insertion, and sorting. The path field offers recent directories. Scroll to load further entries; the filter applies to the currently loaded list.
 
-Double-click a managed image or choose **Open** to add it as a Frame in the most recently used vivi editor tab. Choose **Open in New Tab** for a separate editor tab. The new tab stays in the current editor group. Set `vivi.managedExtensions` to decide which file suffixes vivi takes over; a file removed from the list follows the editor's normal opening behavior. Set `vivi.explorerContextMenu` to show, hide, or reorder context-menu actions.
+Double-click a managed image or choose **Open** to add it as a Frame in the most recently used vivi editor tab. Choose **Open in New Tab** for a separate editor tab. The new tab stays in the current editor group. Set `vivi.managedExtensions` to decide which file suffixes vivi takes over; a file removed from the list follows the editor's normal opening behavior. Run **vivi: Configure Explorer Context Menu** from the Command Palette to check or uncheck every Explorer context-menu action; all are selected by default.
 
 **Open Folder as Stack** offers **Only 2D images** (skip multidimensional files) and **All image planes** (flatten 2D/3D files). The lower-right status shows the source filename and original plane number. Files must share width, height, dtype, and channel count. Explorer **Remove** permanently deletes files or folders recursively after confirmation.
 
@@ -33,9 +33,9 @@ Image operations such as Duplicate, Crop, Montage, projections, and many Process
 | `vivi.pythonPath` | Absolute Python interpreter path on the extension host. |
 | `vivi.defaultPath` | Explorer's initial host directory. |
 | `vivi.managedExtensions` | File suffixes opened by vivi on double-click. |
-| `vivi.explorerContextMenu` | Visible Explorer context-menu commands and their order. |
+| `vivi.explorerContextMenu` | Visible Explorer context-menu commands and their order; use **vivi: Configure Explorer Context Menu** to check them. |
 | `vivi.preloadMaxMiB` | Approximate decoded preview cache limit for stacks. |
 | `vivi.maxPreviewSize` | Largest transmitted preview dimension. |
-| `vivi.keyboardShortcuts` | Action shortcuts, including modifier combinations; unset actions stay blank and can be edited in Settings or `settings.json`. |
+| `vivi.keyboardShortcuts` | Action shortcuts such as `shift+p` or `ctrl+shift+h`; macOS Command is `cmd`. Pointer defaults to `shift+p`; an empty string disables an action. Shortcuts work while the image view, but no text field, has focus. |
 
 See [installation](installation.en.md) for backend setup and [privacy](../PRIVACY.md) for host storage and data transfer.
