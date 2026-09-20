@@ -187,14 +187,14 @@ function refreshOrthogonal(delay=70){
 }
 function disableOrthogonal(refit=false){
   if(!orthogonal)return;orthogonal=null;orthogonalTicket++;clearTimeout(orthogonalTimer);
-  $('stage').classList.remove('orthogonal');$('orthYZ').hidden=true;$('orthXZ').hidden=true;$('stackOrthogonal').setAttribute('aria-pressed','false');
+  $('stage').classList.remove('orthogonal');$('orthYZ').hidden=true;$('orthXZ').hidden=true;$('stackOrthogonal').setAttribute('aria-pressed','false');$('toolOrthogonal').classList.remove('selected');$('toolOrthogonal').setAttribute('aria-pressed','false');
   if(refit)requestAnimationFrame(()=>{if(dataset)fit();});
 }
 function toggleOrthogonal(){
   if(orthogonal){disableOrthogonal(true);return;}
   if(!dataset||tileMode||dataset.frames<2||!sliceAxes().length){showError(new Error('Orthogonal Views requires one stack Frame in Single display mode.'));return;}
   orthogonal={axis:sliceAxes()[axisIndex()],x:Math.floor(dataset.width/2),y:Math.floor(dataset.height/2),z:slicePosition()-1,depth:dataset.shape[sliceAxes()[axisIndex()]],sectionKey:'',colorKey:'',colorTicket:0};
-  $('stage').classList.add('orthogonal');$('orthYZ').hidden=false;$('orthXZ').hidden=false;$('stackOrthogonal').setAttribute('aria-pressed','true');
+  $('stage').classList.add('orthogonal');$('orthYZ').hidden=false;$('orthXZ').hidden=false;$('stackOrthogonal').setAttribute('aria-pressed','true');$('toolOrthogonal').classList.add('selected');$('toolOrthogonal').setAttribute('aria-pressed','true');
   requestAnimationFrame(()=>{fit();refreshOrthogonal(0);});
 }
 function orthogonalPoint(name,event){

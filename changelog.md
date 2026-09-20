@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.16 (development build; not published)
+- Highlight the Orthogonal Views toolbar button while the view is active, and clear it when the view closes.
+
 ## 0.6.15 (development build; not published)
 - Display errors as dismissible overlays above the image without changing the viewport geometry.
 
