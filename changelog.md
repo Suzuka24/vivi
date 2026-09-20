@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.9 (development build; not published)
+- Scroll the entire Layout content area natively so frames beyond the visible portion remain reachable with the mouse wheel.
+- Preserve Layout's scroll position when Frame state updates rebuild the list.
+
 ## 0.6.8 (development build; not published)
 - Make the Layout Frame list respond directly to the mouse wheel and retain its scroll position when sidebar state refreshes.
 - Avoid drawing an empty cached preview immediately after an in-place stack flip or rotation while its pixels are being recolored.
