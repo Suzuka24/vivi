@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.13 (development build; not published)
+- Simplify the eight right-hand toolbar icons, match their visible stroke weight to the earlier tools, and remove the divider within this group.
+
 ## 0.6.12 (development build; not published)
 - Make All lock and Unlock change only Frame membership, leaving B&C, LUT, View, Zoom, and Slice synchronization choices intact.
 - Rename the floating B&C window and Adjust toggle to Curve, and remove Threshold from the Adjust sidebar.
