@@ -10,7 +10,7 @@ vivi is a scientific image and data viewer for VS Code and Cursor. Browse files 
 - Navigate any accessible host path from vivi's Explorer, including paths outside the workspace. Choose which extensions vivi opens by default with `vivi.managedExtensions`; other files follow the editor's normal behavior.
 - Keep several files as Frames in one editor tab, switch or tile them, reorder them, and optionally synchronize display parameters across selected Frames. Duplicate titles are numbered automatically; Rename in Layout changes the display title without renaming the source file. **Open in New Tab** creates an independent tab.
 - Adjust brightness and contrast, stretch, thresholds, and LUTs; draw and measure regions; inspect pixel values and histograms. The ImageJ-style menu also includes stack conversion, montage, reslice, projection, orthogonal views, profiles, and selected image-processing commands. Orthogonal cross-sections can be duplicated as 2D Frames.
-- Cache previews for smooth browsing. The memory limit is configurable; images beyond it may still need host-side reads while navigating.
+- Cache every stack slice at source resolution after the current slice appears. Pixel bytes retain the source dtype; optional reversible compression reduces Remote SSH transfer when effective. Large stacks may use substantial client memory.
 
 **vivi is under active development.** Menu entries shown in gray are unavailable, and several implemented commands are simplified relative to ImageJ. See the [feature coverage and differences](docs/imagej-menu-coverage.md) before relying on a particular analysis command.
 

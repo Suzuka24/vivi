@@ -1,11 +1,61 @@
 'use strict';
 (function(){
 
+async function decodeRawPayload(result) {
+  if (!(result.payload instanceof ArrayBuffer)) throw new Error('Missing binary image payload');
+  let bytes = new Uint8Array(result.payload);
+  if (result.codec === 'zlib') {
+    if (typeof DecompressionStream === 'undefined') throw new Error('This Webview cannot decompress image data');
+    bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  } else if (result.codec !== 'none') throw new Error(`Unsupported image codec: ${result.codec}`);
+  if (bytes.byteLength !== result.byteLength) throw new Error('Image payload length mismatch');
+  if (result.shuffle) {
+    const width = result.shuffle, count = bytes.length / width;
+    if (!Number.isInteger(count)) throw new Error('Invalid image byte shuffle');
+    const restored = new Uint8Array(bytes.length);
+    for (let part = 0; part < width; part++)
+      for (let pixel = 0; pixel < count; pixel++) restored[pixel * width + part] = bytes[part * count + pixel];
+    bytes = restored;
+  }
+  const sourceBytes = bytes;
+  const match = /^([<>=|])([uifb])(1|2|4|8)$/.exec(result.dtype);
+  if (!match) throw new Error(`Unsupported image dtype: ${result.dtype}`);
+  const [, order, kind, sizeText] = match, size = Number(sizeText);
+  if (bytes.byteLength % size) throw new Error('Image dtype length mismatch');
+  const littleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+  if (size > 1 && ((order === '>' && littleEndian) || (order === '<' && !littleEndian))) {
+    bytes = bytes.slice();
+    for (let offset = 0; offset < bytes.length; offset += size)
+      for (let left = 0, right = size - 1; left < right; left++, right--)
+        [bytes[offset + left], bytes[offset + right]] = [bytes[offset + right], bytes[offset + left]];
+  }
+  const types = {u1:Uint8Array,i1:Int8Array,b1:Uint8Array,u2:Uint16Array,i2:Int16Array,
+    u4:Uint32Array,i4:Int32Array,u8:BigUint64Array,i8:BigInt64Array,f4:Float32Array,f8:Float64Array};
+  const key = kind + sizeText;
+  let raw;
+  if (key === 'f2') {
+    const bits = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+    raw = Float32Array.from(bits, value => {
+      const sign = value & 0x8000 ? -1 : 1, exponent = (value >> 10) & 31, fraction = value & 1023;
+      return exponent === 31 ? (fraction ? NaN : sign * Infinity) :
+        sign * (exponent ? (1 + fraction / 1024) * 2 ** (exponent - 15) : fraction / 1024 * 2 ** -14);
+    });
+  } else {
+    const Type = types[key];
+    if (!Type) throw new Error(`Unsupported image dtype: ${result.dtype}`);
+    raw = new Type(bytes.buffer, bytes.byteOffset, bytes.byteLength / size);
+  }
+  if (raw.length !== result.width * result.height * result.channels) throw new Error('Image shape does not match payload');
+  return {raw,sourceBytes};
+}
+
+const sampleNumber = (raw, index) => Number(raw[index]);
+
 function autoLimits(raw, channels, mode) {
   const values=[];
   const stride=Math.max(1,Math.floor(raw.length/channels/262144));
   for(let i=0;i<raw.length;i+=stride*channels){
-    const value=channels>1?(raw[i]+raw[i+1]+raw[i+2])/3:raw[i];
+    const value=channels>1?(sampleNumber(raw,i)+sampleNumber(raw,i+1)+sampleNumber(raw,i+2))/3:sampleNumber(raw,i);
     if(Number.isFinite(value))values.push(value);
   }
   if(!values.length)return [0,1];
@@ -39,20 +89,20 @@ function renderPixels(raw,width,height,channels,settings,lut=null){
   let equalize=null;
   if(stretch==='histeq'){
     const histogram=new Uint32Array(256);
-    for(let i=0;i<raw.length;i+=channels){const value=raw[i];if(Number.isFinite(value))histogram[Math.max(0,Math.min(255,Math.floor((value-low)/range*255)))]++;}
+    for(let i=0;i<raw.length;i+=channels){const value=sampleNumber(raw,i);if(Number.isFinite(value))histogram[Math.max(0,Math.min(255,Math.floor((value-low)/range*255)))]++;}
     let sum=0;equalize=Float64Array.from(histogram,count=>{sum+=count;return sum;});
     if(sum)for(let i=0;i<256;i++)equalize[i]/=sum;
   }
   for(let pixel=0;pixel<width*height;pixel++){
     const source=pixel*channels,target=pixel*4;
     let valid=true;
-    for(let channel=0;channel<Math.min(3,channels);channel++)valid&&=Number.isFinite(raw[source+channel]);
+    for(let channel=0;channel<Math.min(3,channels);channel++)valid&&=Number.isFinite(sampleNumber(raw,source+channel));
     if(!valid){output[target+3]=255;continue;}
-    if(threshold){const value=channels>1?(raw[source]+raw[source+1]+raw[source+2])/3:raw[source],index=value>=low&&value<=high?255:0;for(let channel=0;channel<3;channel++)output[target+channel]=lut?lut[index][channel]:index;}
-    else if(channels>1){for(let channel=0;channel<3;channel++)output[target+channel]=Math.floor(stretchValue(raw[source+channel])*255);}
+    if(threshold){const value=channels>1?(sampleNumber(raw,source)+sampleNumber(raw,source+1)+sampleNumber(raw,source+2))/3:sampleNumber(raw,source),index=value>=low&&value<=high?255:0;for(let channel=0;channel<3;channel++)output[target+channel]=lut?lut[index][channel]:index;}
+    else if(channels>1){for(let channel=0;channel<3;channel++)output[target+channel]=Math.floor(stretchValue(sampleNumber(raw,source+channel))*255);}
     else{
-      let intensity=stretchValue(raw[source]);
-      if(equalize)intensity=invert?1-equalize[Math.round(Math.max(0,Math.min(1,(raw[source]-low)/range))*255)]:equalize[Math.round(Math.max(0,Math.min(1,(raw[source]-low)/range))*255)];
+      let intensity=stretchValue(sampleNumber(raw,source));
+      if(equalize)intensity=invert?1-equalize[Math.round(Math.max(0,Math.min(1,(sampleNumber(raw,source)-low)/range))*255)]:equalize[Math.round(Math.max(0,Math.min(1,(sampleNumber(raw,source)-low)/range))*255)];
       const index=Math.max(0,Math.min(255,lut?Math.round(intensity*255):Math.floor(intensity*255)));
       for(let channel=0;channel<3;channel++)output[target+channel]=lut?lut[index][channel]:index;
     }
@@ -88,15 +138,14 @@ function transformBox(box,width,height,action){
 }
 
 function preloadFrameOrder(total,active,estimate){
-  const count=total>512?Math.min(48,Math.max(2,Math.floor(64*1024*1024/estimate))):total;
   const order=[];
-  for(let distance=0;order.length<count&&distance<total;distance++){
+  for(let distance=0;order.length<total&&distance<total;distance++){
     if(active+distance<total)order.push(active+distance);
-    if(distance&&active-distance>=0&&order.length<count)order.push(active-distance);
+    if(distance&&active-distance>=0&&order.length<total)order.push(active-distance);
   }
   return order;
 }
 
-if(typeof module!=='undefined')module.exports={autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
-if(typeof window!=='undefined')window.ViviDisplay={autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
+if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
 })();

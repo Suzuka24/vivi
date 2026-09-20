@@ -4,7 +4,7 @@
 
 点击 vivi 活动栏图标，输入**扩展主机**上的目录。Remote SSH 窗口中的路径属于服务器。工具栏提供上级目录、主目录、刷新、新建、删除、显示隐藏文件、复制路径到终端和排序；路径框可选择历史目录。向下滚动可继续加载文件，过滤框作用于已加载的列表。
 
-双击由 vivi 接管的图像，或选择 **Open**，会把它作为 Frame 加入最近使用的 vivi 编辑器标签页。**Open in New Tab** 会在当前编辑器组中新建独立标签页。通过 `vivi.managedExtensions` 选择由 vivi 接管的后缀；移出列表的文件使用编辑器原来的打开方式。命令面板运行 **vivi: Configure Explorer Context Menu**，勾选或取消 Explorer 右键菜单中的各项；默认全选。
+双击由 vivi 接管的图像，或选择 **Open**，会把它作为 Frame 加入最近使用的 vivi 编辑器标签页。**Open in New Tab** 会在当前编辑器组中新建独立标签页。通过 `vivi.managedExtensions` 选择由 vivi 接管的后缀；移出列表的文件使用编辑器原来的打开方式。命令面板运行 **vivi: Configure Menu Visibility**，勾选或取消图像视图一级、二级菜单项；默认全选。
 
 **Open Folder as Stack** 会询问读取模式：**Only 2D images** 跳过非 2D 文件，**All image planes** 将 2D 和 3D 文件的切片依次合并。右下角显示切片的源文件名及原文件中的编号。文件须具有相同的宽、高、数据类型和通道数。Explorer 的 **Remove** 会递归永久删除目标，操作前弹出确认。
 
@@ -33,9 +33,10 @@ Duplicate、Crop、Montage、投影及多项 Process 命令会创建新 Frame。
 | `vivi.pythonPath` | 扩展主机上的 Python 解释器绝对路径。 |
 | `vivi.defaultPath` | Explorer 的初始主机目录。 |
 | `vivi.managedExtensions` | 双击时由 vivi 接管的文件后缀。 |
-| `vivi.explorerContextMenu` | Explorer 右键菜单项目与顺序；用命令面板中的 **vivi: Configure Explorer Context Menu** 勾选。 |
-| `vivi.preloadMaxMiB` | stack 解码预览缓存的大致上限。 |
-| `vivi.maxPreviewSize` | 传输预览的最大边长。 |
+| `vivi.explorerContextMenu` | 图像视图一级、二级菜单的显隐勾选；默认全部显示，包括待实现的灰色命令。也可运行 **vivi: Configure Menu Visibility**。 |
+| `vivi.losslessCompression` | 默认开启，原始 dtype 的像素字节经可逆重排和 zlib 压缩后传输；关闭则直接传原始字节。压缩无收益时会自动使用原始字节。 |
 | `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。Pointer 默认为 `shift+p`；空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
 
 后端配置见[安装指南](installation.md)，主机数据存储与传输见[隐私说明](../PRIVACY.md)。
+
+当前帧显示后，vivi 从当前帧向两侧立即预载全部 stack 切片，不再设预览尺寸或缓存内存预算。**Image → Copy Image** 和图像右键菜单中的 **Copy Image** 复制当前画面里可见的图像区域，包含画面上的选区及叠加标记。

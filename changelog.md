@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.18 (development build; not published)
+- Transfer preview pixels as binary bytes in the source dtype. Optional reversible byte shuffle and zlib compression reduces Remote SSH traffic; incompressible data stays uncompressed.
+- Preserve FITS stored pixel dtype and byte order during transfer, with display scaling applied only after decode.
+- Remove preview dimension and preload memory limits; preload all stack slices immediately after the active slice is ready.
+- Copy the visible rendered image to the system clipboard from the Image menu or image context menu.
+- Offer checkboxes for all first- and second-level menu items, including planned commands, in `vivi.explorerContextMenu`.
+
 ## 0.6.17 (development build; not published)
 - Add a checkable Explorer context-menu chooser and include Open Folder as Stack among its default-visible actions.
 - Document modifier-key shortcut syntax and bind the Pointer tool to Shift+P by default.

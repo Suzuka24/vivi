@@ -37,7 +37,7 @@ python3 -m venv ~/.venvs/vivi
 - **看不到 vivi 图标或查看器：** 检查扩展是否安装并启用在正确的本机/远端，然后执行 **Developer: Reload Window**。
 - **Python 进程退出或缺包：** 运行 **vivi: Check Python Backend**，确认 `vivi.pythonPath` 指向的解释器能够导入依赖，并查看 **vivi** Output 通道。
 - **找不到远端路径：** 确认窗口已通过 Remote SSH 连接，而且 vivi 安装在该 SSH 主机。Explorer 中的路径属于扩展主机。
-- **大图移动或切片切换较慢：** FITS/TIFF 通常按区域读取；PNG/JPEG 和视频可能需要完整解码。可根据服务器资源调整 `vivi.maxPreviewSize`、`vivi.preloadMaxMiB` 和 `vivi.maxDecodedPixels`。
+- **大图移动或切片切换较慢：** FITS/TIFF 通常按区域读取；PNG/JPEG 和视频可能需要完整解码。像素以原始 dtype 的字节传输，可用 `vivi.losslessCompression` 切换可逆压缩。`vivi.maxDecodedPixels` 仍保护需要完整解码的格式。
 - **视频无法打开：** 远端 OpenCV 可能缺少对应的编解码器。可先测试支持的图像格式，或在该主机补齐编解码器。
 
 报告可复现的问题时，请参阅 [SUPPORT.md](../SUPPORT.md)。

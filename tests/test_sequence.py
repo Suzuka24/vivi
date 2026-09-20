@@ -45,8 +45,9 @@ class SequenceTests(unittest.TestCase):
                     self.assertEqual(pixel['value'], expected)
                 preview = session.handle({'op': 'render', 'frame': 2, 'raw': True, 'cuts': 'manual',
                                           'low': 0, 'high': 10, 'size': 128})
-                values = np.frombuffer(base64.b64decode(preview['raw']), dtype=np.float32)
+                values = np.frombuffer(base64.b64decode(preview['raw']), dtype=np.dtype(preview['dtype']))
                 self.assertEqual(preview['channels'], 1)
+                self.assertEqual(values.dtype, np.uint8)
                 np.testing.assert_array_equal(values, 10)
             finally:
                 if session.source:

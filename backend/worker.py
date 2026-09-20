@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import warnings
+import zlib
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -19,6 +20,23 @@ def finite_number(value, default):
     if not math.isfinite(value):
         raise ValueError("Expected a finite number")
     return value
+
+
+def encode_raw_preview(raw, compress=False):
+    """Keep the source dtype and byte order; only rearrange bytes reversibly for compression."""
+    array = np.ascontiguousarray(raw)
+    original = array.tobytes()
+    payload, codec = original, 'none'
+    shuffle = 0
+    if compress:
+        itemsize = array.dtype.itemsize
+        candidate = (np.frombuffer(original, dtype=np.uint8).reshape(-1, itemsize).T.copy().tobytes()
+                     if itemsize > 1 else original)
+        packed = zlib.compress(candidate, level=1)
+        if len(packed) < len(original):
+            payload, codec, shuffle = packed, 'zlib', itemsize if itemsize > 1 else 0
+    return dict(dtype=array.dtype.str, byteLength=len(original), codec=codec, shuffle=shuffle,
+                _binary=payload)
 
 
 def rotate_image(image, options):
@@ -104,7 +122,8 @@ class Source:
             from astropy.io import fits
             # section performs physical-value scaling only on the requested subset.
             self.kind = "fits"
-            self.file = fits.open(self.path, memmap=False, lazy_load_hdus=True)
+            self.file = fits.open(self.path, memmap=False, lazy_load_hdus=True,
+                                  do_not_scale_image_data=True)
             self.handles.append(self.file)
             with open(self.path, "rb") as stream:
                 self.plain_fits = stream.read(6) == b"SIMPLE"
@@ -175,7 +194,15 @@ class Source:
     def source_channels(d):
         return d['shape'][d['channel']] if d['channel'] is not None else 1
 
-    def read(self, d, frame, box, step=1, pyramid=False):
+    def calibration(self, d):
+        if self.kind == 'sequence':
+            return self.sequence_source.calibration(self.sequence_source.datasets[0])
+        if self.kind != 'fits':
+            return (1, 0, None)
+        header = self.file[d['id']].header
+        return (header.get('BSCALE', 1), header.get('BZERO', 0), header.get('BLANK'))
+
+    def read(self, d, frame, box, step=1, pyramid=False, raw_stored=False):
         frame = int(frame)
         if not 0 <= frame < d["frames"]:
             raise ValueError("Frame out of range")
@@ -190,7 +217,7 @@ class Source:
                 item = self.sequence_source.datasets[0]
                 if (item['width'], item['height'], item['dtype'], self.sequence_source.source_channels(item)) != self.sequence_shape:
                     raise ValueError(f'Image Sequence slice differs in size, type, or channels: {self.slice_labels[frame]}')
-            return self.sequence_source.read(self.sequence_source.datasets[0], plane, box, step, pyramid)
+            return self.sequence_source.read(self.sequence_source.datasets[0], plane, box, step, pyramid, raw_stored)
         if self.kind in ("raster", "video"):
             if self.frame_index != frame:
                 if self.kind == "video":
@@ -256,15 +283,16 @@ class Source:
                     self.levels[key] = mapped
                     self.handles.append(mapped._mmap)
                 raw = self.levels[key][tuple(indices)]
-                bscale, bzero, blank = hdu.header.get("BSCALE",1), hdu.header.get("BZERO",0), hdu.header.get("BLANK")
-                if bscale != 1 or bzero != 0 or (blank is not None and raw.dtype.kind in "iu"):
-                    data = raw.astype(np.float64) * bscale + bzero
-                    if blank is not None and raw.dtype.kind in "iu":
-                        data[raw == blank] = np.nan
-                else:
-                    data = raw
+                data = raw
             else:
                 data = hdu.section[tuple(indices)]
+            if not raw_stored:
+                bscale, bzero, blank = self.calibration(d)
+                if bscale != 1 or bzero != 0 or (blank is not None and data.dtype.kind in 'iu'):
+                    raw = data
+                    data = raw.astype(np.float64) * bscale + bzero
+                    if blank is not None and raw.dtype.kind in 'iu':
+                        data[raw == blank] = np.nan
         else:
             data = target[tuple(indices)]
         remaining = [i for i in range(len(shape)) if i not in d["extra"]]
@@ -886,9 +914,14 @@ class Session:
 
     def render(self, d, frame, box, req):
         limit = max(64, min(2048, int(req.get("size", 1600))))
-        step = max(1, math.ceil(max(box[2]-box[0], box[3]-box[1]) / limit))
-        raw = self.source.read(d, frame, box, step, pyramid=True)
+        step = 1 if req.get('raw') else max(1, math.ceil(max(box[2]-box[0], box[3]-box[1]) / limit))
+        raw = self.source.read(d, frame, box, step, pyramid=True, raw_stored=bool(req.get('raw')))
         data = np.asarray(raw, dtype=np.float64)
+        bscale, bzero, blank = self.source.calibration(d) if req.get('raw') else (1, 0, None)
+        if bscale != 1 or bzero != 0:
+            data = data * bscale + bzero
+        if blank is not None and raw.dtype.kind in 'iu':
+            data[raw == blank] = np.nan
         mode = req.get("cuts", "percentile")
         key = (d["id"], frame, mode)
         if mode == "manual":
@@ -925,13 +958,17 @@ class Session:
             self.cuts[key] = low, high
         finite = np.isfinite(data)
         if req.get('raw'):
-            preview = np.ascontiguousarray(raw.astype(np.float32, copy=False))
-            if np.isfinite(data).any() and np.nanmax(np.abs(data[np.isfinite(data)])) > np.finfo(np.float32).max:
-                preview = np.ascontiguousarray(data)
-            return dict(raw=base64.b64encode(preview.tobytes()).decode('ascii'),
-                        dtype=str(preview.dtype), channels=preview.shape[-1] if preview.ndim == 3 else 1,
-                        box=box, width=preview.shape[1], height=preview.shape[0],
-                        low=low, high=high, step=step)
+            preview = np.ascontiguousarray(raw)
+            result = dict(channels=preview.shape[-1] if preview.ndim == 3 else 1,
+                          box=box, width=preview.shape[1], height=preview.shape[0],
+                          low=low, high=high, step=step,
+                          bscale=bscale, bzero=bzero, blank=str(blank) if blank is not None else None)
+            if req.get('binary'):
+                result.update(encode_raw_preview(preview, bool(req.get('compress'))))
+            else:
+                result.update(raw=base64.b64encode(preview.tobytes()).decode('ascii'),
+                              dtype=preview.dtype.str)
+            return result
         scaled = np.clip((np.nan_to_num(data, nan=low, posinf=high, neginf=low)-low)/(high-low), 0, 1)
         stretch = req.get("stretch", "linear")
         if stretch == "log":
@@ -1009,11 +1046,18 @@ def main():
                 with warnings.catch_warnings():
                     warnings.simplefilter("default")
                     result = session.handle(req)
+                payload = result.pop('_binary', None) if isinstance(result, dict) else None
                 response = dict(id=req.get("id"), result=result)
+                if payload is not None:
+                    response['binaryLength'] = len(payload)
                 encoded = json.dumps(response, allow_nan=False, separators=(",", ":"))
             except Exception as exc:
+                payload = None
                 encoded = json.dumps(dict(id=req.get("id"), error=f"{type(exc).__name__}: {exc}"))
-            print(encoded, flush=True)
+            sys.stdout.buffer.write(encoded.encode('utf-8') + b'\n')
+            if payload is not None:
+                sys.stdout.buffer.write(payload)
+            sys.stdout.buffer.flush()
     finally:
         if session.source:
             session.source.close()

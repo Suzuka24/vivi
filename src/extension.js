@@ -8,6 +8,7 @@ const { Backend } = require('./backend');
 const { viewerFor, isManaged, nativeEditorFor } = require('./formats');
 const { listDirectory } = require('./explorerListing');
 const { uniqueFrameLabel } = require('./frameLabels');
+const { menuPaths } = require('./menuVisibility');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -33,8 +34,22 @@ function activate(context) {
   const output = vscode.window.createOutputChannel('vivi');
   context.subscriptions.push(output);
   const config = () => vscode.workspace.getConfiguration('vivi');
+  const previousMenuSetting = config().inspect('explorerContextMenu');
+  for (const [value, target] of [
+    [previousMenuSetting?.globalValue, vscode.ConfigurationTarget.Global],
+    [previousMenuSetting?.workspaceValue, vscode.ConfigurationTarget.Workspace],
+    [previousMenuSetting?.workspaceFolderValue, vscode.ConfigurationTarget.WorkspaceFolder]
+  ]) if (Array.isArray(value)) {
+    const allVisible = Object.fromEntries(menuPaths.map(item => [item, true]));
+    config().update('explorerContextMenu', allVisible, target).then(undefined,
+      error => output.appendLine(`Menu setting migration: ${error.message}`));
+  }
   const managed = file => isManaged(file, config().get('managedExtensions', []));
-  const menuItems = () => config().get('explorerContextMenu', []);
+  const menuItems = () => explorerMenuOptions.map(([id]) => id);
+  const menuVisibility = () => {
+    const saved = config().get('explorerContextMenu', {});
+    return Object.fromEntries(menuPaths.map(item => [item, !saved || Array.isArray(saved) || saved[item] !== false]));
+  };
   const explorerMenuOptions = [
     ['open', 'Open'], ['openNewTab', 'Open in New Tab'], ['openStack', 'Open Folder as Stack…'],
     ['copyPath', 'Copy Path'], ['copyToTerminal', 'Insert Path into Terminal'], ['copyName', 'Copy Name'],
@@ -171,17 +186,19 @@ function activate(context) {
     await vscode.commands.executeCommand('vivi.explorer.focus');
   }));
   context.subscriptions.push(vscode.commands.registerCommand('vivi.configureExplorerContextMenu', async () => {
-    const enabled = menuItems();
-    const picked = await vscode.window.showQuickPick(explorerMenuOptions.map(([id, label]) => ({ id, label, picked: enabled.includes(id) })),
-      { canPickMany: true, title: 'Explorer Context Menu', placeHolder: 'Check the actions to show; uncheck to hide', ignoreFocusOut: true });
+    const enabled = menuVisibility();
+    const picked = await vscode.window.showQuickPick(menuPaths.map(label => ({ label, picked: enabled[label] })),
+      { canPickMany: true, title: 'vivi Menu Visibility', placeHolder: 'Check the first- and second-level menu items to show', ignoreFocusOut: true });
     if (!picked) return;
     const inspection = config().inspect('explorerContextMenu');
     const target = inspection?.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder
       : inspection?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-    await config().update('explorerContextMenu', picked.map(item => item.id), target);
+    const selected = new Set(picked.map(item => item.label));
+    await config().update('explorerContextMenu', Object.fromEntries(menuPaths.map(item => [item, selected.has(item)])), target);
   }));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (event.affectsConfiguration('vivi.explorerContextMenu')) explorer.view?.webview.postMessage({ type: 'menuItems', items: menuItems() });
+    if (event.affectsConfiguration('vivi.explorerContextMenu')) for (const session of sessions)
+      session.panel.webview.postMessage({type:'menuVisibility',items:menuVisibility()});
   }));
   context.subscriptions.push(vscode.commands.registerCommand('vivi.open', async uri => {
     try {
@@ -215,7 +232,8 @@ function activate(context) {
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
-            maxSize: config().get('maxPreviewSize', 1600), preloadMaxMiB: config().get('preloadMaxMiB', 768),
+            maxSize: Math.max(...data.datasets.map(item => Math.max(item.width, item.height))),
+            menuVisibility: menuVisibility(),
             keyboardShortcuts: config().get('keyboardShortcuts', {}) });
         } catch (error) { worker.dispose(); throw error; }
       }
@@ -389,7 +407,10 @@ function activate(context) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
           const args = { ...msg.args };
-          if (msg.op === 'render') args.size = Math.min(config().get('maxPreviewSize',1600), Number(args.size) || 1600);
+          if (msg.op === 'render') {
+            args.binary = true;
+            args.compress = config().get('losslessCompression', true);
+          }
           const result = await frame.worker.request(msg.op, args);
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };

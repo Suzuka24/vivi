@@ -2,7 +2,7 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -29,7 +29,7 @@ const overviewCache = new Map(), transferHistograms = new Map(), displayBounds =
 const lutTables = new Map();
 let overviewBytes = 0, overviewRunning = false;
 const fullBox = () => [0, 0, dataset.width, dataset.height];
-const fullPreview = () => Math.max(dataset.width, dataset.height) <= metadata.maxSize;
+const fullPreview = () => true;
 const cacheKey = (frame, box) => `${frame}:${box.join(',')}`;
 const overviewKey = (signature, frame) => `${signature}:${frame}`;
 const visibleFrameIds = () => [...fileFrames].filter(([,state])=>state.visible!==false).map(([id])=>id);
@@ -133,8 +133,8 @@ function cachedOrthogonalSections(){
   const xz=new Float32Array(depth*width*channels),yz=new Float32Array(height*depth*channels);
   for(let z=0;z<depth;z++){
     const raw=slices[z].raw;
-    for(let x=0;x<width;x++)for(let c=0;c<channels;c++)xz[(z*width+x)*channels+c]=raw[(view.y*width+x)*channels+c];
-    for(let y=0;y<height;y++)for(let c=0;c<channels;c++)yz[(y*depth+z)*channels+c]=raw[(y*width+view.x)*channels+c];
+    for(let x=0;x<width;x++)for(let c=0;c<channels;c++)xz[(z*width+x)*channels+c]=Number(raw[(view.y*width+x)*channels+c]);
+    for(let y=0;y<height;y++)for(let c=0;c<channels;c++)yz[(y*depth+z)*channels+c]=Number(raw[(y*width+view.x)*channels+c]);
   }
   return {channels,xz:{raw:xz,width,height:depth},yz:{raw:yz,width:depth,height}};
 }
@@ -235,7 +235,7 @@ function ensureCache(signature) {
 }
 function updateCacheStatus() {
   const count=new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size;
-  $('cacheStatus').textContent=dataset?.frames>512?`${count} nearby cached`:dataset?.frames>1?`${count}/${dataset.frames} ready`:'';
+  $('cacheStatus').textContent=dataset?.frames>1?`${count}/${dataset.frames} ready`:'';
 }
 async function lutTable(name){
   if(name==='gray')return null;
@@ -253,12 +253,22 @@ async function recolorEntry(entry,args){
   entry.image=image;entry.result.low=low;entry.result.high=high;
 }
 async function decodePreview(result,args,paint=true) {
+  if(result.payload instanceof ArrayBuffer){
+    const {raw:sourceRaw,sourceBytes}=await decodeRawPayload(result);
+    const scale=Number(result.bscale??1),zero=Number(result.bzero??0),blank=result.blank;
+    const calibrated=scale!==1||zero!==0||blank!=null;
+    const raw=calibrated?Float64Array.from(sourceRaw,value=>blank!=null&&String(value)===String(blank)?NaN:Number(value)*scale+zero):sourceRaw;
+    delete result.payload;
+    const entry={image:null,raw,sourceRaw,sourceBytes,channels:result.channels,result,sourceFrame:args.frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength+(sourceBytes.buffer===raw.buffer?0:sourceBytes.byteLength)};
+    if(paint)await recolorEntry(entry,args);
+    return entry;
+  }
   if(result.raw){
     const binary=atob(result.raw),bytes=new Uint8Array(binary.length);
     for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-    const raw=result.dtype==='float64'?new Float64Array(bytes.buffer):new Float32Array(bytes.buffer);
+    const {raw,sourceBytes}=await decodeRawPayload({payload:bytes.buffer,dtype:result.dtype,codec:'none',shuffle:0,byteLength:bytes.byteLength,width:result.width,height:result.height,channels:result.channels});
     delete result.raw;
-    const entry={image:null,raw,channels:result.channels,result,sourceFrame:args.frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength};
+    const entry={image:null,raw,sourceBytes,channels:result.channels,result,sourceFrame:args.frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength+(sourceBytes.buffer===raw.buffer?0:sourceBytes.byteLength)};
     if(paint)await recolorEntry(entry,args);
     return entry;
   }
@@ -295,32 +305,26 @@ function schedulePlayback() {
 }
 function schedulePreload() {
   if (!dataset)return;
-  scheduleOverview();
   if(dataset.frames<2)return;
   if (preloadRunning) { preloadRestartWanted = true; return; }
-  clearTimeout(preloadTimer); preloadTimer = setTimeout(preloadFrames, 180);
+  clearTimeout(preloadTimer); queueMicrotask(preloadFrames);
 }
 async function preloadFrames() {
   if (preloadRunning || renderRunning || renderWanted || !dataset || dataset.frames < 2) return;
   preloadRunning = true;
   const generation = cacheGeneration, signature = cacheSignature, active = Number($('frame').value)-1;
-  const limit = Math.max(32,Number(metadata.preloadMaxMiB)||768)*1024*1024;
-  const estimate = Math.min(dataset.width,metadata.maxSize)*Math.min(dataset.height,metadata.maxSize)*4;
-  // Large FITS cubes can contain thousands of slices. Bound background SSH traffic,
-  // while continuing to preload every slice of ordinary-sized stacks.
-  const order=preloadFrameOrder(dataset.frames,active,estimate);
+  const order=preloadFrameOrder(dataset.frames,active);
   try {
     for (const frame of order) {
       if (generation !== cacheGeneration || renderRunning || renderWanted) break;
       const args = renderArgs(frame),key=cacheKey(frame,args.box);
       if (frameCache.has(key)) continue;
       if (signatureOf(args) !== signature) break;
-      if (cacheBytes + estimate > limit) break;
       try {
         const entry = await decodePreview(await request('render',args,true),args,false);
         if (generation !== cacheGeneration) break;
         frameCache.set(key,entry); cacheBytes += entry.bytes; updateCacheStatus();
-      } catch { break; }
+      } catch (error) { showError(error); break; }
     }
   } finally {
     preloadRunning = false;
@@ -346,14 +350,10 @@ async function render() {
   if (!preview) $('busy').textContent='Loading…';
   try {
     const entry=await decodePreview(await request('render',args),args);
-    if (cacheSignature === signature) {frameCache.set(key,entry);cacheBytes += entry.bytes;updateCacheStatus();trimFrameCache();}
+    if (cacheSignature === signature) {frameCache.set(key,entry);cacheBytes += entry.bytes;updateCacheStatus();}
     showPreview(entry,ticket);
   } catch(error){showError(error);stopPlay();}
   finally{renderRunning=false;if(renderWanted)render();else{schedulePlayback();schedulePreload();}}
-}
-function trimFrameCache(){
-  const limit=Math.max(32,Number(metadata.preloadMaxMiB)||768)*1024*1024;
-  while(cacheBytes>limit&&frameCache.size>1){const oldest=frameCache.keys().next().value;cacheBytes-=frameCache.get(oldest).bytes;frameCache.delete(oldest);}
 }
 function dismissError(){errorUntil=0;clearTimeout(errorTimer);$('error').hidden=true;if($('busy').textContent==='Error')$('busy').textContent='';}
 function clearExpiredError(){if(Date.now()>=errorUntil)dismissError();}
@@ -577,13 +577,45 @@ let calibration={factor:1,unit:"px"};
 async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${formatValue(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);clearExpiredError();if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${formatValue(r.area*calibration.factor*calibration.factor)} ${calibration.unit}²\nFinite pixels: ${formatValue(r.count)}\nMean: ${formatValue(r.mean)}\nStd (population): ${formatValue(r.std)}\nMin: ${formatValue(r.min)}\nMax: ${formatValue(r.max)}\nSum: ${formatValue(r.sum)}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${formatValue(r.samples)} samples\n${r.sampled?'Sampled; stride '+formatValue(r.step):'All pixels'}\nX: ${formatValue(r.edges[0])} … ${formatValue(r.edges.at(-1))}\nY: count per bin`;chart(r.counts);}else{$('analysis').textContent=`Profile · ${formatValue(r.values.length)} points\nLength: ${formatValue(r.distance.at(-1))} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
 canvas.addEventListener('wheel',e=>{e.preventDefault();if(orthogonal){changeFrame(e.deltaY>0?1:-1);return;}if(dataset)zoom(e.deltaY<0?1:-1,position(e));},{passive:false});
 function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.disabled=!run;if(run)button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
+function applyMenuVisibility(items={}){
+  for(const menu of document.querySelectorAll('.menu-bar > details.menu')){
+    const name=menu.querySelector(':scope > summary')?.textContent.trim();
+    menu.hidden=items[name]===false;
+    const panel=menu.querySelector(':scope > .menu-panel');
+    if(!panel)continue;
+    for(const element of panel.children){
+      if(!element.matches('button, details.submenu'))continue;
+      const label=(element.matches('button')?element.textContent:element.querySelector(':scope > summary')?.textContent||'').trim().replace(/\s*▸\s*$/,'');
+      element.hidden=items[`${name} > ${label}`]===false;
+    }
+  }
+}
+function copyDisplayedImage(){
+  if(!dataset||!navigator.clipboard?.write||typeof ClipboardItem==='undefined'){showError(new Error('Image clipboard is unavailable in this editor.'));return;}
+  const ratio=canvas.width/canvas.clientWidth;
+  const [left,top]=tileMode?[0,0]:transform(0,0);
+  const right=tileMode?canvas.clientWidth:left+(dataset.width+(orthogonal?.depth||0))*scale;
+  const bottom=tileMode?canvas.clientHeight:top+(dataset.height+(orthogonal?.depth||0))*scale;
+  const x0=Math.max(0,Math.floor(left*ratio)),y0=Math.max(0,Math.floor(top*ratio));
+  const x1=Math.min(canvas.width,Math.ceil(right*ratio)),y1=Math.min(canvas.height,Math.ceil(bottom*ratio));
+  if(x1<=x0||y1<=y0){showError(new Error('No image pixels are visible to copy.'));return;}
+  const copy=document.createElement('canvas');copy.width=x1-x0;copy.height=y1-y0;
+  const context=copy.getContext('2d');context.drawImage(canvas,x0,y0,copy.width,copy.height,0,0,copy.width,copy.height);
+  if(orthogonal&&!tileMode)for(const id of ['orthYZCanvas','orthXZCanvas']){
+    const section=$(id),rect=section.getBoundingClientRect(),view=canvas.getBoundingClientRect();
+    context.drawImage(section,(rect.left-view.left)*ratio-x0,(rect.top-view.top)*ratio-y0,rect.width*ratio,rect.height*ratio);
+  }
+  const png=new Promise((resolve,reject)=>copy.toBlob(blob=>blob?resolve(blob):reject(new Error('Unable to encode copied image')),'image/png'));
+  navigator.clipboard.write([new ClipboardItem({'image/png':png})]).catch(showError);
+}
 canvas.oncontextmenu=e=>{if(e.altKey||!dataset)return;if($('tool').value==='zoom'){e.preventDefault();zoom(-1,position(e));return;}const point=position(e);const selected=selection&&vertices.length===0&&!e.shiftKey&&(hitSelectionHandle(e)>=0||insideSelection(point));
   const items=selected?[
     ['ROI Properties…',()=>openSelectionDialog(true)],['Specify…',()=>openSelectionDialog(false)],
     ['ROI Defaults…',openRoiDefaults],['Add to Overlay',addSelectionToOverlay],['Add to ROI Manager',addSelectionToManager],
+    ['Copy Image',copyDisplayedImage],
     ['Duplicate Image…',openDuplicateDialog],
     ['Fit Spline',['polygon','freehand','line'].includes(selection.type)?fitSelectionSpline:null],['Create Mask',createSelectionMask],['Measure',()=>analyze('measure')]
-  ]:[['Rename…',()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame})],['Duplicate…',openDuplicateDialog],['Original Scale',()=>$('actual').click()],['Fit to Window',()=>$('fit').click()],['Brightness/Contrast…',openBCDialog],['Measure',()=>analyze('measure')],['Clear Selection',()=>$('clear').click()],['Monitor Memory…',()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame})]];
+  ]:[['Copy Image',copyDisplayedImage],['Rename…',()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame})],['Duplicate…',openDuplicateDialog],['Original Scale',()=>$('actual').click()],['Fit to Window',()=>$('fit').click()],['Brightness/Contrast…',openBCDialog],['Measure',()=>analyze('measure')],['Clear Selection',()=>$('clear').click()],['Monitor Memory…',()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame})]];
   showPopup($('imageContextMenu'),e,items);
 };
 function selectionBounds(points,type=selection?.type){
@@ -731,6 +763,7 @@ document.addEventListener('pointerover',event=>{
 document.addEventListener('pointerout',event=>{if(hoveredTipTarget&&!hoveredTipTarget.contains(event.relatedTarget))hideHoverTip();},true);
 document.addEventListener('pointerdown',event=>{for(const id of ['toolPopup','imageContextMenu'])if(!$(id).contains(event.target))$(id).hidden=true;});
 $('imageRename').onclick=()=>vscode.postMessage({type:'imageAction',action:'rename',frameId:activeFileFrame});
+$('imageCopy').onclick=copyDisplayedImage;
 $('imageDuplicate').onclick=openDuplicateDialog;
 $('monitorMemory').onclick=()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame});
 $('focusLayout').onclick=()=>vscode.postMessage({type:'focusLayout'});
@@ -1178,6 +1211,7 @@ new ResizeObserver(()=>{if(dataset)scheduleRender(80);}).observe($('stage'));
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlay();stopSliceHold();}});
 window.addEventListener('message',({data:m})=>{
   if(m.type==='frameAdded'){
+    if(m.menuVisibility)applyMenuVisibility(m.menuVisibility);
     if(m.keyboardShortcuts)keyboardShortcuts={...keyboardShortcuts,...m.keyboardShortcuts};
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
@@ -1195,6 +1229,8 @@ window.addEventListener('message',({data:m})=>{
     if(!retained){state.preview=null;state.tilePreview=null;state.previewBox=null;state.frameCache=new Map();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';}
     state.plane=Math.min(state.plane||1,state.metadata.datasets[0].frames);
     if(m.frameId===activeFileFrame){activeFileFrame=null;selectFileFrame(m.frameId);}else{frameList();scheduleTileRefresh(0);}
+  }else if(m.type==='menuVisibility'){
+    applyMenuVisibility(m.items);
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);
   }else if(m.type==='frameRenamed'){

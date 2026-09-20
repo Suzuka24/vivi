@@ -22,9 +22,9 @@ test('in-place preview transforms preserve the raw values and box geometry',()=>
   assert.deepEqual([...raw],[1,2,3,4,5,6]);
 });
 
-test('large FITS cubes preload only nearby slices while small stacks remain complete',()=>{
+test('large FITS cubes queue every slice starting near the active slice',()=>{
   const large=preloadFrameOrder(4200,95,256*256*4);
-  assert.equal(large.length,48);
+  assert.equal(large.length,4200);
   assert.deepEqual(large.slice(0,5),[95,96,94,97,93]);
   assert.ok(large.every(frame=>frame>=0&&frame<4200));
   assert.equal(preloadFrameOrder(101,50,795*795*4).length,101);
