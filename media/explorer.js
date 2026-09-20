@@ -62,6 +62,9 @@ function renderSidebar(state){
   for(const [target,key] of [['adjustCuts','cuts'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
   for(const [target,key] of [['adjustLow','low'],['adjustHigh','high']])if(document.activeElement!==$(target))$(target).value=formatAdjust(Number(state[key]));
   $('adjustInvert').checked=state.invert;$('adjustThreshold').checked=state.threshold;
+  $('adjustToggleBC').setAttribute('aria-pressed',String(state.bcVisible!==false));
+  $('adjustToggleBC').title=state.bcVisible===false?'Show B&C graph':'Hide B&C graph';
+  $('adjustToggleBC').setAttribute('aria-label',$('adjustToggleBC').title);
   syncAdjustRanges();
 }
 function stopHeldSlice(){if(!heldSlice)return;clearTimeout(heldSlice.timeout);clearInterval(heldSlice.interval);heldSlice=null;}
@@ -112,6 +115,7 @@ for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastR
 for(const [id,slider] of [['adjustBrightnessValue','adjustBrightnessRange'],['adjustContrastValue','adjustContrastRange']])$(id).onchange=()=>{const value=Number($(id).value);if(!Number.isFinite(value))return;$(slider).value=Math.max(0,Math.min(1000,Math.round(value*1000)));$(slider).oninput();};
 $('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
 $('adjustReset').onclick=()=>{if(adjustSource&&adjustSource.max>adjustSource.min){$('adjustCuts').value='manual';$('adjustLow').value=formatAdjust(adjustSource.min);$('adjustHigh').value=formatAdjust(adjustSource.max);syncAdjustRanges();}else $('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
+$('adjustToggleBC').onclick=()=>sideAction('toggleBC');
 for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert','adjustThreshold'])$(id).onchange=sendAdjust;
 $('adjustThreshold').onchange=()=>{if($('adjustThreshold').checked)$('adjustCuts').value='manual';sendAdjust();};
 for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};

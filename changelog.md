@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.10 (development build; not published)
+- Add an ADJUST button to show or hide the B&C graph.
+- Match tile pan movement to mouse movement in screen pixels.
+- Add synchronized XY, YZ, and XZ Orthogonal Views for a single stack Frame.
+
 ## 0.6.9 (development build; not published)
 - Scroll the entire Layout content area natively so frames beyond the visible portion remain reachable with the mouse wheel.
 - Preserve Layout's scroll position when Frame state updates rebuild the list.

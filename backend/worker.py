@@ -371,6 +371,35 @@ class Session:
         d = self.source.dataset(req.get("dataset", self.source.datasets[0]["id"]))
         frame = int(req.get("frame", 0))
         box = bounds(d, req.get("box"))
+        if op == "orthogonal":
+            if not d["extra"]:
+                raise ValueError("Orthogonal Views requires an image stack")
+            axis = int(req.get("axis", d["extra"][-1]))
+            if axis not in d["extra"] or d["shape"][axis] < 2:
+                raise ValueError("Choose a stack axis with at least two slices")
+            if not 0 <= frame < d["frames"]:
+                raise ValueError("Frame out of range")
+            x, y = int(req.get("x", d["width"] // 2)), int(req.get("y", d["height"] // 2))
+            if not (0 <= x < d["width"] and 0 <= y < d["height"]):
+                raise ValueError("Orthogonal crosshair is outside the image")
+            shape = tuple(d["shape"][index] for index in d["extra"])
+            coordinates = list(np.unravel_index(frame, shape))
+            axis_position = d["extra"].index(axis)
+            depth = shape[axis_position]
+            channels = self.source.source_channels(d)
+            if depth * (d["width"] + d["height"]) * channels > 16_000_000:
+                raise ValueError("Orthogonal sections exceed the display pixel limit")
+            xz, yz = [], []
+            for z in range(depth):
+                coordinates[axis_position] = z
+                plane = int(np.ravel_multi_index(tuple(coordinates), shape))
+                xz.append(np.asarray(self.source.read(d, plane, [0, y, d["width"], y + 1]))[0])
+                yz.append(np.asarray(self.source.read(d, plane, [x, 0, x + 1, d["height"]]))[:, 0])
+            xz = np.ascontiguousarray(np.stack(xz).astype(np.float32))
+            yz = np.ascontiguousarray(np.stack(yz).astype(np.float32))
+            return dict(x=x, y=y, axis=axis, depth=depth, channels=channels,
+                        xz=dict(width=d["width"], height=depth, raw=base64.b64encode(xz.tobytes()).decode("ascii")),
+                        yz=dict(width=d["height"], height=depth, raw=base64.b64encode(yz.tobytes()).decode("ascii")))
         if op == "render":
             return self.render(d, frame, box, req)
         if op == "duplicate":

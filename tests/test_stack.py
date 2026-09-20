@@ -1,5 +1,6 @@
 """Lossless stack operations on known grayscale values."""
 import os
+import base64
 from pathlib import Path
 import sys
 import tempfile
@@ -81,6 +82,18 @@ class StackTests(unittest.TestCase):
         self.assertAlmostEqual(stats["std"], values.std())
         self.assertEqual(stats["min"], values.min())
         self.assertEqual(stats["max"], values.max())
+
+    def test_orthogonal_sections_keep_original_values_and_axes(self):
+        result = self.session.handle({"op": "orthogonal", "dataset": 0, "frame": 1,
+                                      "axis": 0, "x": 2, "y": 1})
+        self.assertEqual((result["xz"]["width"], result["xz"]["height"]), (5, 3))
+        self.assertEqual((result["yz"]["width"], result["yz"]["height"]), (4, 3))
+        xz = np.frombuffer(base64.b64decode(result["xz"]["raw"]), np.float32).reshape(3, 5)
+        yz = np.frombuffer(base64.b64decode(result["yz"]["raw"]), np.float32).reshape(3, 4)
+        np.testing.assert_array_equal(xz, self.data[:, 1, :])
+        np.testing.assert_array_equal(yz, self.data[:, :, 2])
+        with self.assertRaisesRegex(ValueError, "outside"):
+            self.session.handle({"op": "orthogonal", "dataset": 0, "x": 5, "y": 1})
 
     def test_invalid_range_and_mixed_image_dtype(self):
         with self.assertRaises(ValueError):
