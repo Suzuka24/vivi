@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.20 (development build; not published)
+- Add Chinese explanations alongside English descriptions for every vivi setting and each menu-visibility checkbox.
+
 ## 0.6.19 (development build; not published)
 - Finish coloring each stack slice during preload so the ready count represents display-ready images and first playback does not flash blank frames.
 - Reuse the colored image while its display settings remain unchanged, avoiding repeated pixel conversion on every slice switch.
