@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.6.20",
+  "version": "0.6.21",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -121,7 +121,7 @@
         },
         "vivi.maxDecodedPixels": {
           "type": "number",
-          "default": 64000000,
+          "default": 256000000,
           "minimum": 1000000,
           "maximum": 500000000,
           "description": "Guard for full-frame decoders (PNG/JPEG/video). FITS/TIFF use region access. 限制 PNG、JPEG、视频等需要整帧解码的图像像素数；FITS 和 TIFF 通常按区域读取。"
@@ -285,11 +285,11 @@
           "default": {
             "fit": "f",
             "pan": "p",
-            "roi": "r",
-            "oval": "o",
+            "roi": "",
+            "oval": "c",
             "line": "l",
-            "measure": "m",
-            "clear": "escape",
+            "measure": "",
+            "clear": "",
             "undoTransform": "z",
             "pointer": "shift+p",
             "polygon": "",
@@ -297,14 +297,17 @@
             "angle": "",
             "text": "",
             "zoomTool": "",
-            "zoomIn": "",
-            "zoomOut": "",
+            "zoomIn": "=",
+            "zoomOut": "-",
             "actual": "",
             "play": "",
-            "nextSlice": "",
-            "previousSlice": "",
+            "nextSlice": "arrowright",
+            "previousSlice": "arrowleft",
+            "nextFrame": "arrowdown",
+            "previousFrame": "arrowup",
+            "toggleFrameDisplay": "m",
             "toggleBC": "",
-            "redoTransform": "",
+            "redoTransform": "shift+z",
             "openFile": "",
             "importSequence": "",
             "closeFileFrame": "",
@@ -418,13 +421,13 @@
             },
             "roi": {
               "type": "string",
-              "default": "r",
-              "description": "Key or modifier combination for roi; empty disables it."
+              "default": "",
+              "description": "Rectangle selection; no default key. 矩形选区；默认不设快捷键。"
             },
             "oval": {
               "type": "string",
-              "default": "o",
-              "description": "Key or modifier combination for oval; empty disables it."
+              "default": "c",
+              "description": "Oval selection; default C. 椭圆选区；默认按 C。"
             },
             "line": {
               "type": "string",
@@ -433,13 +436,13 @@
             },
             "measure": {
               "type": "string",
-              "default": "m",
-              "description": "Key or modifier combination for measure; empty disables it."
+              "default": "",
+              "description": "Measure; no default key because M toggles Frame display. 测量；默认不设快捷键，因为 M 用于切换 Frame 显示模式。"
             },
             "clear": {
               "type": "string",
-              "default": "escape",
-              "description": "Key or modifier combination for clear; empty disables it."
+              "default": "",
+              "description": "Clear selection; no default key. 清除选区；默认不设快捷键。"
             },
             "undoTransform": {
               "type": "string",
@@ -449,7 +452,7 @@
             "pointer": {
               "type": "string",
               "default": "shift+p",
-              "description": "Pointer tool. Default: Shift+P. Use '+' to join modifiers and a key, for example Shift+P or Ctrl+Alt+P; empty disables it."
+              "description": "Pointer tool. Default: Shift+P. Join modifiers and a key with '+', such as Shift+P or Ctrl+Alt+P; empty disables it. 指针工具默认 Shift+P；用加号连接修饰键与按键，例如 Shift+P 或 Ctrl+Alt+P；留空则禁用。"
             },
             "polygon": {
               "type": "string",
@@ -478,13 +481,13 @@
             },
             "zoomIn": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for zoomIn; empty disables it."
+              "default": "=",
+              "description": "Zoom in; default =. 放大；默认按 =。"
             },
             "zoomOut": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for zoomOut; empty disables it."
+              "default": "-",
+              "description": "Zoom out; default -. 缩小；默认按 -。"
             },
             "actual": {
               "type": "string",
@@ -498,13 +501,28 @@
             },
             "nextSlice": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for nextSlice; empty disables it."
+              "default": "arrowright",
+              "description": "Next slice; default ArrowRight. 下一张切片；默认按右方向键。"
             },
             "previousSlice": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for previousSlice; empty disables it."
+              "default": "arrowleft",
+              "description": "Previous slice; default ArrowLeft. 上一张切片；默认按左方向键。"
+            },
+            "nextFrame": {
+              "type": "string",
+              "default": "arrowdown",
+              "description": "Select the next Frame; default ArrowDown. 选中下一个 Frame；默认按下方向键。"
+            },
+            "previousFrame": {
+              "type": "string",
+              "default": "arrowup",
+              "description": "Select the previous Frame; default ArrowUp. 选中上一个 Frame；默认按上方向键。"
+            },
+            "toggleFrameDisplay": {
+              "type": "string",
+              "default": "m",
+              "description": "Toggle Single/Tile Frame display; default M. 切换单图或平铺显示；默认按 M。"
             },
             "toggleBC": {
               "type": "string",
@@ -513,8 +531,8 @@
             },
             "redoTransform": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for redoTransform; empty disables it."
+              "default": "shift+z",
+              "description": "Redo the last transform; default Shift+Z. 重做上一步变换；默认按 Shift+Z。"
             },
             "openFile": {
               "type": "string",

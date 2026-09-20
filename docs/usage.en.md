@@ -35,7 +35,7 @@ Image operations such as Duplicate, Crop, Montage, projections, and many Process
 | `vivi.managedExtensions` | File suffixes opened by vivi on double-click. |
 | `vivi.explorerContextMenu` | Checkboxes for visible first- and second-level viewer menu items, including planned commands; all shown by default. Also available through **vivi: Configure Menu Visibility**. |
 | `vivi.losslessCompression` | On by default: reversibly byte-shuffle and zlib-compress source-dtype pixel bytes. Off: transmit the source bytes directly. Incompressible data automatically stays raw. |
-| `vivi.keyboardShortcuts` | Action shortcuts such as `shift+p` or `ctrl+shift+h`; macOS Command is `cmd`. Pointer defaults to `shift+p`; an empty string disables an action. Shortcuts work while the image view, but no text field, has focus. |
+| `vivi.keyboardShortcuts` | Action shortcuts such as `shift+p` or `ctrl+shift+h`; macOS Command is `cmd`. Defaults: `=` / `-` zoom, Left/Right switch slices, Up/Down switch Frames, `m` toggles Single/Tile, and `shift+p` selects Pointer. An empty string disables an action. Shortcuts work while the image view, but no text field, has focus. |
 
 See [installation](installation.en.md) for backend setup and [privacy](../PRIVACY.md) for host storage and data transfer.
 

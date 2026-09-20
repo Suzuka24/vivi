@@ -17,7 +17,7 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane']};
 let tileRefreshTimer, sidebarTimer, layoutColumns=0, layoutRows=0;
-let keyboardShortcuts={fit:'f',pan:'p',pointer:'shift+p',roi:'r',oval:'o',line:'l',measure:'m',clear:'escape',undoTransform:'z'};
+let keyboardShortcuts={fit:'f',pan:'p',pointer:'shift+p',roi:'',oval:'c',line:'l',measure:'',clear:'',undoTransform:'z',redoTransform:'shift+z',zoomIn:'=',zoomOut:'-',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'m'};
 let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
 const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
 let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelRunning = false;
@@ -1190,13 +1190,9 @@ function shortcutMatches(binding,event){
 }
 document.addEventListener('keydown',e=>{
   if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
-  const k=e.key.toLowerCase();
-  if(e.shiftKey&&(['Equal','Minus','NumpadAdd','NumpadSubtract'].includes(e.code)||['+','=','-','_'].includes(k))){e.preventDefault();zoom(['Equal','NumpadAdd'].includes(e.code)||['+','='].includes(k)?1:-1);return;}
-  if(tileMode&&['arrowleft','arrowright','arrowup','arrowdown'].includes(k)){
-    e.preventDefault();const {w,h}=size(),{ids,cols}=tileGeometry(w,h),index=ids.indexOf(activeFileFrame),delta={arrowleft:-1,arrowright:1,arrowup:-cols,arrowdown:cols}[k],next=ids[index+delta];if(next)selectFileFrame(next);return;
-  }
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,e))?.[0];
-  if(!action)return;e.preventDefault();
+  if(!action)return;
+  e.preventDefault();
   if(action==='fit')fit();
   else if(['pan','pointer','roi','oval','polygon','freehand','line','angle','text','zoomTool'].includes(action))setTool(action==='zoomTool'?'zoom':action);
   else if(action==='undoTransform')$('editUndo').click();
@@ -1204,6 +1200,9 @@ document.addEventListener('keydown',e=>{
   else if(action==='toggleBC')applySidebarAction('toggleBC');
   else if(action==='nextSlice')changeFrame(1);
   else if(action==='previousSlice')changeFrame(-1);
+  else if(action==='nextFrame')moveFileFrame(1);
+  else if(action==='previousFrame')moveFileFrame(-1);
+  else if(action==='toggleFrameDisplay')$('tile').click();
   else if(action==='play')$('play').click();
   else if(action==='clear'){$('clear').click();stopPlay();stopBlink();for(const menu of document.querySelectorAll('.menu'))menu.open=false;}
   else if(action==='zoomIn'||action==='zoomOut'||action==='actual')$(action).click();

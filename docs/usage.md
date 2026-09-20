@@ -35,7 +35,7 @@ Duplicate、Crop、Montage、投影及多项 Process 命令会创建新 Frame。
 | `vivi.managedExtensions` | 双击时由 vivi 接管的文件后缀。 |
 | `vivi.explorerContextMenu` | 图像视图一级、二级菜单的显隐勾选；默认全部显示，包括待实现的灰色命令。也可运行 **vivi: Configure Menu Visibility**。 |
 | `vivi.losslessCompression` | 默认开启，原始 dtype 的像素字节经可逆重排和 zlib 压缩后传输；关闭则直接传原始字节。压缩无收益时会自动使用原始字节。 |
-| `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。Pointer 默认为 `shift+p`；空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
+| `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。默认 `=` / `-` 缩放、左右方向键切换切片、上下方向键切换 Frame、`m` 切换 Single/Tile、`shift+p` 选 Pointer。空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
 
 后端配置见[安装指南](installation.md)，主机数据存储与传输见[隐私说明](../PRIVACY.md)。
 

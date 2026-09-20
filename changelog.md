@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.21 (development build; not published)
+- Align portable vivi defaults with the current Cursor profile, including a 256-million-pixel full-frame decoder limit, direct zoom keys, and slice/tool bindings.
+- Configure Up/Down to switch Frames and M to toggle Single/Tile; remove unconditional Shift+plus/minus zoom handling so shortcut settings take precedence.
+
 ## 0.6.20 (development build; not published)
 - Add Chinese explanations alongside English descriptions for every vivi setting and each menu-visibility checkbox.
 

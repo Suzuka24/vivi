@@ -65,7 +65,7 @@ function activate(context) {
     // python3 is the portable Linux default; Windows installations commonly use python.exe.
     const configured = c.get('pythonPath', '') || vscode.workspace.getConfiguration('imageViewer').get('pythonPath', 'python3');
     const python = process.platform === 'win32' && configured === 'python3' ? 'python' : configured;
-    return new Backend(python, path.join(context.extensionPath, 'backend', 'worker.py'), c.get('requestTimeoutSeconds', 120)*1000, s => output.append(s), c.get('maxDecodedPixels', 64000000));
+    return new Backend(python, path.join(context.extensionPath, 'backend', 'worker.py'), c.get('requestTimeoutSeconds', 120)*1000, s => output.append(s), c.get('maxDecodedPixels', 256000000));
   };
   // The editor converts a file URI from the remote extension host over RPC.
   const uriFor = file => vscode.Uri.file(file);
