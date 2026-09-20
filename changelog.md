@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.8 (development build; not published)
+- Make the Layout Frame list respond directly to the mouse wheel and retain its scroll position when sidebar state refreshes.
+- Avoid drawing an empty cached preview immediately after an in-place stack flip or rotation while its pixels are being recolored.
+- Number repeated Frame titles automatically and let Layout, the image context menu, and Image > Rename edit the same display title without renaming source files.
+
 ## 0.6.7 (development build; not published)
 - Limit background preloading for very large stacks to nearby slices, keeping the current view responsive over Remote SSH.
 - Hold the slice previous/next buttons to step continuously at the configured FPS.

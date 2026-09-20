@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { Backend } = require('./backend');
 const { viewerFor, isManaged, nativeEditorFor } = require('./formats');
 const { listDirectory } = require('./explorerListing');
+const { uniqueFrameLabel } = require('./frameLabels');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -194,6 +195,7 @@ function activate(context) {
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels });
           const id = ++nextId;
+          label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
           frames.set(id, { id, file, label, worker, generated, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
@@ -234,16 +236,11 @@ function activate(context) {
           const frame=frames.get(msg.frameId||activeId);
           if(!frame)throw new Error('Select a frame first.');
           if(msg.action==='rename'){
-            const name=await vscode.window.showInputBox({prompt:'Rename image file',value:path.basename(frame.file)});
-            if(!name||name===path.basename(frame.file))return;
-            if(name!==path.basename(name)||name==='.'||name==='..')throw new Error('Enter one file name.');
-            const destination=path.join(path.dirname(frame.file),name);
-            await fs.rename(frame.file,destination);
-            const data=await frame.worker.request('open',{path:destination,maxPixels:frame.worker.maxPixels});
-            frame.file=destination;
-            panel.webview.postMessage({type:'frameRenamed',frameId:frame.id,...data});
-            if(frames.size===1)panel.title=name;
-            explorer.list(path.dirname(destination)).catch(report);
+            const name=await vscode.window.showInputBox({prompt:'Rename Frame title',value:frame.label||path.basename(frame.file)});
+            if(!name?.trim())return;
+            frame.label=uniqueFrameLabel(name,[...frames.values()].filter(item=>item!==frame).map(item=>item.label||path.basename(item.file)));
+            panel.webview.postMessage({type:'frameRenamed',frameId:frame.id,label:frame.label});
+            if(frames.size===1)panel.title=frame.label;
           }else if(msg.action==='duplicate'){
             const result=await frame.worker.request('duplicate',msg.args||{});
             generatedPaths.push(result.path);

@@ -31,7 +31,7 @@ function renderSidebar(state){
   $('frameTile').dataset.tip=state.tile?'Display: tiled frames; click for single frame':'Display: single frame; click to tile';
   $('frameTile').setAttribute('aria-label',$('frameTile').dataset.tip);
   $('frameColumns').value=state.columns||'';$('frameRows').value=state.rows||'';
-  const list=$('frameItems');list.replaceChildren();
+  const list=$('frameItems'),scrollTop=list.scrollTop;list.replaceChildren();
   for(const frame of state.frames){
     const row=document.createElement('div');row.className='frame-item'+(frame.id===state.active?' active':'');row.draggable=true;row.dataset.id=frame.id;
     const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='Drag to reorder';
@@ -44,8 +44,19 @@ function renderSidebar(state){
     row.ondragend=()=>row.classList.remove('dragging');
     row.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};
     row.ondrop=e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(from&&from!==frame.id)sideAction('reorderFrame',{from,to:frame.id});};
+    row.oncontextmenu=e=>{
+      e.preventDefault();closeMenu();
+      const menu=$('contextMenu'),rename=document.createElement('button');
+      rename.type='button';rename.role='menuitem';rename.textContent='Rename…';
+      rename.onclick=()=>{closeMenu();sideAction('renameFrame',frame.id);};
+      menu.append(rename);menu.hidden=false;
+      menu.style.left=Math.min(e.clientX,document.body.clientWidth-menu.offsetWidth-4)+'px';
+      menu.style.top=Math.min(e.clientY,document.body.clientHeight-menu.offsetHeight-4)+'px';
+      rename.focus();
+    };
     list.append(row);
   }
+  list.scrollTop=scrollTop;
   for(const input of document.querySelectorAll('[data-side-lock]'))input.checked=state.locks.includes(input.dataset.sideLock);
   const lut=$('adjustLut');if(lut.options.length!==state.luts.length){lut.replaceChildren();for(const [value,label] of state.luts){const option=document.createElement('option');option.value=value;option.textContent=label;lut.append(option);}}
   for(const [target,key] of [['adjustCuts','cuts'],['adjustStretch','stretch'],['adjustLut','cmap']])if(document.activeElement!==$(target))$(target).value=state[key];
@@ -53,6 +64,13 @@ function renderSidebar(state){
   $('adjustInvert').checked=state.invert;$('adjustThreshold').checked=state.threshold;
   syncAdjustRanges();
 }
+$('frameItems').addEventListener('wheel',event=>{
+  const list=$('frameItems');
+  if(list.scrollHeight<=list.clientHeight||!event.deltaY)return;
+  const amount=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?list.clientHeight:1);
+  const next=Math.max(0,Math.min(list.scrollHeight-list.clientHeight,list.scrollTop+amount));
+  if(next!==list.scrollTop){list.scrollTop=next;event.preventDefault();}
+},{passive:false});
 function stopHeldSlice(){if(!heldSlice)return;clearTimeout(heldSlice.timeout);clearInterval(heldSlice.interval);heldSlice=null;}
 for(const [id,delta] of [['slicePrev',-1],['sliceNext',1]]){
   const button=$(id);

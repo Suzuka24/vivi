@@ -8,7 +8,7 @@ vivi 是面向 VS Code 和 Cursor 的科学图像与数据查看扩展。它在�
 
 - 打开 PNG、JPEG、TIFF、FITS 等图像；浏览 TIFF stack、hyperstack 和 FITS 的多个 HDU。也可将图像文件夹导入为按自然顺序排列的 stack，并在切换 slice 时查看源文件名。具备相应解码器时，还可预览 AVI、MP4、MOV、MKV 视频。
 - 用 vivi Explorer 访问当前主机上任何有权限的路径，包括工作区以外的路径。通过 `vivi.managedExtensions` 选择哪些扩展名交由 vivi 双击打开；其他文件使用编辑器原有方式。
-- 在一个编辑器标签页中管理多个 Frame，可切换、平铺、排序，并选择哪些 Frame 参与显示参数同步。**Open in New Tab** 会打开独立标签页。
+- 在一个编辑器标签页中管理多个 Frame，可切换、平铺、排序，并选择哪些 Frame 参与显示参数同步。同名 Frame 自动编号；在 Layout 中右键 Rename 可修改显示标题，不会更改源文件。**Open in New Tab** 会打开独立标签页。
 - 调整亮度与对比度、拉伸、阈值和 LUT；绘制与测量选区；查看像素值和直方图。ImageJ 风格的菜单包含 stack 转换、montage、reslice、投影、剖面及部分图像处理命令。
 - 缓存图像预览以改善浏览流畅度。缓存上限可配置；超过上限的图像在导航时仍可能需要服务器读取。
 

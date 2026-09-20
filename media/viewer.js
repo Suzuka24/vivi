@@ -117,7 +117,7 @@ function drawOverlay(item){
   }else{ctx.moveTo(...transform(...points[0]));for(const point of points.slice(1))ctx.lineTo(...transform(...point));if(['polygon','freehand'].includes(item.type))ctx.closePath();}
   ctx.stroke();ctx.restore();
 }
-function drawEntry(entry){const box=entry.result.box,[x,y]=transform(box[0],box[1]);ctx.drawImage(entry.image,x,y,(box[2]-box[0])*scale,(box[3]-box[1])*scale);}
+function drawEntry(entry){if(!entry.image)return;const box=entry.result.box,[x,y]=transform(box[0],box[1]);ctx.drawImage(entry.image,x,y,(box[2]-box[0])*scale,(box[3]-box[1])*scale);}
 function scheduleRender(delay=75) {
   if(!dataset)return;
   clearTimeout(playbackTimer);
@@ -719,6 +719,7 @@ function applySidebarAction(action,value){
   else if(action==='fps'){$('fps').value=Math.max(1,Math.min(30,Number(value)||5));publishSidebar();}
   else if(action==='dataset'){$('dataset').value=String(value);selectDataset();}
   else if(action==='selectFrame')selectFileFrame(value);
+  else if(action==='renameFrame'&&fileFrames.has(Number(value)))vscode.postMessage({type:'imageAction',action:'rename',frameId:Number(value)});
   else if(action==='closeFrame')closeFileFrame(value);
   else if(action==='previousFrame')moveFileFrame(-1);
   else if(action==='nextFrame')moveFileFrame(1);
@@ -1041,7 +1042,7 @@ window.addEventListener('message',({data:m})=>{
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);
   }else if(m.type==='frameRenamed'){
-    const state=fileFrames.get(m.frameId);if(state){state.metadata={...state.metadata,...m};if(m.frameId===activeFileFrame){metadata=state.metadata;$('filename').textContent=m.path.split(/[\\/]/).pop();$('filename').title=m.path;}frameList();draw();}
+    const state=fileFrames.get(m.frameId);if(state){state.metadata={...state.metadata,...m};if(m.frameId===activeFileFrame){metadata=state.metadata;$('filename').textContent=metadata.label;$('filename').title=metadata.path;}frameList();draw();}
   }else if(m.type==='memoryInfo'){
     const mib=n=>formatValue(n/1048576);const dialog=openDialog('memory','Monitor Memory',`<pre>Extension host RSS: ${mib(m.host.rss)} MiB\nHost free: ${mib(m.free)} / ${mib(m.total)} MiB\nCurrent preview cache: ${mib(cacheBytes)} MiB\nImage Frames: ${fileFrames.size}</pre>`);dialog.hidden=false;
   }else if(m.type==='result'||m.type==='error'){
