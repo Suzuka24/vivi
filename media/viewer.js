@@ -355,8 +355,10 @@ function trimFrameCache(){
   const limit=Math.max(32,Number(metadata.preloadMaxMiB)||768)*1024*1024;
   while(cacheBytes>limit&&frameCache.size>1){const oldest=frameCache.keys().next().value;cacheBytes-=frameCache.get(oldest).bytes;frameCache.delete(oldest);}
 }
-function clearExpiredError(){if(Date.now()>=errorUntil)$('error').textContent='';}
-function showError(error){$('error').textContent=error.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
+function dismissError(){errorUntil=0;clearTimeout(errorTimer);$('error').hidden=true;if($('busy').textContent==='Error')$('busy').textContent='';}
+function clearExpiredError(){if(Date.now()>=errorUntil)dismissError();}
+function showError(error){$('errorMessage').textContent=error.message;$('error').hidden=false;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
+$('dismissError').onclick=dismissError;
 function fit(){if(!dataset)return;const {w,h}=size(),depth=orthogonal?.depth||0;scale=Math.min(w/(dataset.width+depth),h/(dataset.height+depth))*.96;cx=(dataset.width+depth)/2;cy=(dataset.height+depth)/2;commitFrameChange('view');commitFrameChange('scale');scheduleRender(0);}
 const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32];
 function zoom(direction,anchor=null){

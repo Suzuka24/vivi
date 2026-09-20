@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.15 (development build; not published)
+- Display errors as dismissible overlays above the image without changing the viewport geometry.
+
 ## 0.6.14 (development build; not published)
 - Match the visible size of the eight right-hand toolbar icons to the earlier drawing tools.
 
