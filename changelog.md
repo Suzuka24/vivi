@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.6 (development build; not published)
+- Scroll the Layout view and show slice controls only when the selected Frame has more than one plane.
+- Keep raw preview pixels in the stack cache so Adjust, Auto, LUT, and display transforms can update previews locally without rereading the image.
+- Import a folder as a naturally sorted, lazy image sequence with source filenames shown as slice labels.
+- Accept a typed zoom percentage and handle Shift+plus/minus zoom shortcuts.
+
 ## 0.6.5 (development build; not published)
 - Use a shared eight-character number formatter in Adjust, B&C, plots, measurements, and pixel readouts.
 - Update the B&C curve during Adjust slider movement and center the minimized B&C bar.

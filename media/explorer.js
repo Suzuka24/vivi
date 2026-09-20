@@ -1,7 +1,7 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
-const labels = { open: 'Open', openNewTab: 'Open in New Tab', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
+const labels = { open: 'Open', openNewTab: 'Open in New Tab', openStack: 'Open as Image Stack', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Move to Trash…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
@@ -123,12 +123,13 @@ function run(action, item) {
   if (action === 'open' || action === 'openNewTab') {
     if (item.directory) list(item.path);
     else vscode.postMessage({ type: 'open', path: item.path, newTab: action === 'openNewTab' });
-  } else vscode.postMessage({ type: 'action', action, path: item.path, folder: current });
+  } else if(action==='openStack')vscode.postMessage({type:'openSequence',path:item.path});
+  else vscode.postMessage({ type: 'action', action, path: item.path, folder: current });
 }
 function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false');$('historyMenu').hidden=true;$('pathHistory').setAttribute('aria-expanded','false'); }
 function showMenu(event, item) {
   event.preventDefault(); closeMenu();select(item);
-  const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder'].includes(action)) && (action !== 'openNewTab' || !item.directory));
+  const allowed = [...menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder'].includes(action)) && (action !== 'openNewTab' || !item.directory)),...(item.directory?['openStack']:[])];
   if (!allowed.length) return;
   const menu = $('contextMenu');
   for (const action of allowed) {

@@ -6,7 +6,7 @@ vivi is a scientific image and data viewer for VS Code and Cursor. Browse files 
 
 ## Highlights
 
-- Open PNG, JPEG, TIFF, FITS, and other supported image formats. TIFF stacks, hyperstacks, and multi-HDU FITS files expose their slices or series. Basic AVI/MP4/MOV/MKV previews are also supported when a suitable codec is available.
+- Open PNG, JPEG, TIFF, FITS, and other supported image formats. TIFF stacks, hyperstacks, and multi-HDU FITS files expose their slices or series. Import an image folder as a naturally sorted stack whose slices retain their filenames. Basic AVI/MP4/MOV/MKV previews are also supported when a suitable codec is available.
 - Navigate any accessible host path from vivi's Explorer, including paths outside the workspace. Choose which extensions vivi opens by default with `vivi.managedExtensions`; other files follow the editor's normal behavior.
 - Keep several files as Frames in one editor tab, switch or tile them, reorder them, and optionally synchronize display parameters across selected Frames. **Open in New Tab** creates an independent tab.
 - Adjust brightness and contrast, stretch, thresholds, and LUTs; draw and measure regions; inspect pixel values and histograms. The ImageJ-style menu also includes stack conversion, montage, reslice, projection, profiles, and selected image-processing commands.

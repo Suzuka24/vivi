@@ -24,6 +24,7 @@ function html(webview, context, name) {
     .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css'))
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
     .replaceAll('{{formatScript}}', uri('numberFormat.js'))
+    .replaceAll('{{displayScript}}', uri('display.js'))
     .replaceAll('{{roiScript}}', uri('roiGeometry.js')));
 }
 
@@ -55,11 +56,11 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.openWith', uri, 'default', editorOptions(newTab));
     }
   }
-  async function open(input, newTab = false) {
+  async function open(input, newTab = false, sequence = false) {
     const file = nativePath(input);
-    if (!(await fs.stat(file)).isFile()) throw new Error('Select a file.');
+    if (sequence ? !(await fs.stat(file)).isDirectory() : !(await fs.stat(file)).isFile()) throw new Error(sequence ? 'Select an image folder.' : 'Select a file.');
     const uri = uriFor(file);
-    if (managed(file)) {
+    if (sequence || managed(file)) {
       if (!newTab && sessions.length) {
         const session = sessions.at(-1);
         await session.add(file);
@@ -85,6 +86,7 @@ function activate(context) {
           if (msg.type === 'ready') publishSidebar(activeSession);
           if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
+          if (msg.type === 'openSequence') await open(msg.path, msg.newTab === true, true);
           if (msg.type === 'action') await this.action(msg);
           if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
         } catch (error) { view.webview.postMessage({ type: 'error', message: error.message }); }
@@ -192,11 +194,11 @@ function activate(context) {
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels });
           const id = ++nextId;
-          frames.set(id, { id, file, label, worker, generated, undoPaths: [], redoPaths: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
-            maxSize: config().get('maxPreviewSize', 1600), preloadMaxMiB: config().get('preloadMaxMiB', 512),
+            maxSize: config().get('maxPreviewSize', 1600), preloadMaxMiB: config().get('preloadMaxMiB', 768),
             keyboardShortcuts: config().get('keyboardShortcuts', {}) });
         } catch (error) { worker.dispose(); throw error; }
       }
@@ -254,6 +256,9 @@ function activate(context) {
         } else if (msg.type === 'openDialog') {
           const uris = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: true, openLabel: 'Add Frame' });
           for (const uri of uris || []) await session.add(uri.fsPath);
+        } else if (msg.type === 'importSequence') {
+          const uris = await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,openLabel:'Open Image Sequence'});
+          if (uris?.[0]) await session.add(uris[0].fsPath);
         } else if (msg.type === 'montage') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
@@ -291,6 +296,8 @@ function activate(context) {
             if (action === 'redo' && !frame.redoPaths.length) throw new Error('Nothing to redo.');
             const previous = frame.file;
             let destination;
+            const inverse = {flipHorizontal:'flipHorizontal',flipVertical:'flipVertical',rotateLeft:'rotateRight',rotateRight:'rotateLeft',rotate180:'rotate180'};
+            const displayTransform = action === 'undo' ? inverse[frame.undoActions.at(-1)] : action === 'redo' ? frame.redoActions.at(-1) : action;
             if (action === 'undo') destination = frame.undoPaths.at(-1);
             else if (action === 'redo') destination = frame.redoPaths.at(-1);
             else {
@@ -307,11 +314,14 @@ function activate(context) {
             }
             if (action === 'undo') {
               frame.undoPaths.pop();
+              frame.undoActions.pop();
               frame.redoPaths = [...frame.redoPaths, previous].slice(-10);
+              frame.redoActions = [...frame.redoActions, inverse[displayTransform]].slice(-10);
             } else {
-              if (action === 'redo') frame.redoPaths.pop();
-              else frame.redoPaths = [];
+              if (action === 'redo') { frame.redoPaths.pop(); frame.redoActions.pop(); }
+              else { frame.redoPaths = []; frame.redoActions = []; }
               frame.undoPaths = [...frame.undoPaths, previous].slice(-10);
+              frame.undoActions = [...frame.undoActions, displayTransform].slice(-10);
             }
             if (!frame.label) frame.label = path.basename(frame.undoPaths[0] || previous);
             frame.file = destination;
@@ -319,7 +329,7 @@ function activate(context) {
             frame.latestPng = null;
             frame.lastResult = null;
             panel.webview.postMessage({type:'frameUpdated',frameId:frame.id,label:frame.label,
-              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,...data});
+              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,displayTransform,...data});
           };
           const queued = frame.transformQueue.then(update);
           frame.transformQueue = queued.catch(() => {});

@@ -2,6 +2,7 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
+const {autoLimits,renderPixels,transformRaw,transformBox} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -23,6 +24,7 @@ let playing = false, playbackTimer, analysisRunning = false, blinking = false, b
 const pending = new Map();
 let cacheSignature = '', cacheGeneration = 0, cacheBytes = 0, preloadRunning = false, preloadRestartWanted = false, preloadTimer, activePng = '';
 const overviewCache = new Map(), transferHistograms = new Map(), displayBounds = new Map();
+const lutTables = new Map();
 let overviewBytes = 0, overviewRunning = false;
 const fullBox = () => [0, 0, dataset.width, dataset.height];
 const fullPreview = () => Math.max(dataset.width, dataset.height) <= metadata.maxSize;
@@ -102,7 +104,7 @@ function draw() {
   }else if(roi){const a=transform(roi[0],roi[1]),b=transform(roi[2],roi[3]);ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]);}
   if(line&&!selection){const a=transform(line[0],line[1]),b=transform(line[2],line[3]);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();}
   ctx.fillStyle='#72ebc4';ctx.font='16px sans-serif';for(const note of annotations){const at=transform(...note.point);ctx.fillText(note.text,at[0],at[1]);}
-  ctx.setLineDash([]);if(tileMode&&tileViewport())ctx.restore();$('zoom').textContent=`${formatValue(scale*100)}%`;
+  ctx.setLineDash([]);if(tileMode&&tileViewport())ctx.restore();if(document.activeElement!==$('zoom'))$('zoom').value=`${formatValue(scale*100)}%`;
 }
 function drawOverlay(item){
   const points=item.points;if(!points?.length)return;
@@ -121,11 +123,10 @@ function scheduleRender(delay=75) {
   revision++;renderWanted=true;clearTimeout(renderTimer);renderTimer=setTimeout(render,delay);draw();
 }
 function renderArgs(frame) {
-  return {dataset:dataset.id,frame,box:fullPreview()?fullBox():visibleBox(),size:metadata.maxSize,cuts:$('cuts').value,low:Number($('low').value),high:Number($('high').value),stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,thresholdLow:Number($('low').value),thresholdHigh:Number($('high').value)};
+  return {dataset:dataset.id,frame,box:fullPreview()?fullBox():visibleBox(),size:metadata.maxSize,raw:true,cuts:$('cuts').value,low:Number($('low').value),high:Number($('high').value),stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,thresholdLow:Number($('low').value),thresholdHigh:Number($('high').value)};
 }
 function signatureOf(args) {
-  const {frame, box, low, high, thresholdLow, thresholdHigh, ...rest} = args;
-  return activeFileFrame + ':' + JSON.stringify(args.cuts === 'manual' || args.threshold ? {...rest,low,high,thresholdLow,thresholdHigh} : rest);
+  return `${activeFileFrame}:${args.dataset}:${args.size}`;
 }
 function ensureCache(signature) {
   if (signature === cacheSignature) return;
@@ -135,24 +136,44 @@ function ensureCache(signature) {
 function updateCacheStatus() {
   $('cacheStatus').textContent = dataset?.frames > 1 ? `${new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size}/${dataset.frames} ready` : '';
 }
-async function decodePreview(result) {
-  const image = new Image(); image.src = 'data:image/png;base64,' + result.png; await image.decode();
-  return {image, result, bytes:image.width*image.height*4 + result.png.length*0.75};
+async function lutTable(name){
+  if(name==='gray')return null;
+  if(!lutTables.has(name))lutTables.set(name,request('lutPreview',{cmap:name}).then(result=>result.rgb).catch(error=>{lutTables.delete(name);throw error;}));
+  return lutTables.get(name);
+}
+async function recolorEntry(entry,args){
+  if(!entry.raw)return;
+  const limits=args.cuts==='manual'?[args.low,args.high]:args.cuts===entry.baseMode?entry.baseLimits:autoLimits(entry.raw,entry.channels,args.cuts);
+  const [low,high]=limits;
+  const lut=entry.channels>1&&!args.threshold?null:await lutTable(args.cmap);
+  const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high},lut);
+  const image=entry.image||document.createElement('canvas');image.width=entry.result.width;image.height=entry.result.height;
+  image.getContext('2d').putImageData(new ImageData(pixels,image.width,image.height),0,0);
+  entry.image=image;entry.result.low=low;entry.result.high=high;
+}
+async function decodePreview(result,args,paint=true) {
+  if(result.raw){
+    const binary=atob(result.raw),bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    const raw=result.dtype==='float64'?new Float64Array(bytes.buffer):new Float32Array(bytes.buffer);
+    delete result.raw;
+    const entry={image:null,raw,channels:result.channels,result,sourceFrame:args.frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength};
+    if(paint)await recolorEntry(entry,args);
+    return entry;
+  }
+  const image=new Image();image.src='data:image/png;base64,'+result.png;await image.decode();
+  return {image,result,bytes:image.width*image.height*4+result.png.length*.75};
 }
 function showPreview(entry, ticket) {
   if (ticket !== revision) return;
-  preview = entry.image; previewBox = entry.result.box; activePng = entry.result.png;
+  preview = entry.image; previewBox = entry.result.box; activePng = entry.result.png||'';
   renderedRevision = ticket; $('empty').hidden = true; clearExpiredError();
   if ($('cuts').value !== 'manual') {
     $('low').value = entry.result.low; $('high').value = entry.result.high;
     $('cuts').value='manual';
     commitFrameChange('bc');
-    const nextSignature=signatureOf(renderArgs(Number($('frame').value)-1));
-    ensureCache(nextSignature);
-    const key=cacheKey(Number($('frame').value)-1,entry.result.box);
-    frameCache.set(key,entry);cacheBytes+=entry.bytes;updateCacheStatus();
   }
-  $('busy').textContent = ''; draw();
+  $('busy').textContent = ''; draw();drawTransferCurve();
   loadTransferHistogram();publishSidebar();
 }
 function scheduleOverview() {
@@ -161,7 +182,7 @@ function scheduleOverview() {
   if(overviewCache.has(key))return;
   overviewRunning=true;
   const args={...renderArgs(frame),box:fullBox()};
-  request('render',args,true).then(decodePreview).then(entry=>{
+  request('render',args,true).then(result=>decodePreview(result,args)).then(entry=>{
     if(cacheSignature!==signature)return;
     overviewCache.set(key,entry);overviewBytes+=entry.bytes;
     while(overviewBytes>128*1024*1024&&overviewCache.size>1){const oldest=overviewCache.keys().next().value;overviewBytes-=overviewCache.get(oldest).bytes;overviewCache.delete(oldest);}
@@ -183,7 +204,7 @@ async function preloadFrames() {
   preloadRunning = true;
   const generation = cacheGeneration, signature = cacheSignature, active = Number($('frame').value)-1;
   const order = Array.from({length:dataset.frames}, (_,frame)=>frame).sort((a,b)=>Math.abs(a-active)-Math.abs(b-active));
-  const limit = Math.max(32,Number(metadata.preloadMaxMiB)||512)*1024*1024;
+  const limit = Math.max(32,Number(metadata.preloadMaxMiB)||768)*1024*1024;
   try {
     for (const frame of order) {
       if (generation !== cacheGeneration || renderRunning || renderWanted) break;
@@ -193,7 +214,7 @@ async function preloadFrames() {
       const estimate = Math.min(dataset.width,metadata.maxSize)*Math.min(dataset.height,metadata.maxSize)*4;
       if (cacheBytes + estimate > limit) break;
       try {
-        const entry = await decodePreview(await request('render',args,true));
+        const entry = await decodePreview(await request('render',args,true),args,false);
         if (generation !== cacheGeneration) break;
         frameCache.set(key,entry); cacheBytes += entry.bytes; updateCacheStatus();
       } catch { break; }
@@ -209,18 +230,26 @@ async function render() {
   const args=renderArgs(frame), signature=signatureOf(args);
   ensureCache(signature);
   const key=cacheKey(frame,args.box),cached=frameCache.get(key);
-  if(cached){showPreview(cached,ticket);schedulePlayback();schedulePreload();return;}
+  if(cached){
+    try{
+      for(const [entryKey,entry] of frameCache)if(entryKey.startsWith(`${frame}:`))await recolorEntry(entry,args);
+      const overview=overviewCache.get(overviewKey(signature,frame));if(overview)await recolorEntry(overview,args);
+      showPreview(cached,ticket);schedulePlayback();schedulePreload();
+    }
+    catch(error){showError(error);}
+    return;
+  }
   renderRunning=true;
   if (!preview) $('busy').textContent='Loading…';
   try {
-    const entry=await decodePreview(await request('render',args));
+    const entry=await decodePreview(await request('render',args),args);
     if (cacheSignature === signature) {frameCache.set(key,entry);cacheBytes += entry.bytes;updateCacheStatus();trimFrameCache();}
     showPreview(entry,ticket);
   } catch(error){showError(error);stopPlay();}
   finally{renderRunning=false;if(renderWanted)render();else{schedulePlayback();schedulePreload();}}
 }
 function trimFrameCache(){
-  const limit=Math.max(32,Number(metadata.preloadMaxMiB)||512)*1024*1024;
+  const limit=Math.max(32,Number(metadata.preloadMaxMiB)||768)*1024*1024;
   while(cacheBytes>limit&&frameCache.size>1){const oldest=frameCache.keys().next().value;cacheBytes-=frameCache.get(oldest).bytes;frameCache.delete(oldest);}
 }
 function clearExpiredError(){if(Date.now()>=errorUntil)$('error').textContent='';}
@@ -246,6 +275,8 @@ function frameLabel(){
     n=Math.floor(n/length);
   }
   $('frameCount').textContent=`/ ${dataset.frames}${coordinates.length>1?' · '+coordinates.join(' '):''}`;
+  const sourceName=metadata.sliceLabels?.[Number($('frame').value)-1]||'';
+  $('sliceName').textContent=sourceName;$('sliceName').title=sourceName;
   syncViewerToolbar();
   publishSidebar();
 }
@@ -256,6 +287,7 @@ function slicePosition(){const index=axisIndex(),axis=sliceAxes()[index];return 
 function setAxisSlice(value){const index=axisIndex(),axis=sliceAxes()[index];if(axis===undefined){$('frame').value=value;return;}const stride=axisStride(index),length=dataset.shape[axis],flat=Number($('frame').value)-1,current=Math.floor(flat/stride)%length,next=Math.max(0,Math.min(length-1,Math.round(value)-1));$('frame').value=flat+(next-current)*stride+1;}
 function syncViewerToolbar(){
   if(!dataset)return;
+  $('tool-slices').hidden=dataset.frames<2;
   const select=$('viewerDataset');
   if(select){if(select.options.length!==metadata.datasets.length||[...select.options].some((option,index)=>Number(option.value)!==metadata.datasets[index].id)){select.replaceChildren();for(const item of metadata.datasets){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;select.append(option);}}select.value=String(dataset.id);}
   const axis=$('viewerAxis'),axes=sliceAxes();axis.hidden=axes.length<2;
@@ -306,12 +338,15 @@ function refreshTilePreviews(){
     if(state.visible===false)continue;
     const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
     if(!d)continue;
-    const args={dataset:d.id,frame:Math.max(0,Math.min(d.frames-1,(state.plane||1)-1)),box:[0,0,d.width,d.height],size:Math.min(1024,state.metadata.maxSize),cuts:state.cuts||'percentile',low:Number(state.low??0),high:Number(state.high??1),stretch:state.stretch||'linear',cmap:state.cmap||'gray',invert:!!state.invert,threshold:!!state.threshold,thresholdLow:Number(state.low??0),thresholdHigh:Number(state.high??1)};
+    const args={dataset:d.id,frame:Math.max(0,Math.min(d.frames-1,(state.plane||1)-1)),box:[0,0,d.width,d.height],size:Math.min(1024,state.metadata.maxSize),raw:true,cuts:state.cuts||'percentile',low:Number(state.low??0),high:Number(state.high??1),stretch:state.stretch||'linear',cmap:state.cmap||'gray',invert:!!state.invert,threshold:!!state.threshold,thresholdLow:Number(state.low??0),thresholdHigh:Number(state.high??1)};
     const signature=JSON.stringify(args);
     if(signature===state.tileSignature)continue;
     state.tileSignature=signature;
     const generation=(state.tileGeneration||0)+1;state.tileGeneration=generation;
-    request('render',args,true,id).then(decodePreview).then(entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return;state.tilePreview=entry.image;draw();}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';});
+    const cached=state.frameCache?.get(cacheKey(args.frame,args.box))||state.tileEntry;
+    const reusable=cached&&cached.sourceFrame===args.frame&&cached.sourceDataset===args.dataset&&cached.result.box.join(',')===args.box.join(',');
+    const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,false));
+    source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return;await recolorEntry(entry,args);state.tileEntry=entry;state.tilePreview=entry.image;draw();}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';});
   }
 }
 function commitFrameChange(group){
@@ -331,9 +366,7 @@ function commitFrameChange(group){
       const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
       state.plane=Math.max(1,Math.min(d.frames,active.plane));
     }
-    if(group==='bc'||group==='color'||group==='slice'){
-      state.frameCache?.clear();state.cacheSignature='';state.cacheBytes=0;
-    }
+    if(group==='bc'||group==='color'||group==='slice')state.tileSignature='';
   }
   if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
 }
@@ -373,6 +406,24 @@ function frameList() {
   $('lockView').title=frameLocks.size?`Locked: ${[...frameLocks].join(', ')}. Click to unlock all.`:'Lock all Frame parameters';
   for(const input of document.querySelectorAll('[data-frame-lock]'))input.checked=frameLocks.has(input.dataset.frameLock);
   publishSidebar();
+}
+function transformCachedState(id,state,action,oldDataset){
+  if(!oldDataset||!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180'].includes(action))return false;
+  const transformed=new Set();
+  const update=entry=>{
+    if(!entry?.raw||transformed.has(entry))return;
+    transformed.add(entry);
+    const result=transformRaw(entry.raw,entry.result.width,entry.result.height,entry.channels,action);
+    entry.raw=result.raw;entry.result.box=transformBox(entry.result.box,oldDataset.width,oldDataset.height,action);
+    entry.result.width=result.width;entry.result.height=result.height;entry.image=null;
+  };
+  const next=new Map();
+  for(const entry of state.frameCache?.values()||[]){update(entry);next.set(cacheKey(entry.sourceFrame,entry.result.box),entry);}
+  state.frameCache=next;
+  update(state.tileEntry);
+  for(const [key,entry] of overviewCache)if(key.startsWith(`${id}:`))update(entry);
+  state.preview=null;state.previewBox=null;state.tilePreview=null;state.tileSignature='';
+  return transformed.size>0;
 }
 function selectFileFrame(id) {
   id=Number(id); if(!fileFrames.has(id)||id===activeFileFrame)return;
@@ -536,6 +587,7 @@ $('cmap').replaceChildren();
 for(const [value,label] of lutOptions){const option=document.createElement('option');option.value=value;option.textContent=label;$('cmap').append(option);}
 for(const button of document.querySelectorAll('.tool-button')) button.dataset.tip=button.title;
 $('fit').onclick=fit;$('actual').onclick=()=>{scale=1;commitFrameChange('scale');scheduleRender(0);};$('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
+$('zoom').onchange=()=>{const value=Number($('zoom').value.trim().replace(/%$/,''));if(!Number.isFinite(value)||value<=0||value>6400){$('zoom').value=`${formatValue(scale*100)}%`;showError(new Error('Enter a zoom percentage greater than 0 and at most 6400.'));return;}scale=value/100;commitFrameChange('scale');scheduleRender(0);};
 for(const button of document.querySelectorAll('[data-click]')) button.onclick=()=>$(button.dataset.click).click();
 for(const menu of document.querySelectorAll('.menu')){
   menu.querySelector(':scope > summary').addEventListener('click',event=>{event.preventDefault();menu.open=true;});
@@ -627,7 +679,7 @@ $('labelSelection').onclick=()=>{if(!selection){showError(new Error('Select a re
 $('previous').onclick=()=>{stopPlay();changeFrame(-1);};$('next').onclick=()=>{stopPlay();changeFrame(1);};
 $('frame').onchange=()=>{stopPlay();const n=Number($('frame').value);$('frame').value=Math.max(1,Math.min(dataset.frames,Number.isFinite(n)?Math.trunc(n):1));changeFrame(0);};
 $('play').onclick=()=>{if(playing)stopPlay();else{playing=true;$('playIcon').setAttribute('href','#i-pause');$('play').title='Pause frames';changeFrame(1,true);}};
-$('savePng').onclick=()=>{if(renderedRevision!==revision){showError(new Error('Wait for the current view to finish rendering before exporting.'));return;}vscode.postMessage({type:'export',kind:'png',png:activePng,fileFrame:activeFileFrame});};
+$('savePng').onclick=()=>{if(renderedRevision!==revision){showError(new Error('Wait for the current view to finish rendering before exporting.'));return;}const png=preview instanceof HTMLCanvasElement?preview.toDataURL('image/png').split(',')[1]:activePng;vscode.postMessage({type:'export',kind:'png',png,fileFrame:activeFileFrame});};
 $('saveCsv').onclick=()=>vscode.postMessage({type:'export',kind:'csv',fileFrame:activeFileFrame});
 $('fileFrames').onchange=()=>selectFileFrame($('fileFrames').value);
 $('previousFileFrame').onclick=()=>moveFileFrame(-1);
@@ -872,6 +924,7 @@ async function runStackAnalysis(action,args,title){
 }
 function stackDialog(action,title,extra='',analysis=false){if(!dataset||dataset.frames<2){showError(new Error(`${title} requires a stack.`));return;}document.querySelector(`[data-dialog="stack-${action}-options"]`)?.remove();const dialog=openDialog(`stack-${action}-options`,title,stackRangeFields()+extra+'<div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="stack-cancel">Cancel</button><button class="stack-run">Run</button></div>');dialog.querySelector('.stack-cancel').onclick=()=>dialog.remove();dialog.querySelector('.stack-run').onclick=()=>{try{const args=stackRange(dialog);if(action==='reslice'){args.axis=dialog.querySelector('.stack-axis').value;args.position=Number(dialog.querySelector('.stack-position').value);}if(action==='zAxisProfile'){args.x=Number(dialog.querySelector('.stack-x').value);args.y=Number(dialog.querySelector('.stack-y').value);}if(['measureStack','statistics'].includes(action)){args.box=roi||undefined;args.selection=selection||undefined;}if(analysis)runStackAnalysis(action,args,title);else runStackImage(action,args);dialog.remove();}catch(error){dialog.querySelector('.roi-dialog-error').textContent=error.message;}};}
 if($('stackImagesToStack'))$('stackImagesToStack').onclick=()=>runStackImage('imagesToStack');
+if($('importSequence'))$('importSequence').onclick=()=>vscode.postMessage({type:'importSequence'});
 if($('stackToImages'))$('stackToImages').onclick=()=>stackDialog('stackToImages','Stack to Images');
 if($('stackReslice'))$('stackReslice').onclick=()=>stackDialog('reslice','Reslice',`<label>Axis <select class="stack-axis"><option value="x">X</option><option value="y">Y</option></select></label><label>Position <input class="stack-position" type="number" min="0" max="${dataset?.width||1}" value="${Math.floor((dataset?.width||2)/2)}"></label>`);
 if($('stackZProfile'))$('stackZProfile').onclick=()=>stackDialog('zAxisProfile','Plot Z-axis Profile',`<label>X <input class="stack-x" type="number" min="0" max="${dataset?.width||1}" value="${Math.floor((dataset?.width||2)/2)}"></label><label>Y <input class="stack-y" type="number" min="0" max="${dataset?.height||1}" value="${Math.floor((dataset?.height||2)/2)}"></label>`,true);
@@ -937,7 +990,7 @@ for(const id of ['colorMergeChannels','colorChannelsTool','colorStackToRgb','col
 document.addEventListener('keydown',e=>{
   if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)||e.metaKey||e.ctrlKey||e.altKey)return;
   const k=e.key.toLowerCase();
-  if(e.shiftKey&&['+','=','-','_'].includes(k)){e.preventDefault();zoom(['+','='].includes(k)?1:-1);return;}
+  if(e.shiftKey&&(['Equal','Minus','NumpadAdd','NumpadSubtract'].includes(e.code)||['+','=','-','_'].includes(k))){e.preventDefault();zoom(['Equal','NumpadAdd'].includes(e.code)||['+','='].includes(k)?1:-1);return;}
   if(tileMode&&['arrowleft','arrowright','arrowup','arrowdown'].includes(k)){
     e.preventDefault();const {w,h}=size(),{ids,cols}=tileGeometry(w,h),index=ids.indexOf(activeFileFrame),delta={arrowleft:-1,arrowright:1,arrowup:-cols,arrowdown:cols}[k],next=ids[index+delta];if(next)selectFileFrame(next);return;
   }
@@ -958,7 +1011,11 @@ window.addEventListener('message',({data:m})=>{
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
     const state=fileFrames.get(m.frameId);if(!state)return;
-    state.metadata={...state.metadata,...m};for(const key of transferHistograms.keys())if(key.startsWith(`${m.frameId}:`))transferHistograms.delete(key);state.preview=null;state.tilePreview=null;state.previewBox=null;state.frameCache=new Map();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';state.plane=Math.min(state.plane||1,state.metadata.datasets[0].frames);
+    const oldDataset=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
+    const retained=transformCachedState(m.frameId,state,m.displayTransform,oldDataset);
+    state.metadata={...state.metadata,...m};for(const key of transferHistograms.keys())if(key.startsWith(`${m.frameId}:`))transferHistograms.delete(key);
+    if(!retained){state.preview=null;state.tilePreview=null;state.previewBox=null;state.frameCache=new Map();state.cacheSignature='';state.cacheBytes=0;state.tileSignature='';}
+    state.plane=Math.min(state.plane||1,state.metadata.datasets[0].frames);
     if(m.frameId===activeFileFrame){activeFileFrame=null;selectFileFrame(m.frameId);}else{frameList();scheduleTileRefresh(0);}
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);

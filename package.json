@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -189,10 +189,10 @@
         },
         "vivi.preloadMaxMiB": {
           "type": "number",
-          "default": 512,
+          "default": 768,
           "minimum": 32,
           "maximum": 4096,
-          "description": "Approximate maximum decoded preview memory for stack preloading. When exceeded, vivi preloads nearby frames and keeps the previous frame visible while loading others."
+          "description": "Maximum raw preview cache size for stack preloading. When exceeded, vivi preloads nearby frames and keeps the previous frame visible while loading others."
         },
         "vivi.keyboardShortcuts": {
           "type": "object",

@@ -57,3 +57,7 @@
 .viewer .transfer-panel.minimized .transfer-head{height:20px;line-height:1;align-items:center}
 .viewer .transfer-panel.minimized .transfer-head span{display:flex;align-items:center;height:20px}
 .viewer .transfer-panel.minimized .transfer-head button{display:flex;align-items:center;justify-content:center;height:20px;line-height:1}
+.viewer #tool-actions #zoom{width:72px;height:25px;flex:none;text-align:center;padding:2px 3px;color:#72d4b5}
+.viewer #tool-slices[hidden]{display:none}
+.viewer .tool-bar:has(#tool-slices[hidden]){min-height:38px}
+.viewer #sliceName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px;font-size:11px;color:var(--vscode-descriptionForeground,#9ca8b4)}

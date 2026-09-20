@@ -4,6 +4,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import warnings
@@ -29,6 +30,9 @@ class Source:
         self.max_pixels = max_pixels
         self.frame_cache = None
         self.frame_index = -1
+        self.sequence_source = None
+        self.sequence_index = -1
+        self.slice_labels = None
         self.warning = ""
         try:
             self._open()
@@ -37,6 +41,27 @@ class Source:
             raise
 
     def _open(self):
+        if os.path.isdir(self.path):
+            extensions = ('.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.gif', '.fits', '.fit', '.fts', '.fz')
+            files = [entry.path for entry in os.scandir(self.path) if entry.is_file() and entry.name.lower().endswith(extensions)]
+            files.sort(key=lambda name: [int(part) if part.isdigit() else part.casefold() for part in re.split(r'(\d+)', os.path.basename(name))])
+            if not files:
+                raise ValueError('Folder contains no supported images')
+            first = Source(files[0], self.max_pixels)
+            try:
+                d = first.datasets[0]
+                if d['frames'] != 1:
+                    raise ValueError('Image Sequence requires one plane per file')
+                self.kind = 'sequence'
+                self.sequence_files = files
+                self.slice_labels = [os.path.basename(file) for file in files]
+                self.sequence_shape = (d['width'], d['height'], d['dtype'], d['channel'] is not None)
+                shape = (len(files), d['height'], d['width']) + ((first.source_channels(d),) if d['channel'] is not None else ())
+                self._add(0, 'Image Sequence', shape, 'TYXS' if d['channel'] is not None else 'TYX', d['dtype'])
+                self.warning = 'Image Sequence reads each file as a slice and retains its filename as a slice label.'
+            finally:
+                first.close()
+            return
         ext = os.path.splitext(self.path)[1].lower()
         if ext in (".fits", ".fit", ".fts", ".fz"):
             from astropy.io import fits
@@ -109,11 +134,25 @@ class Source:
     def dataset(self, key=0):
         return next((d for d in self.datasets if d["id"] == int(key)), self.datasets[0])
 
+    @staticmethod
+    def source_channels(d):
+        return d['shape'][d['channel']] if d['channel'] is not None else 1
+
     def read(self, d, frame, box, step=1, pyramid=False):
         frame = int(frame)
         if not 0 <= frame < d["frames"]:
             raise ValueError("Frame out of range")
         x0, y0, x1, y1 = box
+        if self.kind == 'sequence':
+            if frame != self.sequence_index:
+                if self.sequence_source:
+                    self.sequence_source.close()
+                self.sequence_source = Source(self.sequence_files[frame], self.max_pixels)
+                self.sequence_index = frame
+                item = self.sequence_source.datasets[0]
+                if item['frames'] != 1 or (item['width'], item['height'], item['dtype'], item['channel'] is not None) != self.sequence_shape:
+                    raise ValueError(f'Image Sequence slice differs in size, type, or channels: {self.slice_labels[frame]}')
+            return self.sequence_source.read(self.sequence_source.datasets[0], 0, box, step, pyramid)
         if self.kind in ("raster", "video"):
             if self.frame_index != frame:
                 if self.kind == "video":
@@ -197,6 +236,9 @@ class Source:
         return np.transpose(np.asarray(data), order)
 
     def close(self):
+        if self.sequence_source:
+            self.sequence_source.close()
+            self.sequence_source = None
         self.frame_cache = None
         self.levels.clear()
         for handle in reversed(self.handles):
@@ -322,7 +364,8 @@ class Session:
                 self.source = None
             self.cuts.clear()
             self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)))
-            return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets, warning=self.source.warning)
+            return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets, warning=self.source.warning,
+                        sliceLabels=self.source.slice_labels)
         if not self.source:
             raise ValueError("Open an image first")
         d = self.source.dataset(req.get("dataset", self.source.datasets[0]["id"]))
@@ -793,6 +836,14 @@ class Session:
                 self.cuts.clear()
             self.cuts[key] = low, high
         finite = np.isfinite(data)
+        if req.get('raw'):
+            preview = np.ascontiguousarray(raw.astype(np.float32, copy=False))
+            if np.isfinite(data).any() and np.nanmax(np.abs(data[np.isfinite(data)])) > np.finfo(np.float32).max:
+                preview = np.ascontiguousarray(data)
+            return dict(raw=base64.b64encode(preview.tobytes()).decode('ascii'),
+                        dtype=str(preview.dtype), channels=preview.shape[-1] if preview.ndim == 3 else 1,
+                        box=box, width=preview.shape[1], height=preview.shape[0],
+                        low=low, high=high, step=step)
         scaled = np.clip((np.nan_to_num(data, nan=low, posinf=high, neginf=low)-low)/(high-low), 0, 1)
         stretch = req.get("stretch", "linear")
         if stretch == "log":
