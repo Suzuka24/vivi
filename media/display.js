@@ -212,6 +212,14 @@ function preloadFrameOrder(total,active,estimate){
   return order;
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
-if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};
+function selectedStackFrameIndices(extra,shape,selectedAxis,flatFrame){
+  if(!extra?.length)return [flatFrame];
+  const index=extra.includes(selectedAxis)?extra.indexOf(selectedAxis):extra.length-1;
+  const axis=extra[index],stride=extra.slice(index+1).reduce((product,item)=>product*shape[item],1);
+  const length=shape[axis],position=Math.floor(flatFrame/stride)%length,base=flatFrame-position*stride;
+  return Array.from({length},(_,next)=>base+next*stride);
+}
+
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices};
+if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices};
 })();

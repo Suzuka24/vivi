@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.14 (development build; not published)
+
+- Add S-Auto and S-Reset controls for calculating B&C limits from the current three-dimensional stack, including the selected stack axis in higher-dimensional data.
+- Add editable defaults for F2 rename, O oval selection, C clear selection, Enter playback, A/S frame B&C, and Shift+A/Shift+S stack B&C. Z remains Undo-only and Redo has no default binding.
+- Keep the five ADJUST action buttons aligned with consistent height and spacing.
+
 ## 0.7.13 (development build; not published)
 
 - Align the LAYOUT Frame navigation, display mode, Columns, and Rows controls to the display mode control height.

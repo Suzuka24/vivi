@@ -8,6 +8,7 @@ const lastActivatedByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
+let keyboardShortcuts={rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function frameIcon(symbol,title,pressed,action){
@@ -120,6 +121,8 @@ for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastR
 for(const [id,slider] of [['adjustBrightnessValue','adjustBrightnessRange'],['adjustContrastValue','adjustContrastRange']])$(id).onchange=()=>{const value=Number($(id).value);if(!Number.isFinite(value))return;$(slider).value=Math.max(0,Math.min(1000,Math.round(value*1000)));$(slider).oninput();};
 $('adjustAuto').onclick=()=>sideAction('autoCuts',{mode:'percentile'});
 $('adjustReset').onclick=()=>sideAction('autoCuts',{mode:'minmax',resetStretch:true});
+$('adjustStackAuto').onclick=()=>sideAction('stackAutoCuts',{mode:'percentile'});
+$('adjustStackReset').onclick=()=>sideAction('stackAutoCuts',{mode:'minmax',resetStretch:true});
 $('adjustToggleBC').onclick=()=>sideAction('toggleBC');
 for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert'])$(id).onchange=sendAdjust;
 for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
@@ -248,10 +251,30 @@ function showOpenAs(path,result){
 function closeOpenAs(){$('openAsDialog').hidden=true;openAsPath='';$('openAsRows').replaceChildren();$('openAsError').textContent='';}
 $('openAsClose').onclick=closeOpenAs;$('openAsCancel').onclick=closeOpenAs;
 $('openAsForm').onsubmit=event=>{event.preventDefault();const rows=[...$('openAsRows').children];for(const row of rows)row.querySelector('input').dispatchEvent(new Event('input'));if(rows.some(row=>row.dataset.valid!=='true')){$('openAsError').textContent='Correct the invalid target axes before opening.';return;}const axisLayouts=Object.fromEntries(rows.map(row=>[row.dataset.id,row.querySelector('input').value.trim().toLowerCase()]));$('openAsError').textContent='Opening…';vscode.postMessage({type:'openAs',path:openAsPath,axisLayouts});};
+function shortcutMatches(binding,event){
+  if(!binding)return false;
+  const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),key=parts.pop(),modifiers=new Set(parts);
+  return event.key.toLowerCase()===key&&event.ctrlKey===(modifiers.has('ctrl')||modifiers.has('control'))&&event.metaKey===(modifiers.has('cmd')||modifiers.has('meta'))&&event.altKey===(modifiers.has('alt')||modifiers.has('option'))&&event.shiftKey===modifiers.has('shift');
+}
+document.addEventListener('keydown',event=>{
+  if(['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName))return;
+  const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,event))?.[0];
+  if(action==='rename'){
+    if(document.body.classList.contains('view-layout')&&layoutState?.active)sideAction('renameFrame',layoutState.active);
+    else if(document.body.classList.contains('view-explorer')&&selectedPath)vscode.postMessage({type:'action',action:'rename',path:selectedPath,folder:current});
+    else return;
+  }else if(action==='autoCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'percentile'});
+  else if(action==='resetCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'minmax',resetStretch:true});
+  else if(action==='stackAutoCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'percentile'});
+  else if(action==='stackResetCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'minmax',resetStretch:true});
+  else return;
+  event.preventDefault();
+});
 window.addEventListener('message', ({data:message}) => {
   if (message.type === 'error') { loading=false;if(!$('openAsDialog').hidden){$('openAsError').textContent=message.message;return;}$('error').textContent = message.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(()=>{if(Date.now()>=errorUntil)$('error').textContent='';},2600);return; }
   if(message.type==='openAsInfo'){showOpenAs(message.path,message.result);return;}
   if(message.type==='openAsAccepted'){closeOpenAs();return;}
+  if(message.type==='shortcutSettings'){keyboardShortcuts={...keyboardShortcuts,...message.keyboardShortcuts};return;}
   if(message.type==='sidebarState'){renderSidebar(message.state);return;}
   if(message.type==='sidebarClear'){renderSidebar(null);return;}
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}

@@ -2,7 +2,7 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -17,7 +17,7 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane'],selection:['roi','line','selection','orthogonalState']};
 let tileRefreshTimer, tileRefreshRunning=false, tileRefreshWanted=false, sidebarTimer, layoutColumns=0, layoutRows=0;
-let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'c',line:'l',measure:'m',clear:'',undoTransform:'z',redoTransform:'shift+z',zoomIn:'=',zoomOut:'-',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'d'};
+let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'o',line:'l',measure:'m',clear:'c',undoTransform:'z',redoTransform:'',zoomIn:'=',zoomOut:'-',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'d',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
 let defaultFps=24,transformsRunning=0;
 let spaceHeld=false;
@@ -568,25 +568,69 @@ function currentRawEntry(){
   const frame=Number($('frame').value)-1;
   return [...frameCache.values()].find(entry=>entry.sourceDataset===dataset.id&&entry.sourceFrame===frame&&entry.raw);
 }
-function selectionSamples(entry){
-  if(!selection||!['roi','oval','polygon','freehand'].includes(selection.type))return entry.raw;
-  const width=entry.result.width,height=entry.result.height,channels=entry.channels||1,box=entry.result.box;
+function forEachSelectionPixel(entry,maxPixels,callback){
+  const width=entry.result.width,height=entry.result.height,channels=entry.channels||1,box=entry.result.box,pixels=width*height;
+  const areaSelection=selection&&['roi','oval','polygon','freehand'].includes(selection.type);
+  if(!areaSelection){
+    const step=Number.isFinite(maxPixels)?Math.max(1,Math.floor(pixels/Math.max(1,maxPixels))):1;
+    for(let pixel=0;pixel<pixels;pixel+=step)callback(pixel*channels,channels);
+    return;
+  }
   const bounds=selectionBounds(selection.points,selection.type),left=Math.max(0,Math.floor((bounds[0]-box[0])/(box[2]-box[0])*width)),right=Math.min(width,Math.ceil((bounds[2]-box[0])/(box[2]-box[0])*width));
   const top=Math.max(0,Math.floor((bounds[1]-box[1])/(box[3]-box[1])*height)),bottom=Math.min(height,Math.ceil((bounds[3]-box[1])/(box[3]-box[1])*height));
-  const area=Math.max(1,(right-left)*(bottom-top)),step=Math.max(1,Math.floor(Math.sqrt(area/262144))),values=[];
+  const area=Math.max(1,(right-left)*(bottom-top)),step=Number.isFinite(maxPixels)?Math.max(1,Math.floor(Math.sqrt(area/Math.max(1,maxPixels)))):1;
+  let count=0;
   for(let py=top;py<bottom;py+=step)for(let px=left;px<right;px+=step){
     const x=box[0]+(px+.5)*(box[2]-box[0])/width,y=box[1]+(py+.5)*(box[3]-box[1])/height;
     if(!insideSelection([x,y]))continue;
-    const offset=(py*width+px)*channels;for(let channel=0;channel<channels;channel++)values.push(entry.raw[offset+channel]);
+    callback((py*width+px)*channels,channels);count++;
   }
-  return values.length?values:entry.raw;
+  if(!count){
+    const fallbackStep=Number.isFinite(maxPixels)?Math.max(1,Math.floor(pixels/Math.max(1,maxPixels))):1;
+    for(let pixel=0;pixel<pixels;pixel+=fallbackStep)callback(pixel*channels,channels);
+  }
+}
+function selectionSamples(entry,maxPixels=262144){
+  if((!selection||!['roi','oval','polygon','freehand'].includes(selection.type))&&maxPixels===262144)return entry.raw;
+  const values=[];
+  forEachSelectionPixel(entry,maxPixels,(offset,channels)=>{for(let channel=0;channel<channels;channel++)values.push(entry.raw[offset+channel]);});
+  return values;
+}
+function applyCutLimits(low,high,resetStretch=false){
+  $('cuts').value='manual';$('low').value=low;$('high').value=high;if(resetStretch)$('stretch').value='linear';
+  drawTransferCurve();commitFrameChange('bc');scheduleRender(0);publishSidebar();
 }
 function applyAutoCuts(mode,resetStretch=false){
   const entry=currentRawEntry();
   if(!entry){$('cuts').value=mode;if(resetStretch)$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);return;}
   const [low,high]=autoLimits(selectionSamples(entry),entry.channels,mode);
-  $('cuts').value='manual';$('low').value=low;$('high').value=high;if(resetStretch)$('stretch').value='linear';
-  drawTransferCurve();commitFrameChange('bc');scheduleRender(0);publishSidebar();
+  applyCutLimits(low,high,resetStretch);
+}
+function selectedStackFrames(){
+  return selectedStackFrameIndices(sliceAxes(),dataset.shape,sliceAxes()[axisIndex()],Number($('frame').value)-1);
+}
+function applyStackAutoCuts(mode,resetStretch=false){
+  const frames=new Set(selectedStackFrames());
+  if(frames.size===1){applyAutoCuts(mode,resetStretch);return;}
+  const entries=[...frameCache.values()].filter(entry=>entry.raw&&entry.sourceDataset===dataset.id&&frames.has(entry.sourceFrame));
+  if(!entries.length){applyAutoCuts(mode,resetStretch);return;}
+  if(entries.length<frames.size){showError(new Error('Wait for the current stack to finish loading before using S-Auto or S-Reset.'));return;}
+  if(mode==='minmax'){
+    let low=Infinity,high=-Infinity;
+    for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,channels)=>{
+      const used=Math.min(3,channels);let value=0;
+      for(let channel=0;channel<used;channel++)value+=Number(entry.raw[offset+channel]);
+      value/=used;if(Number.isFinite(value)){low=Math.min(low,value);high=Math.max(high,value);}
+    });
+    if(!Number.isFinite(low)||!Number.isFinite(high)){low=0;high=1;}
+    else if(high<=low)high=low+Math.max(1,Math.abs(low)*1e-6);
+    applyCutLimits(low,high,resetStretch);return;
+  }
+  const channels=entries[0].channels||1,budget=Math.max(32,Math.floor(262144/entries.length)),samples=[];
+  for(const entry of entries){
+    for(const value of selectionSamples(entry,budget))samples.push(Number(value));
+  }
+  const [low,high]=autoLimits(samples,channels,mode);applyCutLimits(low,high,resetStretch);
 }
 function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}
 function saveFileFrame() {
@@ -1134,6 +1178,7 @@ function applySidebarAction(action,value){
   else if(action==='unlockAll'){for(const state of fileFrames.values())state.lockMember=false;frameList();if(tileMode)scheduleTileRefresh(0);}
   else if(action==='toggleBC'){transferVisible=!transferVisible;$('transferPanel').hidden=!transferVisible;publishSidebar();}
   else if(action==='autoCuts')applyAutoCuts(value?.mode||'percentile',!!value?.resetStretch);
+  else if(action==='stackAutoCuts')applyStackAutoCuts(value?.mode||'percentile',!!value?.resetStretch);
   else if(action==='adjust'){
     for(const key of ['low','high','stretch','cmap'])$(key).value=value[key];
     $('invert').checked=!!value.invert;if('threshold' in value)$('threshold').checked=!!value.threshold;
@@ -1492,6 +1537,11 @@ document.addEventListener('keydown',e=>{
   else if(action==='previousFrame')moveFileFrame(-1);
   else if(action==='toggleFrameDisplay')$('tile').click();
   else if(action==='play')$('play').click();
+  else if(action==='rename')$('imageRename').click();
+  else if(action==='autoCuts')applyAutoCuts('percentile');
+  else if(action==='resetCuts')applyAutoCuts('minmax',true);
+  else if(action==='stackAutoCuts')applyStackAutoCuts('percentile');
+  else if(action==='stackResetCuts')applyStackAutoCuts('minmax',true);
   else if(action==='clear'){$('clear').click();stopPlay();stopBlink();for(const menu of document.querySelectorAll('.menu'))menu.open=false;}
   else if(action==='zoomIn'||action==='zoomOut'||action==='actual')$(action).click();
   else $(action)?.click();

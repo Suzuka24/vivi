@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder}=require('../media/display');
+const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -28,4 +28,11 @@ test('stack preload visits the active frame first and then adjacent frames',()=>
   assert.deepEqual(large.slice(0,5),[95,96,94,97,93]);
   assert.ok(large.every(frame=>frame>=0&&frame<4200));
   assert.equal(preloadFrameOrder(101,50,795*795*4).length,101);
+});
+
+test('stack-wide B&C selects only the current stack along the chosen higher-dimensional axis',()=>{
+  assert.deepEqual(selectedStackFrameIndices([], [90,90], undefined, 0),[0]);
+  assert.deepEqual(selectedStackFrameIndices([0],[5,90,90],0,2),[0,1,2,3,4]);
+  assert.deepEqual(selectedStackFrameIndices([0,1],[2,3,90,90],1,4),[3,4,5]);
+  assert.deepEqual(selectedStackFrameIndices([0,1],[2,3,90,90],0,4),[1,4]);
 });

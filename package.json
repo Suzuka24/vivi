@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.13",
+  "version": "0.7.14",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -348,10 +348,10 @@
             "fit": "f",
             "hand": "h",
             "roi": "r",
-            "oval": "c",
+            "oval": "o",
             "line": "l",
             "measure": "m",
-            "clear": "",
+            "clear": "c",
             "undoTransform": "z",
             "pointer": "p",
             "polygon": "",
@@ -362,14 +362,15 @@
             "zoomIn": "=",
             "zoomOut": "-",
             "actual": "",
-            "play": "",
+            "play": "enter",
             "nextSlice": "arrowright",
             "previousSlice": "arrowleft",
             "nextFrame": "arrowdown",
             "previousFrame": "arrowup",
             "toggleFrameDisplay": "d",
+            "rename": "f2",
             "toggleBC": "",
-            "redoTransform": "shift+z",
+            "redoTransform": "",
             "openFile": "",
             "importSequence": "",
             "closeFileFrame": "",
@@ -389,8 +390,10 @@
             "type32": "",
             "typeRgb": "",
             "openBC": "",
-            "autoCuts": "",
-            "resetCuts": "",
+            "autoCuts": "a",
+            "resetCuts": "s",
+            "stackAutoCuts": "shift+a",
+            "stackResetCuts": "shift+s",
             "thresholdMenu": "",
             "colorShowLut": "",
             "colorDisplayLuts": "",
@@ -488,8 +491,8 @@
             },
             "oval": {
               "type": "string",
-              "default": "c",
-              "description": "Oval selection; default C. 椭圆选区；默认按 C。"
+              "default": "o",
+              "description": "Oval selection; default O. 椭圆选区；默认按 O。"
             },
             "line": {
               "type": "string",
@@ -503,8 +506,8 @@
             },
             "clear": {
               "type": "string",
-              "default": "",
-              "description": "Clear selection; no default key. 清除选区；默认不设快捷键。"
+              "default": "c",
+              "description": "Clear all selections; default C. 清除所有选区；默认按 C。"
             },
             "undoTransform": {
               "type": "string",
@@ -558,8 +561,8 @@
             },
             "play": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for play; empty disables it."
+              "default": "enter",
+              "description": "Play or pause the current stack; default Enter. 播放或暂停当前 stack；默认按回车键。"
             },
             "nextSlice": {
               "type": "string",
@@ -586,6 +589,11 @@
               "default": "d",
               "description": "Toggle Single/Tile Frame display; default D. 切换单图或平铺显示；默认按 D。"
             },
+            "rename": {
+              "type": "string",
+              "default": "f2",
+              "description": "Rename the selected Explorer item or Layout frame; default F2. 重命名 Explorer 中选中的项目或 Layout frame；默认按 F2。"
+            },
             "toggleBC": {
               "type": "string",
               "default": "",
@@ -593,8 +601,8 @@
             },
             "redoTransform": {
               "type": "string",
-              "default": "shift+z",
-              "description": "Redo the last transform; default Shift+Z. 重做上一步变换；默认按 Shift+Z。"
+              "default": "",
+              "description": "Redo the last transform; disabled by default so Z is reserved for Undo. 重做上一步变换；默认留空，使 Z 只用于撤销。"
             },
             "openFile": {
               "type": "string",
@@ -693,13 +701,23 @@
             },
             "autoCuts": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for autoCuts; empty disables it."
+              "default": "a",
+              "description": "Auto B&C from the current image or selection; default A. 按当前图像或选区自动调整 B&C；默认按 A。"
             },
             "resetCuts": {
               "type": "string",
-              "default": "",
-              "description": "Key or modifier combination for resetCuts; empty disables it."
+              "default": "s",
+              "description": "Reset B&C from the current image or selection; default S. 按当前图像或选区重置 B&C；默认按 S。"
+            },
+            "stackAutoCuts": {
+              "type": "string",
+              "default": "shift+a",
+              "description": "Auto B&C from the current 3D stack or selection; default Shift+A. 按当前三维 stack 或选区自动调整 B&C；默认按 Shift+A。"
+            },
+            "stackResetCuts": {
+              "type": "string",
+              "default": "shift+s",
+              "description": "Reset B&C from the current 3D stack or selection; default Shift+S. 按当前三维 stack 或选区重置 B&C；默认按 Shift+S。"
             },
             "thresholdMenu": {
               "type": "string",

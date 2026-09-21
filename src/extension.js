@@ -122,7 +122,7 @@ function activate(context) {
         try {
           if (msg.type === 'ready' && this.kind === 'explorer') await this.list(context.workspaceState.get('explorerPath', config().get('defaultPath', '~')),
             0, context.workspaceState.get('explorerSort', 'nameAsc'), context.workspaceState.get('explorerShowHidden', true));
-          if (msg.type === 'ready') publishSidebar(activeSession);
+          if (msg.type === 'ready') { view.webview.postMessage({type:'shortcutSettings',keyboardShortcuts:config().get('keyboardShortcuts', {})});publishSidebar(activeSession); }
           if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
           if (msg.type === 'inspectOpenAs') {
