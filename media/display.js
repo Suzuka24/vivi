@@ -201,12 +201,7 @@ function transformBox(box,width,height,action){
 }
 
 function preloadFrameOrder(total,active,estimate){
-  const order=[];
-  for(let distance=0;order.length<total&&distance<total;distance++){
-    if(active+distance<total)order.push(active+distance);
-    if(distance&&active-distance>=0&&order.length<total)order.push(active-distance);
-  }
-  return order;
+  return Array.from({length:total},(_,frame)=>frame);
 }
 
 if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder};

@@ -69,7 +69,7 @@ class FixtureTests(unittest.TestCase):
                        'binaryErode', 'binaryDilate', 'binaryOpen', 'binaryClose', 'fftPower',
                        'mean', 'minimum', 'maximum', 'variance', 'findMaxima',
                        'noiseGaussian', 'saltPepper', 'shadowNorth', 'shadowSouth',
-                       'shadowEast', 'shadowWest', 'binaryFillHoles', 'binarySkeleton',
+                       'shadowEast', 'shadowWest', 'binaryFillHoles',
                        'fftBandpass'):
             with self.subTest(action=action):
                 value=0.05 if action in ('saltPepper','fftBandpass') else 1
@@ -80,6 +80,8 @@ class FixtureTests(unittest.TestCase):
                     self.assertTrue(np.all(np.isfinite(image)))
                 finally:
                     os.unlink(result['path'])
+        with self.assertRaisesRegex(ValueError, '8-bit binary'):
+            self.session.handle({'op':'derive','dataset':0,'frame':0,'action':'binarySkeleton'})
 
     def test_image_type_scale_and_rotation(self):
         self.open('gray.png')

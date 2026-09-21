@@ -28,7 +28,8 @@
 .viewer #transferCurve{display:block;width:180px;height:94px;margin-top:3px}
 .viewer .transfer-panel.minimized{width:80px}
 .viewer .transfer-panel.minimized canvas{display:none}
-.viewer #analysisPane{max-width:calc(100% - 20px);z-index:7}
+.viewer #analysisPane{width:400px;max-width:calc(100% - 20px);z-index:7}
+.viewer #analysis{white-space:pre;overflow:auto;font-variant-numeric:tabular-nums;font-size:11px;line-height:1.45}
 .viewer .floating-dialog[data-dialog="histogram-result"]{width:480px;max-width:calc(100vw - 24px)}
 .viewer .hist-plot,.viewer .stack-plot{display:block;max-width:100%;height:auto}
 .viewer .hist-range{display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
@@ -53,6 +54,7 @@
 .viewer .floating-dialog.minimized .dialog-head{height:27px;padding:2px 5px}
 .viewer #analysisPane.minimized{width:180px;height:28px;min-height:28px;max-height:28px;padding:0;overflow:hidden}
 .viewer #analysisPane.minimized .analysis-head{height:27px;padding:2px 5px}
+.viewer #analysisPane.minimized #analysis,.viewer #analysisPane.minimized #chart,.viewer #analysisPane.minimized .plot-readout{display:none}
 .viewer #tool-actions{display:flex;align-items:center;gap:3px;height:31px;min-width:0;width:100%;overflow-x:auto;white-space:nowrap}
 .viewer #tool-actions .tool-button,.viewer #tool-actions .tool-group{flex:none;vertical-align:middle}
 .viewer #tool-actions #fit,.viewer #tool-actions #actual{height:26px;line-height:1;align-self:center}
@@ -64,3 +66,16 @@
 .viewer #tool-slices[hidden]{display:none}
 .viewer .tool-bar:has(#tool-slices[hidden]){min-height:38px}
 .viewer #sliceName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px;font-size:11px;color:var(--vscode-descriptionForeground,#9ca8b4)}
+.viewer .statistics-dialog{width:min(640px,calc(100vw - 24px));min-width:min(520px,calc(100vw - 24px))}
+.viewer .stats-content{font-size:11px;font-variant-numeric:tabular-nums;overflow:auto}
+.viewer .stats-scroll{overflow:auto;max-height:330px}
+.viewer .stats-table{width:100%;border-collapse:collapse;border:0;table-layout:auto}
+.viewer .stats-table th,.viewer .stats-table td{border:0;padding:3px 9px;text-align:right;white-space:nowrap}
+.viewer .stats-table th{position:sticky;top:0;background:var(--vscode-editorWidget-background,#242b35);color:var(--vscode-descriptionForeground,#aeb7c3);font-weight:600}
+.viewer .stats-table th:first-child,.viewer .stats-table td:first-child{text-align:left}
+.viewer .stats-list{display:grid;grid-template-columns:max-content minmax(80px,1fr);column-gap:12px;row-gap:3px;margin:4px 0 8px}
+.viewer .stats-list>span:nth-child(odd){color:var(--vscode-descriptionForeground,#aeb7c3)}
+.viewer .stats-list>span:nth-child(even){text-align:right;white-space:nowrap}
+.viewer .interactive-plot{display:none;max-width:100%;height:auto;cursor:crosshair;touch-action:none}
+.viewer .interactive-plot.has-data{display:block}
+.viewer .plot-readout{height:17px;line-height:17px;font-size:10px;color:var(--vscode-descriptionForeground,#aeb7c3);font-variant-numeric:tabular-nums;white-space:nowrap}

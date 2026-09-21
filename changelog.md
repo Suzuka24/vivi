@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 (development build; not published)
+- Load each stack as one source-ordered binary payload and construct every slice before first display. Preserve source dtype and apply optional lossy and lossless transport stages to the whole payload.
+- Reslice stacks along the active straight, segmented, or freehand line, including the endpoint of each segment.
+- Apply supported Process operations only inside area selections, show ImageJ-style selection geometry in the status bar, and explain the 8-bit binary requirement when Skeletonize is unavailable.
+- Default montage columns to the rounded square root of the selected slice count.
+- Add interactive profile plots with hover values, wheel zoom, drag pan, and double-click reset. Use fixed-width borderless tables for stack measurements and statistics.
+
 ## 0.7.0 (development build; not published)
 - Add **Open As…** for multidimensional TIFF and FITS data. It lists every series or HDU, shows source shape and axis letters, validates rearrange-style target expressions, folds adjacent axes such as `uv h w`, and lets a channel axis become stack slices with `c h w`.
 - Let folder stacks optionally filter all candidate images by a user-provided `H W`; when omitted, the first qualifying image defines the required size. Mismatched files are skipped.

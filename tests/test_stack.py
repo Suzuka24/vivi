@@ -83,6 +83,48 @@ class StackTests(unittest.TestCase):
         self.assertEqual(stats["min"], values.min())
         self.assertEqual(stats["max"], values.max())
 
+    def test_line_reslice_follows_selection_and_includes_endpoint(self):
+        result = self.call("reslice", points=[[0, 1], [4, 1]])
+        try:
+            image = tifffile.imread(result["path"])
+            self.assertEqual(image.shape, (3, 5))
+            np.testing.assert_array_equal(image, self.data[:, 1, :])
+            self.assertEqual(result["points"], [(0, 1), (4, 1)])
+        finally:
+            os.unlink(result["path"])
+
+    def test_batch_render_returns_complete_stack_in_source_dtype(self):
+        result = self.session.handle({"op": "renderBatch", "dataset": 0,
+                                      "frames": [0, 1, 2], "box": [0, 0, 5, 4],
+                                      "raw": True, "binary": True, "compress": False,
+                                      "cuts": "minmax"})
+        payload = result.pop("_binary")
+        self.assertEqual(result["frames"], [0, 1, 2])
+        self.assertEqual(result["dtype"], self.data.dtype.str)
+        self.assertEqual(result["frameHeight"], 4)
+        self.assertEqual(result["limits"], [(1000.0, 1019.0), (1020.0, 1039.0), (1040.0, 1059.0)])
+        np.testing.assert_array_equal(np.frombuffer(payload, dtype=self.data.dtype).reshape(self.data.shape), self.data)
+
+    def test_smooth_only_changes_area_selection(self):
+        data = np.zeros((3, 4, 5), dtype=np.uint16)
+        data[:, 2, 2] = 1000
+        tifffile.imwrite(self.source_path, data, photometric="minisblack", metadata={"axes": "TYX"})
+        self.session.handle({"op": "open", "path": self.source_path})
+        selection = {"type": "roi", "points": [[1, 1], [4, 3]]}
+        result = self.session.handle({"op": "derive", "action": "smooth", "dataset": 0,
+                                      "frame": 0, "selection": selection})
+        try:
+            image = tifffile.imread(result["path"])
+            np.testing.assert_array_equal(image[0], data[0, 0])
+            np.testing.assert_array_equal(image[:, 0], data[0, :, 0])
+            self.assertFalse(np.array_equal(image[1:3, 1:4], data[0, 1:3, 1:4]))
+        finally:
+            os.unlink(result["path"])
+
+    def test_skeleton_reports_required_image_type(self):
+        with self.assertRaisesRegex(ValueError, "8-bit binary"):
+            self.session.handle({"op": "derive", "action": "binarySkeleton", "dataset": 0, "frame": 0})
+
     def test_orthogonal_sections_keep_original_values_and_axes(self):
         result = self.session.handle({"op": "orthogonal", "dataset": 0, "frame": 1,
                                       "axis": 0, "x": 2, "y": 1})

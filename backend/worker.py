@@ -501,6 +501,8 @@ class Session:
                         yz=dict(width=depth, height=d["height"], raw=base64.b64encode(yz.tobytes()).decode("ascii")))
         if op == "render":
             return self.render(d, frame, box, req)
+        if op == "renderBatch":
+            return self.render_batch(d, box, req)
         if op == "duplicate":
             import tifffile
             selected = req.get("selection")
@@ -576,6 +578,7 @@ class Session:
                     result /= d["frames"]
             else:
                 result = np.asarray(self.source.read(d, frame, box))
+                selection_original = np.array(result, copy=True)
                 if action == "flipHorizontal":
                     result = result[:, ::-1]
                 elif action == "flipVertical":
@@ -684,6 +687,8 @@ class Session:
                         border=set(np.unique(np.concatenate((labels[0],labels[-1],labels[:,0],labels[:,-1]))))
                         result=np.uint8(binary|np.isin(labels,[i for i in range(1,count) if i not in border]))*255
                     elif action == "binarySkeleton":
+                        if result.dtype != np.uint8 or result.ndim != 2 or not np.isin(np.unique(result), (0, 255)).all():
+                            raise ValueError("Skeletonize requires an 8-bit binary image containing only 0 and 255. Use Process > Binary > Make Binary first.")
                         gray=np.mean(data[...,:3],axis=-1) if data.ndim==3 else data
                         current=np.uint8(gray>0)*255;skeleton=np.zeros_like(current);kernel=cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
                         for _ in range(min(max(current.shape),4096)):
@@ -763,6 +768,21 @@ class Session:
                     else:
                         blurred = cv2.GaussianBlur(data, (0, 0), sigmaX=radius, sigmaY=radius)
                         result = blurred if action == "gaussian" else data + (data - blurred)
+                selection_actions = {"add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram",
+                    "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels",
+                    "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode",
+                    "binaryDilate", "binaryOpen", "binaryClose", "mean", "minimum", "maximum",
+                    "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth",
+                    "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton",
+                    "binaryWatershed", "removeOutliers", "convolve"}
+                selected = req.get("selection")
+                if action in selection_actions and selected and selected.get("type") in ("roi", "oval", "polygon", "freehand"):
+                    if result.shape != selection_original.shape:
+                        raise ValueError("This operation cannot preserve the current area selection")
+                    mask = selection_mask(selected, box, result.shape[:2])
+                    if result.ndim == 3:
+                        mask = mask[..., None]
+                    result = np.where(mask, result, selection_original)
             descriptor, destination = tempfile.mkstemp(prefix="vivi-derived-", suffix=".tif")
             os.close(descriptor)
             try:
@@ -839,7 +859,8 @@ class Session:
             return {"png": base64.b64encode(data.getvalue()).decode("ascii"), "width": image.width, "height": image.height}
         if op == "montage":
             start, end = self.stack_range(d, req)
-            columns = int(req.get("columns", 5))
+            slice_count = end - start
+            columns = int(req.get("columns", max(1, round(math.sqrt(slice_count)))))
             if not 1 <= columns <= 32:
                 raise ValueError("Columns must be between 1 and 32")
             scale = finite_number(req.get("scalePercent"), 100)
@@ -898,6 +919,35 @@ class Session:
             return {"paths": paths, "frames": list(range(start + 1, end + 1))}
         if op == "reslice":
             start, end = self.stack_range(d, req)
+            points = req.get("points")
+            if isinstance(points, list) and len(points) >= 2:
+                clean = []
+                for point in points:
+                    if not isinstance(point, list) or len(point) != 2:
+                        raise ValueError("Reslice line points must be X,Y pairs")
+                    clean.append((finite_number(point[0], 0), finite_number(point[1], 0)))
+                samples = []
+                for segment, (first, last) in enumerate(zip(clean, clean[1:])):
+                    dx, dy = last[0] - first[0], last[1] - first[1]
+                    count = max(1, round(math.hypot(dx, dy)))
+                    values = [(first[0] + dx * index / count, first[1] + dy * index / count)
+                              for index in range(count + 1)]
+                    samples.extend(values if segment == 0 else values[1:])
+                if any(x < 0 or x > d["width"] - 1 or y < 0 or y > d["height"] - 1 for x, y in samples):
+                    raise ValueError("Reslice line must remain inside the image")
+                self.stack_limit(len(samples) * (end - start))
+                import cv2
+                map_x = np.asarray([[point[0] for point in samples]], dtype=np.float32)
+                map_y = np.asarray([[point[1] for point in samples]], dtype=np.float32)
+                lines = []
+                for plane in range(start, end):
+                    image = np.ascontiguousarray(self.source.read(d, plane, bounds(d)))
+                    line = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR,
+                                     borderMode=cv2.BORDER_REPLICATE)[0]
+                    lines.append(line)
+                data = np.stack(lines)
+                return {"path": self.write_tiff(data, "vivi-reslice-"), "width": len(samples),
+                        "height": end - start, "points": clean}
             axis = req.get("axis", "y")
             if axis not in ("x", "y"):
                 raise ValueError("Reslice axis must be x or y")
@@ -1103,6 +1153,72 @@ class Session:
         image.save(output, format="PNG")
         return dict(png=base64.b64encode(output.getvalue()).decode("ascii"), box=box,
                     width=image.width, height=image.height, low=low, high=high, step=step)
+
+    def render_batch(self, d, box, req):
+        """Return many full-resolution planes in one binary message.
+
+        The payload remains in the source dtype.  Frames are stacked vertically only for
+        transport so the existing lossless/lossy codecs can process one contiguous buffer.
+        """
+        frames = req.get("frames")
+        if not isinstance(frames, list) or not frames or len(frames) > d["frames"]:
+            raise ValueError("renderBatch requires one or more valid frame indexes")
+        frames = [int(frame) for frame in frames]
+        if len(set(frames)) != len(frames) or any(frame < 0 or frame >= d["frames"] for frame in frames):
+            raise ValueError("renderBatch frame indexes are invalid")
+        planes = [np.ascontiguousarray(self.source.read(d, frame, box, raw_stored=True)) for frame in frames]
+        shape = planes[0].shape
+        dtype = planes[0].dtype
+        if any(plane.shape != shape or plane.dtype != dtype for plane in planes):
+            raise ValueError("Batch planes must have matching shape and dtype")
+        stack = np.stack(planes)
+        frame_height, width = shape[:2]
+        channels = shape[-1] if len(shape) == 3 else 1
+        transport = stack.reshape((len(frames) * frame_height, width, channels)) if channels > 1 \
+            else stack.reshape((len(frames) * frame_height, width))
+        bscale, bzero, blank = self.source.calibration(d)
+        mode = req.get("cuts", "percentile")
+        def plane_limits(plane):
+            if mode == "manual":
+                low, high = finite_number(req.get("low"), 0), finite_number(req.get("high"), 1)
+                if high <= low:
+                    raise ValueError("Maximum must be greater than minimum")
+                return low, high
+            flat = plane.reshape(-1)
+            sample_step = max(1, math.ceil(flat.size / 262_144))
+            sampled = flat[::sample_step]
+            values = sampled.astype(np.float64)
+            if bscale != 1 or bzero != 0:
+                values = values * bscale + bzero
+            if blank is not None and transport.dtype.kind in "iu":
+                values[sampled == blank] = np.nan
+            values = values[np.isfinite(values)]
+            if transport.ndim == 3 and transport.dtype == np.uint8 and mode == "percentile":
+                low, high = 0., 255.
+            elif not values.size:
+                low, high = 0., 1.
+            elif mode == "zscale":
+                from astropy.visualization import ZScaleInterval
+                low, high = map(float, ZScaleInterval().get_limits(values))
+            elif mode == "minmax":
+                low, high = float(values.min()), float(values.max())
+            elif mode in ("p90", "p95", "p99", "p999"):
+                coverage = {"p90": 90, "p95": 95, "p99": 99, "p999": 99.9}[mode]
+                low, high = map(float, np.percentile(values, [(100-coverage)/2, (100+coverage)/2]))
+            else:
+                low, high = map(float, np.percentile(values, [0.5, 99.5]))
+            if high <= low:
+                high = low + 1
+            return low, high
+        limits = [plane_limits(plane) for plane in planes]
+        low, high = limits[0]
+        result = dict(frames=frames, limits=limits, channels=channels, box=box, width=width,
+                      height=transport.shape[0], frameHeight=frame_height,
+                      low=low, high=high, step=1, bscale=bscale, bzero=bzero,
+                      blank=str(blank) if blank is not None else None)
+        result.update(encode_raw_preview(transport, bool(req.get("compress")),
+                                         req.get("lossyMethod"), req.get("lossyTolerance", 1e-4)))
+        return result
 
     def measure(self, d, frame, box, selection=None):
         # Stable batch-combined moments; never materialize the full ROI.
