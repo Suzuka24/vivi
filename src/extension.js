@@ -29,6 +29,7 @@ function html(webview, context, name) {
     .replaceAll('{{formatScript}}', uri('numberFormat.js'))
     .replaceAll('{{displayScript}}', uri('display.js'))
     .replaceAll('{{roiScript}}', uri('roiGeometry.js'))
+    .replaceAll('{{zstdScript}}', uri('vendor/fzstd.js'))
     .replaceAll('{{zfpScript}}', uri('vendor/zfp.js'))
     .replaceAll('{{zfpWasm}}', uri('vendor/wasm-zfp.wasm')));
 }
@@ -456,21 +457,29 @@ function activate(context) {
             if (!frames.has(activeId)) activeId = frames.keys().next().value;
             panel.title = frames.size === 1 ? (frames.get(activeId).label || path.basename(frames.get(activeId).file)) : `vivi · ${frames.size} frames`;
           } else panel.dispose();
-        } else if (msg.type === 'request' && ['render','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
+        } else if (msg.type === 'request' && ['render','renderStack','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
           const args = { ...msg.args };
-          if (msg.op === 'render') {
+          if (msg.op === 'render' || msg.op === 'renderStack') {
             args.binary = true;
             Object.assign(args, previewCompressionOptions({
               lossless: config().get('losslessCompression', true),
+              losslessMethod: config().get('losslessMethod', 'zstd1-shuffle'),
               lossy: config().get('lossyCompression', false),
               minMiB: config().get('lossyMinFileMiB', 128),
               method: config().get('lossyMethod', 'zfp'),
               tolerance: config().get('lossyTolerance', 1e-4)
             }, frame.sourceFileBytes));
           }
-          const result = await frame.worker.request(msg.op, args);
+          const forwarding=[];
+          const result = msg.op === 'renderStack'
+            ? await frame.worker.requestStream(msg.op, args, event => {
+                if (!disposed) forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
+                  frame:event.frame,total:event.total,result:event.result}));
+              })
+            : await frame.worker.request(msg.op, args);
+          if(msg.op==='renderStack')await Promise.all(forwarding);
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };
           if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result });

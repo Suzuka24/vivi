@@ -23,6 +23,7 @@ class Backend {
     while (offset < chunk.length && !this.dead) {
       if (this.binaryMessage) {
         const state = this.binaryMessage;
+        this.touchStream(state.msg.id);
         const take = Math.min(chunk.length - offset, state.length - state.bytes);
         state.parts.push(chunk.subarray(offset, offset + take));
         state.bytes += take;
@@ -32,7 +33,7 @@ class Backend {
         const {msg} = state;
         msg.result.payload = payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
         this.binaryMessage = null;
-        this.complete(msg);
+        this.dispatch(msg);
       } else {
         const newline = chunk.indexOf(10, offset);
         if (newline < 0) {
@@ -53,10 +54,17 @@ class Backend {
             this.stop(new Error('Invalid backend binary length')); return;
           }
           if (msg.binaryLength) this.binaryMessage = {msg, length: msg.binaryLength, parts: [], bytes: 0};
-          else { msg.result.payload = new ArrayBuffer(0); this.complete(msg); }
-        } else this.complete(msg);
+          else { msg.result.payload = new ArrayBuffer(0); this.dispatch(msg); }
+        } else this.dispatch(msg);
       }
     }
+  }
+  touchStream(id) {
+    if (!this.pending) return;
+    const item = this.pending.get(id);
+    if (!item?.onEvent) return;
+    clearTimeout(item.timer);
+    item.timer = setTimeout(() => this.stop(new Error('Backend stream timed out and was stopped. Reopen the image or increase vivi.requestTimeoutSeconds.')), this.timeout);
   }
   complete(msg) {
     const item = this.pending.get(msg.id);
@@ -65,6 +73,17 @@ class Backend {
     this.pending.delete(msg.id);
     if (msg.error) item.reject(new Error(msg.error)); else item.resolve(msg.result);
   }
+  dispatch(msg) {
+    if (!this.pending) { this.complete(msg); return; }
+    const item = this.pending.get(msg.id);
+    if (!item || !msg.streamEvent) { this.complete(msg); return; }
+    this.touchStream(msg.id);
+    try { item.onEvent(msg); }
+    catch (error) { this.pending.delete(msg.id); clearTimeout(item.timer); item.reject(error); return; }
+    if (msg.streamEvent === 'end') {
+      this.pending.delete(msg.id); clearTimeout(item.timer); item.resolve(msg.result);
+    }
+  }
   request(op, args = {}) {
     if (this.dead) return Promise.reject(new Error('Backend stopped. Reopen this image to restart.'));
     if (this.pending.size >= 8) return Promise.reject(new Error('Backend busy; please wait.'));
@@ -72,6 +91,16 @@ class Backend {
       const id = ++this.nextId;
       const timer = setTimeout(() => this.stop(new Error('Backend request timed out and was stopped. Reopen the image or increase vivi.requestTimeoutSeconds.')), this.timeout);
       this.pending.set(id, { resolve, reject, timer });
+      this.child.stdin.write(JSON.stringify({ ...args, op, id }) + '\n');
+    });
+  }
+  requestStream(op, args = {}, onEvent = () => {}) {
+    if (this.dead) return Promise.reject(new Error('Backend stopped. Reopen this image to restart.'));
+    if (this.pending.size >= 8) return Promise.reject(new Error('Backend busy; please wait.'));
+    return new Promise((resolve, reject) => {
+      const id = ++this.nextId;
+      const timer = setTimeout(() => this.stop(new Error('Backend stream timed out and was stopped. Reopen the image or increase vivi.requestTimeoutSeconds.')), this.timeout);
+      this.pending.set(id, { resolve, reject, timer, onEvent });
       this.child.stdin.write(JSON.stringify({ ...args, op, id }) + '\n');
     });
   }

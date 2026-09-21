@@ -40,6 +40,14 @@ test('big-endian uint16 preserves wire bytes and paints decoded values',async()=
   assert.equal(renderPixels(raw,3,1,1,{low:1,high:65535})[8],255);
 });
 
+test('browser Zstandard decoder accepts imagecodecs output',async()=>{
+  globalThis.fzstd=require('../media/vendor/fzstd.js');
+  const packed=Buffer.from('KLUv/WAAAE0CAAQEAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+PwEAQG+gQhQ=','base64');
+  const {sourceBytes}=await decodeRawPayload({payload:packed.buffer.slice(packed.byteOffset,packed.byteOffset+packed.byteLength),dtype:'|u1',codec:'zstd',shuffle:0,byteLength:256,width:256,height:1,channels:1});
+  assert.deepEqual([...sourceBytes],[...Array(4)].flatMap(()=>[...Array(64).keys()]));
+  delete globalThis.fzstd;
+});
+
 test('Python lossy previews decode locally, with or without the separate zlib stage',async()=>{
   globalThis.ViviZfp=require('../media/vendor/zfp.js');
   const expected=[0,.1,.2,.3,.4,.5];
@@ -84,4 +92,16 @@ test('backend framing accepts fragmented binary with newline bytes and adjacent 
   assert.equal(received.length,2);
   assert.deepEqual([...new Uint8Array(received[0].result.payload)],[1,10,0,255]);
   assert.equal(received[1].result.ok,true);
+});
+
+test('backend stream keeps one request open across frame packets',async()=>{
+  const backend=Object.create(Backend.prototype);backend.pending=new Map();backend.timeout=1000;backend.dead=false;
+  const events=[];
+  const done=new Promise((resolve,reject)=>backend.pending.set(7,{resolve,reject,onEvent:event=>events.push(event.frame),timer:setTimeout(()=>{},1000)}));
+  backend.dispatch({id:7,streamEvent:'start',result:{total:2}});
+  backend.dispatch({id:7,streamEvent:'frame',frame:0,result:{}});
+  backend.dispatch({id:7,streamEvent:'frame',frame:1,result:{}});
+  assert.equal(backend.pending.has(7),true);
+  backend.dispatch({id:7,streamEvent:'end',result:{total:2}});
+  assert.deepEqual(await done,{total:2});assert.deepEqual(events,[undefined,0,1,undefined]);assert.equal(backend.pending.has(7),false);
 });

@@ -64,3 +64,43 @@
 - 有损综合：ZFP 在 43.135 MiB 下达到 MAE 7.711e-7、RMSE 1.298e-6、最大误差 1.335e-5，压缩/解压为 1.232/0.958 s。在本文件上其体积与误差同时优于 float16、bfloat16、block8 和 block12。
 - 极低误差：block16 的 MAE 1.245e-7 最小，但体积为 121.885 MiB；其压缩率远低于 ZFP。
 - 所有本地及远端临时基准脚本已删除，SSH 复用连接已关闭。
+
+## 连续流式 Stack 传输计划
+
+用户确认实现：压缩后使用单个逻辑请求连续传输整个 stack，取消逐帧请求/响应；全部数据及显示对象准备完成后一次显示。优先级依次为传输速度、界面响应、进度精度。
+
+- 后端增加单请求 stream 协议，按源顺序持续产生压缩帧，中途不等待客户端确认。
+- 扩展主机边收到边转发，不收齐完整 stack 后再 `Buffer.concat`；Webview 按顺序解码并预构建所有 slice canvas。
+- Stack 进度使用持续更新的完成百分比；2D 或无法定量的阶段退化为转圈。LAYOUT Frame 行同步显示 loading spinner。
+- 所有 slice 完成前保持空白，完成后一次性切换到完整 Frame；关闭 Frame 会终止对应 worker。
+- 保留 `vivi.losslessCompression` 开关，新增无损方法设置，默认 Zstd level 1 + Byte Shuffle；有损方法继续可选并默认 ZFP。
+- 用大 TIFF 和多 slice WDF 进行命令行端到端基准，不操控 Cursor 窗口。
+
+## 连续流式 Stack 传输实施记录
+
+- Python worker 新增 `renderStack`：每个 stack 只接收一次请求，按源顺序连续写出所有压缩帧，不再等待每帧的远程请求和确认。
+- 扩展主机在数据到达时直接转发；后端流只按单帧边界保留缓冲，不拼接整份 stack。传输有持续数据时会刷新超时计时器。
+- Webview 按帧解压、恢复源 dtype、构建 canvas，并在帧间主动让出事件循环。临时结果不进入当前 Frame；所有帧完成后原子替换完整缓存并首次显示。
+- 显示区右上角增加进度条和百分比，含义为“已接收、解压并完成本机构图的 slice / 总 slice”；单张 2D 图使用不定量进度。LAYOUT 对应 Frame 同步显示转圈动画。
+- 移除常驻 `%d/%d ready`，避免把缓存状态误当传输状态。
+- 新增 `vivi.losslessMethod`，支持 Zstd 1 + Byte Shuffle、Zstd 3 + Byte Shuffle 和兼容旧行为的 zlib 1 + Byte Shuffle，默认 Zstd 1。ZFP 仍是有损开关启用后的默认方法，且有损与无损依次独立执行。
+- 引入浏览器端 fzstd 解码器并保留其 MIT 许可证；增加 imagecodecs→fzstd 兼容性和 Zstd 字节完全往返测试。
+
+## 连续流式传输基准
+
+测试通过本机直接启动 hyh-batchcom2 上的 Python worker，覆盖远端读取、Zstd 1 + Byte Shuffle 压缩、SSH 传输和本机解压。旧、新方案传输字节完全相同；区别仅为旧方案逐帧请求/响应，新方案单请求连续输出。
+
+- 多帧 WDF `wdf_c0.tiff`：shape 15×15×33×33，共 225 帧；wire 478,612 B，raw 980,100 B。旧方案 6.592 s，新方案 0.208 s，缩短 96.8%，约 31.7 倍。
+- 大 TIFF `naomiv2_sum_rep00_density03_n04.tif`：shape 101×795×795，共 101 帧；wire 160,538,950 B（153.10 MiB），raw 255,338,100 B。旧方案 62.082 s，新方案 54.772 s，缩短 11.8%，约 1.13 倍。
+- WDF 受远程往返次数主导，单流收益显著；大 TIFF 已主要受 153 MiB 数据的网络吞吐限制，协议优化消除了额外往返但不能突破带宽上限。
+
+## 连续流式传输验证与总结
+
+- `npm run check` 通过。
+- Node 测试 23/23 通过，覆盖单请求流生命周期、分段二进制 framing、Zstd 浏览器兼容和原始 dtype 保真。
+- `.venv-local` Python 测试 45/45 通过；仅有 tifffile/NumPy 上游弃用警告。
+- `npm run package` 生成 `vivi-0.7.12.vsix`，共 50 个文件，包含 fzstd 及其许可证。
+- 本地 Cursor、hyh-batchcom2 Cursor Server、ssk-CAST Cursor Server 均已安装 0.7.12；三端 `media/viewer.js` SHA-256 均为 `c183178c93382e2adc60f47be51fa056f3caa47b987bb4c7a67a4c5341b48353`。
+- 基准脚本、远端临时 backend 和临时 VSIX 均已删除。
+
+最终方案采用帧边界明确的连续应用层流。它只发起一次 stack 请求且没有逐帧往返；保留帧边界可提供真实进度、限制单次缓冲大小并让浏览器逐帧让出事件循环。完整 stack 的可见状态仍然原子提交，因此首帧不会提前显示。

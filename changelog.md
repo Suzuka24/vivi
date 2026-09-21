@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.12 (development build; not published)
+
+- Replace per-slice request/response preloading with one continuous stack stream. Decode and construct slices without blocking navigation, then reveal the stack atomically after every slice is ready.
+- Show meaningful stack loading progress and a spinner on the corresponding LAYOUT Frame while loading.
+- Add selectable lossless transport methods, defaulting to Zstandard level 1 with Byte Shuffle; lossy encoding remains an independent prior stage and defaults to ZFP when enabled.
+
 ## 0.7.11 (development build; not published)
 
 - Remember the most recently opened file or entered child directory per Explorer folder, with persistent styling distinct from hover and selection.

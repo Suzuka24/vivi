@@ -49,6 +49,9 @@ async function decodeRawPayload(result) {
   if (result.codec === 'zlib') {
     if (typeof DecompressionStream === 'undefined') throw new Error('This Webview cannot decompress image data');
     bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  } else if (result.codec === 'zstd') {
+    if (!globalThis.fzstd?.decompress) throw new Error('Zstandard preview decoder is unavailable');
+    bytes = globalThis.fzstd.decompress(bytes);
   } else if (result.codec !== 'none') throw new Error(`Unsupported image codec: ${result.codec}`);
   if (bytes.byteLength !== result.byteLength) throw new Error('Image payload length mismatch');
   if (result.shuffle) {

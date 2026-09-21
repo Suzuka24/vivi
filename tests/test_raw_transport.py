@@ -33,6 +33,16 @@ class RawTransportTests(unittest.TestCase):
                     if not compress:
                         self.assertEqual(result['codec'], 'none')
 
+    def test_zstd_shuffle_round_trip_preserves_source_bytes(self):
+        import imagecodecs
+        array = np.linspace(-3, 7, 257, dtype=np.float32)
+        result = encode_raw_preview(array, True, lossless_method='zstd1-shuffle')
+        payload = imagecodecs.zstd_decode(result['_binary'])
+        if result['shuffle']:
+            payload = np.frombuffer(payload, np.uint8).reshape(array.dtype.itemsize, -1).T.copy().tobytes()
+        self.assertEqual(result['codec'], 'zstd')
+        self.assertEqual(payload, array.tobytes())
+
     def test_fits_scaling_keeps_stored_dtype_on_wire(self):
         from astropy.io import fits
         with tempfile.TemporaryDirectory() as folder:

@@ -40,8 +40,9 @@ function renderSidebar(state){
     const visible=frameIcon(frame.visible?'i-eye':'i-eye-off',`${frame.visible?'Hide':'Show'} ${frame.label}`,frame.visible,()=>sideAction('frameVisible',{id:frame.id,visible:!frame.visible}));
     const locked=frameIcon(frame.locked?'i-frame-lock':'i-frame-unlock',`${frame.locked?'Remove':'Include'} ${frame.label} ${frame.locked?'from':'in'} parameter locks`,frame.locked,()=>sideAction('frameLockMember',{id:frame.id,enabled:!frame.locked}));
     const button=document.createElement('button');button.textContent=`${frame.id}: ${frame.label}`;button.title=frame.label;button.onclick=()=>sideAction('selectFrame',frame.id);
+    const loading=document.createElement('span');loading.className='frame-loading';loading.title='Loading image';loading.hidden=!frame.loading;
     const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';remove.title=`Close Frame ${frame.id}: ${frame.label}`;remove.setAttribute('aria-label',remove.title);remove.onclick=()=>sideAction('closeFrame',frame.id);
-    row.append(handle,visible,locked,button,remove);
+    row.append(handle,visible,locked,button,loading,remove);
     row.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(frame.id));e.dataTransfer.effectAllowed='move';row.classList.add('dragging');};
     row.ondragend=()=>row.classList.remove('dragging');
     row.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};

@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.11",
+  "version": "0.7.12",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -278,7 +278,14 @@
         "vivi.losslessCompression": {
           "type": "boolean",
           "default": true,
-          "description": "Apply reversible byte shuffle and zlib to the preview bytes after optional lossy encoding. Independent of the lossy switch. 可选有损编码之后，对预览字节应用可逆字节重排和 zlib；与有损开关相互独立。"
+          "description": "Apply the selected lossless method after optional lossy encoding. Independent of the lossy switch. 在可选有损编码之后应用所选无损方法；与有损开关相互独立。"
+        },
+        "vivi.losslessMethod": {
+          "type": "string",
+          "default": "zstd1-shuffle",
+          "enum": ["zstd1-shuffle", "zstd3-shuffle", "zlib1-shuffle"],
+          "enumDescriptions": ["Zstandard level 1 with Byte Shuffle; recommended default. Zstandard 1级配合字节重排，推荐默认方案。", "Zstandard level 3 with Byte Shuffle; smaller but slower. Zstandard 3级配合字节重排，体积更小但计算稍慢。", "Legacy zlib level 1 with Byte Shuffle. 原有 zlib 1级配合字节重排方案。"],
+          "description": "Lossless preview transport method. All methods restore the encoded values exactly. 预览传输的无损压缩方法；所有方法均可精确恢复编码前的数值。"
         },
         "vivi.lossyCompression": {
           "type": "boolean",

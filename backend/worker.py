@@ -24,20 +24,30 @@ def finite_number(value, default):
     return value
 
 
-def encode_raw_preview(raw, compress=False, lossy_method=None, relative_tolerance=1e-4):
+def encode_raw_preview(raw, compress=False, lossy_method=None, relative_tolerance=1e-4,
+                       lossless_method=None):
     """Optionally quantize, then optionally apply reversible byte shuffle and zlib."""
     array = np.ascontiguousarray(raw)
     lossy = encode_lossy(array, lossy_method, relative_tolerance) if lossy_method else None
     original, dtype, itemsize, lossy_meta = (lossy if lossy else
         (array.tobytes(), array.dtype.str, array.dtype.itemsize, None))
+    method = lossless_method or ('zlib1-shuffle' if compress else 'none')
+    if method not in ('none', 'zstd1-shuffle', 'zstd3-shuffle', 'zlib1-shuffle'):
+        raise ValueError(f'Unknown lossless preview method: {method}')
     payload, codec = original, 'none'
     shuffle = 0
-    if compress:
+    if method != 'none':
         candidate = (np.frombuffer(original, dtype=np.uint8).reshape(-1, itemsize).T.copy().tobytes()
                      if itemsize > 1 else original)
-        packed = zlib.compress(candidate, level=1)
+        if method.startswith('zstd'):
+            import imagecodecs
+            packed = imagecodecs.zstd_encode(candidate, level=1 if method.startswith('zstd1') else 3)
+            candidate_codec = 'zstd'
+        else:
+            packed = zlib.compress(candidate, level=1)
+            candidate_codec = 'zlib'
         if len(packed) < len(original):
-            payload, codec, shuffle = packed, 'zlib', itemsize if itemsize > 1 else 0
+            payload, codec, shuffle = packed, candidate_codec, itemsize if itemsize > 1 else 0
     result = dict(dtype=dtype, byteLength=len(original), codec=codec, shuffle=shuffle,
                   _binary=payload)
     if lossy_meta:
@@ -1108,7 +1118,8 @@ class Session:
                           bscale=bscale, bzero=bzero, blank=str(blank) if blank is not None else None)
             if req.get('binary'):
                 result.update(encode_raw_preview(preview, bool(req.get('compress')),
-                                                 req.get('lossyMethod'), req.get('lossyTolerance', 1e-4)))
+                                                 req.get('lossyMethod'), req.get('lossyTolerance', 1e-4),
+                                                 req.get('losslessMethod')))
             else:
                 result.update(raw=base64.b64encode(preview.tobytes()).decode('ascii'),
                               dtype=preview.dtype.str)
@@ -1182,6 +1193,14 @@ class Session:
 
 def main():
     session = Session()
+    def send(response, payload=None):
+        if payload is not None:
+            response['binaryLength'] = len(payload)
+        encoded = json.dumps(response, allow_nan=False, separators=(",", ":"))
+        sys.stdout.buffer.write(encoded.encode('utf-8') + b'\n')
+        if payload is not None:
+            sys.stdout.buffer.write(payload)
+        sys.stdout.buffer.flush()
     try:
         for line in sys.stdin:
             req = {}
@@ -1189,19 +1208,26 @@ def main():
                 req = json.loads(line)
                 with warnings.catch_warnings():
                     warnings.simplefilter("default")
+                    if req.get('op') == 'renderStack':
+                        if not session.source:
+                            raise ValueError("Open an image first")
+                        dataset = session.source.dataset(req.get('dataset', session.source.datasets[0]['id']))
+                        total = dataset['frames']
+                        send(dict(id=req.get('id'), streamEvent='start', result=dict(total=total)))
+                        for frame in range(total):
+                            result = session.handle({**req, 'op': 'render', 'frame': frame})
+                            payload = result.pop('_binary', None)
+                            send(dict(id=req.get('id'), streamEvent='frame', frame=frame,
+                                      total=total, result=result), payload)
+                        send(dict(id=req.get('id'), streamEvent='end', result=dict(total=total)))
+                        continue
                     result = session.handle(req)
                 payload = result.pop('_binary', None) if isinstance(result, dict) else None
                 response = dict(id=req.get("id"), result=result)
-                if payload is not None:
-                    response['binaryLength'] = len(payload)
-                encoded = json.dumps(response, allow_nan=False, separators=(",", ":"))
             except Exception as exc:
                 payload = None
-                encoded = json.dumps(dict(id=req.get("id"), error=f"{type(exc).__name__}: {exc}"))
-            sys.stdout.buffer.write(encoded.encode('utf-8') + b'\n')
-            if payload is not None:
-                sys.stdout.buffer.write(payload)
-            sys.stdout.buffer.flush()
+                response = dict(id=req.get("id"), error=f"{type(exc).__name__}: {exc}")
+            send(response, payload)
     finally:
         if session.source:
             session.source.close()
