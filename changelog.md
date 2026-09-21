@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.2 (development build; not published)
+- Reverse the default slice wheel direction: scroll up selects the previous slice and scroll down selects the next slice.
+
 ## 0.7.1 (development build; not published)
 - Load each stack as one source-ordered binary payload and construct every slice before first display. Preserve source dtype and apply optional lossy and lossless transport stages to the whole payload.
 - Reslice stacks along the active straight, segmented, or freehand line, including the endpoint of each segment.

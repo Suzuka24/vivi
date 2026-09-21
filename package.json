@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -324,7 +324,7 @@
             "contrastDrag": "alt+right+drag",
             "fit": "doubleclick"
           },
-          "description": "Mouse gestures: wheel scrolls slices (up=next); shift+wheel zooms at pointer; mod+wheel zooms at image center (mod is Cmd on macOS, Ctrl on Windows/Linux); shift+click uses the selected tool in Orthogonal Views; doubleclick fits. Set a gesture to empty to disable it. 鼠标手势：滚轮切片（上滚向右）；shift+wheel 以指针缩放；mod+wheel 以图像中心缩放（macOS 为 Command，Windows/Linux 为 Ctrl）；正交视图中 shift+click 使用当前工具；middle+drag 拖动图像，alt+right+drag 调整亮度对比度；doubleclick 适配窗口。填写组合格式如 alt+wheel，留空停用。",
+          "description": "Mouse gestures: wheel scrolls slices (up=previous, down=next); shift+wheel zooms at pointer; mod+wheel zooms at image center (mod is Cmd on macOS, Ctrl on Windows/Linux); shift+click uses the selected tool in Orthogonal Views; doubleclick fits. Set a gesture to empty to disable it. 鼠标手势：滚轮切片（上滚向左、下滚向右）；shift+wheel 以指针缩放；mod+wheel 以图像中心缩放（macOS 为 Command，Windows/Linux 为 Ctrl）；正交视图中 shift+click 使用当前工具；middle+drag 拖动图像，alt+right+drag 调整亮度对比度；doubleclick 适配窗口。填写组合格式如 alt+wheel，留空停用。",
           "properties": {
             "slice": {"type":"string","default":"wheel","description":"Slice stepping. Example: wheel. 切片切换，例如 wheel。"},
             "zoomAtPointer": {"type":"string","default":"shift+wheel","description":"Zoom at mouse pointer. Example: shift+wheel. 以鼠标位置缩放，例如 shift+wheel。"},

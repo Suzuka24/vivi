@@ -690,7 +690,7 @@ function imageWheel(event){
   event.preventDefault();
   if(mouseMatches(mouseShortcuts.zoomAtPointer,event,'wheel'))zoom(event.deltaY<0?1:-1,position(event));
   else if(mouseMatches(mouseShortcuts.zoomAtCenter,event,'wheel'))zoom(event.deltaY<0?1:-1);
-  else if(mouseMatches(mouseShortcuts.slice,event,'wheel')&&dataset.frames>1)changeFrame(event.deltaY<0?1:-1);
+  else if(mouseMatches(mouseShortcuts.slice,event,'wheel')&&dataset.frames>1)changeFrame(event.deltaY<0?-1:1);
 }
 canvas.addEventListener('wheel',imageWheel,{passive:false});
 function showPopup(menu,event,items){event.preventDefault();menu.replaceChildren();for(const [label,run] of items){const button=document.createElement('button');button.textContent=label;button.disabled=!run;if(run)button.onclick=()=>{menu.hidden=true;run();};menu.append(button);}menu.hidden=false;menu.style.left=Math.min(event.clientX,window.innerWidth-menu.offsetWidth-6)+'px';menu.style.top=Math.min(event.clientY,window.innerHeight-menu.offsetHeight-6)+'px';}
