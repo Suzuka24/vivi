@@ -54,7 +54,7 @@ function activate(context) {
     return Object.fromEntries(menuPaths.map(item => [item, !saved || Array.isArray(saved) || saved[item] !== false]));
   };
   const explorerMenuOptions = [
-    ['open', 'Open'], ['openNewTab', 'Open in New Tab'], ['openStack', 'Open Folder as Stack…'],
+    ['open', 'Open'], ['openAs', 'Open As…'], ['openNewTab', 'Open in New Tab'], ['openStack', 'Open Folder as Stack…'],
     ['copyPath', 'Copy Path'], ['copyToTerminal', 'Insert Path into Terminal'], ['copyName', 'Copy Name'],
     ['rename', 'Rename…'], ['delete', 'Remove Permanently…'], ['newFile', 'New File…'],
     ['newFolder', 'New Folder…'], ['refresh', 'Refresh']
@@ -81,19 +81,19 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.openWith', uri, 'default', editorOptions(newTab));
     }
   }
-  async function open(input, newTab = false, sequence = false, sequenceMode = '2d') {
+  async function open(input, newTab = false, sequence = false, sequenceMode = '2d', openOptions = {}) {
     const file = nativePath(input);
     if (sequence ? !(await fs.stat(file)).isDirectory() : !(await fs.stat(file)).isFile()) throw new Error(sequence ? 'Select an image folder.' : 'Select a file.');
     const uri = uriFor(file);
     if (sequence || managed(file)) {
       if (!newTab && sessions.length) {
         const session = sessions.at(-1);
-        await session.add(file,false,'',null,sequenceMode);
+        await session.add(file,false,'',null,sequenceMode,openOptions);
         session.panel.reveal();
       } else {
         const panel = vscode.window.createWebviewPanel('vivi.session', path.basename(file), vscode.ViewColumn.Active,
           { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] });
-        createSession(panel, file, sequenceMode);
+        createSession(panel, file, sequenceMode, openOptions);
       }
     } else await openNormally(uri, newTab);
   }
@@ -111,9 +111,25 @@ function activate(context) {
           if (msg.type === 'ready') publishSidebar(activeSession);
           if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
+          if (msg.type === 'inspectOpenAs') {
+            const worker=newBackend();
+            try { view.webview.postMessage({type:'openAsInfo',path:msg.path,result:await worker.request('inspect',{path:nativePath(msg.path),maxPixels:worker.maxPixels})}); }
+            finally { worker.dispose(); }
+          }
+          if (msg.type === 'openAs') {
+            const worker=newBackend();
+            try {
+              await worker.request('open',{path:nativePath(msg.path),maxPixels:worker.maxPixels,axisLayouts:msg.axisLayouts});
+              view.webview.postMessage({type:'openAsAccepted'});
+              await open(msg.path,msg.newTab===true,false,'2d',{axisLayouts:msg.axisLayouts});
+            } finally { worker.dispose(); }
+          }
           if (msg.type === 'openSequence') {
             const choice=await vscode.window.showQuickPick([{label:'Only 2D images',mode:'2d',description:'Skip files containing multiple slices'},{label:'All image planes',mode:'all',description:'Expand every 2D or 3D file into slices'}],{title:'Open Folder as Stack',placeHolder:'Choose which images to include'});
-            if(choice)await open(msg.path,msg.newTab===true,true,choice.mode);
+            if(choice){
+              const value=await vscode.window.showInputBox({title:'Image Sequence Size',prompt:'Optional H W filter, for example: 795 795. Leave blank to use the first qualifying image.',placeHolder:'height width',validateInput:text=>{const values=text.trim().split(/\s+/).map(Number);return !text.trim()||(values.length===2&&values.every(Number.isInteger)&&values.every(number=>number>0))?null:'Enter two positive integers separated by a space.';}});
+              if(value!==undefined){const sequenceSize=value.trim()?value.trim().split(/\s+/).map(Number):null;await open(msg.path,msg.newTab===true,true,choice.mode,{sequenceSize});}
+            }
           }
           if (msg.type === 'action') await this.action(msg);
           if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
@@ -215,25 +231,25 @@ function activate(context) {
     catch (error) { report(error); output.show(); }
     finally { worker.dispose(); }
   }));
-  function createSession(panel, firstFile, firstMode = '2d') {
+  function createSession(panel, firstFile, firstMode = '2d', firstOptions = {}) {
     const frames = new Map();
-    const pendingPaths = [{file:firstFile,mode:firstMode}];
+    const pendingPaths = [{file:firstFile,mode:firstMode,options:firstOptions}];
     const generatedPaths = [];
     let ready = false, disposed = false, nextId = 0, activeId = null;
     const session = {
       panel,
       sidebarState:null,
-      async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d') {
+      async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d', openOptions = {}) {
         if (disposed) throw new Error('Viewer closed.');
-        if (!ready) { pendingPaths.push({file,mode:sequenceMode}); return; }
+        if (!ready) { pendingPaths.push({file,mode:sequenceMode,options:openOptions}); return; }
         const worker = newBackend();
         try {
-          const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels, sequenceMode });
+          const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels, sequenceMode, ...openOptions });
           const sourceStat = await fs.stat(file).catch(() => null);
           const sourceFileBytes = sourceStat?.isFile() ? sourceStat.size : 0;
           const id = ++nextId;
           label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
-          frames.set(id, { id, file, label, worker, generated, sequenceMode, sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], flipState: {horizontal:false,vertical:false}, undoFlipStates:[], redoFlipStates:[], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, sequenceMode, openOptions, pathOptions:new Map([[file,openOptions]]), sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], flipState: {horizontal:false,vertical:false}, undoFlipStates:[], redoFlipStates:[], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
@@ -258,7 +274,7 @@ function activate(context) {
       try {
         if (msg.type === 'ready') {
           ready = true;
-          for (const item of pendingPaths.splice(0)) await session.add(item.file,false,'',null,item.mode);
+          for (const item of pendingPaths.splice(0)) await session.add(item.file,false,'',null,item.mode,item.options);
         } else if (msg.type === 'activeFrame') {
           if (frames.has(msg.frameId)) activeId = msg.frameId;
         } else if (msg.type === 'sidebarState') {
@@ -295,7 +311,10 @@ function activate(context) {
           const uris = await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,openLabel:'Open Image Sequence'});
           if (uris?.[0]) {
             const choice=await vscode.window.showQuickPick([{label:'Only 2D images',mode:'2d'},{label:'All image planes',mode:'all'}],{title:'Open Folder as Stack'});
-            if(choice)await session.add(uris[0].fsPath,false,'',null,choice.mode);
+            if(choice){
+              const value=await vscode.window.showInputBox({title:'Image Sequence Size',prompt:'Optional H W filter, for example: 795 795. Leave blank to use the first qualifying image.',placeHolder:'height width',validateInput:text=>{const values=text.trim().split(/\s+/).map(Number);return !text.trim()||(values.length===2&&values.every(Number.isInteger)&&values.every(number=>number>0))?null:'Enter two positive integers separated by a space.';}});
+              if(value!==undefined)await session.add(uris[0].fsPath,false,'',null,choice.mode,{sequenceSize:value.trim()?value.trim().split(/\s+/).map(Number):null});
+            }
           }
         } else if (msg.type === 'montage') {
           const frame = frames.get(msg.fileFrame || activeId);
@@ -332,8 +351,8 @@ function activate(context) {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
           const action = msg.action;
-          if (!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180','rotate','undo','redo'].includes(action))
-            throw new Error('Unsupported frame transform.');
+          if (typeof action !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(action))
+            throw new Error('Unsupported frame operation.');
           const update = async () => {
             panel.webview.postMessage({type:'transformBusy',frameId:frame.id,action,busy:true});
             if (!frames.has(frame.id)) throw new Error('Frame closed.');
@@ -342,19 +361,24 @@ function activate(context) {
             const previous = frame.file;
             let destination;
             const inverse = {flipHorizontal:'flipHorizontal',flipVertical:'flipVertical',rotateLeft:'rotateRight',rotateRight:'rotateLeft',rotate180:'rotate180',rotate:'rotate'};
-            const displayTransform = action === 'undo' ? inverse[frame.undoActions.at(-1)] : action === 'redo' ? frame.redoActions.at(-1) : action;
+            const historyAction=action==='undo'?frame.undoActions.at(-1):action==='redo'?frame.redoActions.at(-1):action;
+            const displayTransform = action === 'undo' ? inverse[historyAction] : historyAction;
             if (action === 'undo') destination = frame.undoPaths.at(-1);
             else if (action === 'redo') destination = frame.redoPaths.at(-1);
             else {
-              const result = await frame.worker.request('derive', {...msg.args, action, preserveStack:true});
+              const operationArgs={...msg.args, action, preserveStack:true};
+              if(action==='mergeChannels')operationArgs.paths=(msg.args.channelFrameIds||[]).map(id=>frames.get(Number(id))?.file).filter(Boolean);
+              const result = await frame.worker.request('derive', operationArgs);
               destination = result?.path;
               if (!destination) throw new Error('Transform did not return a file path.');
               generatedPaths.push(destination);
+              frame.pathOptions.set(destination,{});
             }
             let data;
-            try { data = await frame.worker.request('open', {path: destination, maxPixels: frame.worker.maxPixels}); }
+            const destinationOptions=frame.pathOptions.get(destination)||{};
+            try { data = await frame.worker.request('open', {path: destination, maxPixels: frame.worker.maxPixels,...destinationOptions}); }
             catch (error) {
-              await frame.worker.request('open', {path: previous, maxPixels: frame.worker.maxPixels}).catch(restoreError => output.appendLine(restoreError.stack || restoreError.message));
+              await frame.worker.request('open', {path: previous, maxPixels: frame.worker.maxPixels,...(frame.pathOptions.get(previous)||{})}).catch(restoreError => output.appendLine(restoreError.stack || restoreError.message));
               throw error;
             }
             if (action === 'undo') {
@@ -363,7 +387,7 @@ function activate(context) {
               frame.redoFlipStates.push(frame.flipState);
               frame.flipState=frame.undoFlipStates.pop() || {horizontal:false,vertical:false};
               frame.redoPaths = [...frame.redoPaths, previous].slice(-10);
-              frame.redoActions = [...frame.redoActions, inverse[displayTransform]].slice(-10);
+              frame.redoActions = [...frame.redoActions, historyAction].slice(-10);
             } else {
               if (action === 'redo') { frame.redoPaths.pop(); frame.redoActions.pop(); }
               else { frame.redoPaths = []; frame.redoActions = []; frame.redoFlipStates=[]; }
@@ -374,10 +398,11 @@ function activate(context) {
               else if(action==='flipVertical')frame.flipState={...frame.flipState,vertical:!frame.flipState.vertical};
               else if(action==='rotateLeft'||action==='rotateRight')frame.flipState={horizontal:frame.flipState.vertical,vertical:frame.flipState.horizontal};
               frame.undoPaths = [...frame.undoPaths, previous].slice(-10);
-              frame.undoActions = [...frame.undoActions, displayTransform].slice(-10);
+              frame.undoActions = [...frame.undoActions, historyAction].slice(-10);
             }
             if (!frame.label) frame.label = path.basename(frame.undoPaths[0] || previous);
             frame.file = destination;
+            frame.openOptions=destinationOptions;
             frame.generated = true;
             frame.latestPng = null;
             frame.lastResult = null;
@@ -396,7 +421,7 @@ function activate(context) {
           await fs.writeFile(destination, Buffer.from(result.png, 'base64'), { flag: 'wx' });
           generatedPaths.push(destination);
           await session.add(destination, true, `Mask · ${path.basename(frame.file)}`);
-        } else if (msg.type === 'derive') {
+        } else if (msg.type === 'deriveNewFrame') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
           const result = await frame.worker.request('derive', msg.args);
@@ -408,7 +433,7 @@ function activate(context) {
             const source=(frame.label||path.basename(frame.file)).replace(/ \[copy \d+\]$/,'');
             const labels=new Set([...frames.values()].map(item=>item.label));
             let serial=1;while(labels.has(`${source} [copy ${serial}]`))serial++;
-            await session.add(frame.file, frame.generated, `${source} [copy ${serial}]`, null, frame.sequenceMode);
+            await session.add(frame.file, frame.generated, `${source} [copy ${serial}]`, null, frame.sequenceMode, frame.openOptions);
           }
         } else if (msg.type === 'closeFrame') {
           const frame = frames.get(msg.frameId);

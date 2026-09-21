@@ -15,7 +15,7 @@ let metadata, dataset, scale = 1, cx = 0, cy = 0, preview, previewBox;
 const fileFrames = new Map();
 let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVariant = '';
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
-const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane']};
+const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane'],selection:['roi','line','selection']};
 let tileRefreshTimer, sidebarTimer, layoutColumns=0, layoutRows=0;
 let keyboardShortcuts={fit:'f',hand:'h',pointer:'shift+p',roi:'',oval:'o',line:'l',measure:'',clear:'',undoTransform:'z',redoTransform:'shift+z',zoomIn:'=',zoomOut:'-',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'m'};
 let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'shift+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
@@ -74,6 +74,17 @@ function visibleBox() {
   return [Math.max(0,Math.floor(cx-w/2/scale)),Math.max(0,Math.floor(cy-h/2/scale)),Math.min(dataset.width,Math.ceil(cx+w/2/scale)),Math.min(dataset.height,Math.ceil(cy+h/2/scale))];
 }
 function clampCenter() { cx=Math.max(0,Math.min(dataset.width,cx));cy=Math.max(0,Math.min(dataset.height,cy)); }
+function drawTileSelection(state,x,y,tw,th,d,picture,w){
+  const selected=state.selection;if(!selected||!picture)return;
+  const ratio=tilePictureRatio(state,d,picture,w,tw,th),centerX=(state.cx??d.width/2),centerY=(state.cy??d.height/2);
+  const point=([px,py])=>[x+tw/2+(px-centerX)*ratio*picture.width/d.width,y+22+(th-26)/2+(py-centerY)*ratio*picture.height/d.height];
+  const pts=selected.points||[];if(!pts.length)return;
+  ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.strokeStyle=selected.stroke||'#72ebc4';ctx.lineWidth=selected.strokeWidth||1.5;ctx.setLineDash([5,3]);ctx.beginPath();
+  if(selected.type==='roi'&&pts.length>=2){const a=point(pts[0]),b=point(pts[1]);ctx.rect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));}
+  else if(selected.type==='oval'&&pts.length>=2){const a=point(pts[0]),b=point(pts[1]);ctx.ellipse((a[0]+b[0])/2,(a[1]+b[1])/2,Math.max(.5,Math.abs(b[0]-a[0])/2),Math.max(.5,Math.abs(b[1]-a[1])/2),0,0,Math.PI*2);}
+  else{const a=point(pts[0]);ctx.moveTo(...a);for(const item of pts.slice(1))ctx.lineTo(...point(item));if(['roi','polygon','freehand'].includes(selected.type))ctx.closePath();}
+  ctx.stroke();ctx.restore();
+}
 function draw() {
   const {w,h}=size(),dpr=window.devicePixelRatio||1;
   if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
@@ -84,7 +95,7 @@ function draw() {
       const state=fileFrames.get(id),picture=state.tilePreview||(id===activeFileFrame?preview:state.preview);
       const x=(index%cols)*tw,y=Math.floor(index/cols)*th;
       ctx.fillStyle='#11151b';ctx.fillRect(x+2,y+2,tw-4,th-4);
-      if(picture){const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));const ratio=tilePictureRatio(state,d,picture,w,tw,th);const pw=picture.width*ratio,ph=picture.height*ratio,centerX=state.tilePreview?(state.cx??d.width/2)/d.width*picture.width:picture.width/2,centerY=state.tilePreview?(state.cy??d.height/2)/d.height*picture.height:picture.height/2;ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.drawImage(picture,x+tw/2-centerX*ratio,y+22+(th-26)/2-centerY*ratio,pw,ph);ctx.restore();}
+      if(picture){const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));const ratio=tilePictureRatio(state,d,picture,w,tw,th);const pw=picture.width*ratio,ph=picture.height*ratio,centerX=state.tilePreview?(state.cx??d.width/2)/d.width*picture.width:picture.width/2,centerY=state.tilePreview?(state.cy??d.height/2)/d.height*picture.height:picture.height/2;ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.drawImage(picture,x+tw/2-centerX*ratio,y+22+(th-26)/2-centerY*ratio,pw,ph);ctx.restore();if(id!==activeFileFrame)drawTileSelection(state,x,y,tw,th,d,picture,w);}
       ctx.strokeStyle=id===activeFileFrame?'#72d4b5':'#7b899450';ctx.lineWidth=id===activeFileFrame?2:1;ctx.strokeRect(x+1,y+1,tw-2,th-2);
       ctx.fillStyle='#d9e2e9';ctx.font='11px sans-serif';ctx.fillText(`${id}: ${state.metadata.label||state.metadata.path.split(/[\\/]/).pop()}`,x+8,y+16,tw-14);
     });
@@ -400,12 +411,13 @@ function zoom(direction,anchor=null){
   clampCenter();commitFrameChange('scale');if(anchor)commitFrameChange('view');scheduleRender();
 }
 function stopPlay(){playing=false;clearTimeout(playbackTimer);$('playIcon').setAttribute('href','#i-play');$('play').title='Play frames';syncViewerToolbar();publishSidebar();}
+function datasetAxisLabel(index){return dataset.targetGroups?.[index]?.join('')||dataset.axes?.[index]||`D${index}`;}
 function frameLabel(){
   let n=Number($('frame').value)-1;
   const coordinates=[];
   for(const axis of [...dataset.extra].reverse()){
     const length=dataset.shape[axis];
-    coordinates.unshift(`${dataset.axes?.[axis]||`D${axis}`} ${n%length+1}`);
+    coordinates.unshift(`${datasetAxisLabel(axis)} ${n%length+1}`);
     n=Math.floor(n/length);
   }
   $('frameCount').textContent=`/ ${dataset.frames}${coordinates.length>1?' · '+coordinates.join(' '):''}`;
@@ -426,7 +438,7 @@ function syncViewerToolbar(){
   const select=$('viewerDataset');
   if(select){if(select.options.length!==metadata.datasets.length||[...select.options].some((option,index)=>Number(option.value)!==metadata.datasets[index].id)){select.replaceChildren();for(const item of metadata.datasets){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;select.append(option);}}select.value=String(dataset.id);}
   const axis=$('viewerAxis'),axes=sliceAxes();axis.hidden=axes.length<2;
-  if(!axis.hidden){if(axis.options.length!==axes.length||[...axis.options].some((option,index)=>Number(option.value)!==[...axes].reverse()[index])){axis.replaceChildren();for(const index of [...axes].reverse()){const option=document.createElement('option');option.value=index;option.textContent=`Axis ${dataset.shape.length-index} · ${dataset.axes?.[index]||'D'} (${dataset.shape[index]})`;axis.append(option);}}axis.value=String(axes[axisIndex()]);}
+  if(!axis.hidden){if(axis.options.length!==axes.length||[...axis.options].some((option,index)=>Number(option.value)!==[...axes].reverse()[index])){axis.replaceChildren();for(const index of [...axes].reverse()){const option=document.createElement('option');option.value=index;option.textContent=`Axis ${dataset.shape.length-index} · ${datasetAxisLabel(index)} (${dataset.shape[index]})`;axis.append(option);}}axis.value=String(axes[axisIndex()]);}
   const length=axes.length?dataset.shape[axes[axisIndex()]]:dataset.frames,position=slicePosition();
   $('viewerSliceRange').max=String(length);$('viewerSliceRange').value=position;$('viewerSliceRange').disabled=length<2;
   $('viewerSliceNumber').max=String(length);$('viewerSliceNumber').value=position;
@@ -434,7 +446,7 @@ function syncViewerToolbar(){
   for(const id of ['viewerSlicePrev','viewerSliceNext','viewerSlicePlay'])$(id).disabled=length<2;
   $('viewerSlicePlay').textContent=playing?'Ⅱ':'▶';
   if(document.activeElement!==$('viewerSliceFps'))$('viewerSliceFps').value=$('fps').value;
-  const dtype=String(dataset.dtype||''),bits=Number(dtype.match(/\d+/)?.[0])||8,channels=String(dataset.axes||'').endsWith('S')?dataset.shape.at(-1):1;
+  const dtype=String(dataset.dtype||''),bits=Number(dtype.match(/\d+/)?.[0])||8,channels=dataset.channel==null?1:dataset.shape[dataset.channel];
   const bytes=dataset.width*dataset.height*channels*bits/8,sizeLabel=bytes<1048576?`${formatValue(bytes/1024)}KB`:`${formatValue(bytes/1048576)}MB`;
   const sourceName=metadata.sliceLabels?.[Number($('frame').value)-1];
   $('imageSummary').textContent=`${dataset.width}×${dataset.height} (${dataset.width}×${dataset.height}); ${channels===3?'RGB':bits+'-bit'}; ${sizeLabel}${sourceName?' · '+sourceName:''}`;
@@ -460,16 +472,17 @@ function drawTransferCurve(){
   g.fillStyle='#d5e4e7';for(const value of [low,high]){const px=x(value);g.fillRect(Math.max(0,Math.min(w-1,px)),h-5,1,5);}
   $('transferLow').textContent=formatValue(low);$('transferHigh').textContent=formatValue(high);
 }
-function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;fit();}
+function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}
 function saveFileFrame() {
   if (!activeFileFrame || !fileFrames.has(activeFileFrame)) return;
   Object.assign(fileFrames.get(activeFileFrame), {metadata,datasetId:dataset?.id,plane:Number($('frame').value),sliceAxis,scale,cx,cy,preview,previewBox,activePng,frameCache,cacheSignature,cacheBytes,
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,roi,line,selection,annotations,overlays,roiManager,calibration});
 }
 function scheduleTileRefresh(delay=80){if(!tileMode)return;clearTimeout(tileRefreshTimer);tileRefreshTimer=setTimeout(refreshTilePreviews,delay);}
-function refreshTilePreviews(){
+async function refreshTilePreviews(){
   if(!tileMode)return;
   saveFileFrame();
+  const jobs=[];
   for(const [id,state] of fileFrames){
     if(state.visible===false)continue;
     const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
@@ -482,29 +495,31 @@ function refreshTilePreviews(){
     const cached=state.frameCache?.get(cacheKey(args.frame,args.box))||state.tileEntry;
     const reusable=cached&&cached.sourceFrame===args.frame&&cached.sourceDataset===args.dataset&&cached.result.box.join(',')===args.box.join(',');
     const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,false));
-    source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return;await recolorEntry(entry,args);state.tileEntry=entry;state.tilePreview=entry.image;draw();}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';});
+    jobs.push(source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return null;await recolorEntry(entry,args);return {id,state,generation,entry};}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';return null;}));
   }
+  const ready=await Promise.all(jobs);
+  for(const item of ready)if(item&&fileFrames.get(item.id)===item.state&&item.state.tileGeneration===item.generation){item.state.tileEntry=item.entry;item.state.tilePreview=item.entry.image;}
+  if(ready.some(Boolean)){draw();for(const item of ready)if(item)scheduleCachedRecolor(item.id,item.state);}
 }
 function commitFrameChange(group){
   if(!activeFileFrame||!fileFrames.has(activeFileFrame))return;
   saveFileFrame();
   publishSidebar();
-  if(group==='bc'||group==='color')scheduleCachedRecolor(activeFileFrame,fileFrames.get(activeFileFrame));
+  if((group==='bc'||group==='color')&&!tileMode)scheduleCachedRecolor(activeFileFrame,fileFrames.get(activeFileFrame));
   if(!frameLocks.has(group)||!fileFrames.get(activeFileFrame)?.lockMember){
     if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
     return;
   }
-  if(group==='bc'&&$('cuts').value!=='manual')return;
   const active=fileFrames.get(activeFileFrame),keys=lockGroups[group];
   for(const [id,state] of fileFrames){
     if(id===activeFileFrame||!state.lockMember)continue;
-    for(const key of keys)state[key]=active[key];
+    for(const key of keys)state[key]=group==='selection'&&active[key]!=null?structuredClone(active[key]):active[key];
     if(group==='slice'){
       const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
       state.plane=Math.max(1,Math.min(d.frames,active.plane));
     }
     if(group==='bc'||group==='color'||group==='slice')state.tileSignature='';
-    if(group==='bc'||group==='color')scheduleCachedRecolor(id,state);
+    if((group==='bc'||group==='color')&&!tileMode)scheduleCachedRecolor(id,state);
   }
   if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
 }
@@ -524,7 +539,7 @@ function setFrameLockMember(id,enabled){
       if(other)selectFileFrame(other);
     }
     const source=[...fileFrames].find(([other,item])=>other!==id&&item.lockMember)?.[1];
-    if(source)for(const group of frameLocks)for(const key of lockGroups[group])state[key]=source[key];
+    if(source)for(const group of frameLocks)for(const key of lockGroups[group])state[key]=group==='selection'&&source[key]!=null?structuredClone(source[key]):source[key];
     if(source){state.tileSignature='';scheduleCachedRecolor(id,state);}
   }
   state.lockMember=enabled;
@@ -608,7 +623,7 @@ function selectFileFrame(id) {
   for(const key of ['cuts','low','high','stretch','cmap']) $(key).value=state[key]??(key==='cuts'?'percentile':key==='stretch'?'linear':key==='cmap'?'gray':key==='low'?'0':'1');
   $('invert').checked=!!state.invert; $('threshold').checked=!!state.threshold;
   $('frame').value=Math.max(1,Math.min(dataset.frames,Number($('frame').value)));frameLabel();clampCenter();
-  $('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.axes||'FITS (..., Y, X)'}`;
+  $('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;
   $('empty').hidden=!!preview; clearExpiredError(); $('busy').textContent='';
   frameList(); updateCacheStatus();
   if(!state.preview&&!state.scale){const {w,h}=size();scale=Math.min(w/dataset.width,h/dataset.height)*.96;if(!frameLocks.has('view')){cx=dataset.width/2;cy=dataset.height/2;}saveFileFrame();}
@@ -706,7 +721,7 @@ function insideSelection(point){
   if(selection.type==='line'||selection.type==='angle')return pts.slice(1).some((b,i)=>{const a=pts[i],dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((point[0]-a[0])*dx+(point[1]-a[1])*dy)/(dx*dx+dy*dy||1)));return Math.hypot(point[0]-a[0]-t*dx,point[1]-a[1]-t*dy)<6/scale;});
   let hit=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++)if((pts[i][1]>point[1])!==(pts[j][1]>point[1])&&point[0]<(pts[j][0]-pts[i][0])*(point[1]-pts[i][1])/(pts[j][1]-pts[i][1])+pts[i][0])hit=!hit;return hit;
 }
-function refreshSelection(){if(!selection)return;roi=selectionBounds(selection.points);line=selection.type==='line'?[...selection.points[0],...selection.points.at(-1)]:null;$('region').textContent=`${selection.type} · ${roi.join(', ')}`;draw();}
+function refreshSelection(){if(selection){roi=selectionBounds(selection.points);line=selection.type==='line'?[...selection.points[0],...selection.points.at(-1)]:null;$('region').textContent=`${selection.type} · ${roi.join(', ')}`;}else{roi=null;line=null;$('region').textContent='Full image';}commitFrameChange('selection');draw();}
 function dragEditedSelection(e,point){
   const original=drag.original,center=!!(e.ctrlKey||e.metaKey),shift=e.shiftKey&&!orthogonal;
   if(drag.tool==='editHandle'){
@@ -725,7 +740,7 @@ function finishSelection(type,points){
   selection={type,variant:toolVariant,points:points.map(p=>[...p]),...selectionDefaults};
   roi=selectionBounds(points); line=type==='line'?[...points[0],...points.at(-1)]:null;
   $('region').textContent=`${type} · ${roi.join(', ')}`;
-  vertices=[];draw();
+  vertices=[];commitFrameChange('selection');draw();
 }
 canvas.onpointerdown=e=>{
   if(!dataset)return;canvas.focus();
@@ -742,13 +757,13 @@ canvas.onpointerdown=e=>{
       drag={tool:handle>=0?'editHandle':'editMove',handle,point,screen:[e.clientX,e.clientY],rect:selectionRect(),original:{...selection,points:selection.points.map(p=>[...p])}};
       return;
     }
-    selection=null;roi=null;line=null;vertices=[];$('region').textContent='Full image';draw();return;
+    selection=null;vertices=[];refreshSelection();return;
   }
   if(tool==='pointer'){cx=point[0];cy=point[1];commitFrameChange('view');scheduleRender(0);return;}
   if(tool==='zoom'){zoom(e.altKey?-1:1,raw);return;}
   if(tool==='text'){openTextDialog(point);return;}
   if(tool==='polygon'||tool==='angle'||(tool==='line'&&toolVariant==='segmented')){
-    vertices.push(point);selection={type:tool,points:[...vertices]};draw();
+    vertices.push(point);selection={type:tool,points:[...vertices]};commitFrameChange('selection');draw();
     if(tool==='angle'&&vertices.length===3)finishSelection(tool,vertices);
     return;
   }
@@ -771,13 +786,13 @@ canvas.onpointermove=e=>{
       else if(drag.tool==='line'&&e.shiftKey&&!orthogonal){const dx=end[0]-drag.point[0],dy=end[1]-drag.point[1],angle=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*Math.PI/4,length=Math.hypot(dx,dy);end=bounded([drag.point[0]+length*Math.cos(angle),drag.point[1]+length*Math.sin(angle)]);selection.points=[drag.point,end];}
       else if(drag.tool==='freehand'||toolVariant==='freeline')selection.points.push(end);else selection.points=[drag.point,end];
       selection.points=selection.points.map(q=>roiGeometry.pixelPoint(q,dataset.width,dataset.height));
-      $('region').textContent=selection.points.map(q=>q.join(',')).join(' → ');draw();}
+      $('region').textContent=selection.points.map(q=>q.join(',')).join(' → ');commitFrameChange('selection');draw();}
     return;
   }
   clearTimeout(pixelTimer);const stamp=revision,b=base();
   pixelTimer=setTimeout(async()=>{if(pixelRunning||p[0]<0||p[1]<0||p[0]>=dataset.width||p[1]>=dataset.height)return;pixelRunning=true;try{const r=await request('pixel',{...b,x:Math.floor(p[0]),y:Math.floor(p[1])});if(stamp===revision)$('pixel').textContent=`x=${formatValue(r.x*calibration.factor)} (${formatValue(r.x)}), y=${formatValue(r.y*calibration.factor)} (${formatValue(r.y)}), value=${Array.isArray(r.value)?r.value.map(formatValue).join(', '):formatValue(r.value)}`;}catch{/* main actions report worker errors */}finally{pixelRunning=false;}},100);
 };
-canvas.onpointerup=e=>{if(!drag)return;if(selection&&['roi','oval','freehand','line'].includes(drag.tool)){if(Math.hypot(e.clientX-drag.screen[0],e.clientY-drag.screen[1])<3){selection=null;roi=null;line=null;$('region').textContent='Full image';}else finishSelection(drag.tool,selection.points);}else if(['editHandle','editMove'].includes(drag.tool))refreshSelection();drag=null;canvas.releasePointerCapture(e.pointerId);draw();};
+canvas.onpointerup=e=>{if(!drag)return;if(selection&&['roi','oval','freehand','line'].includes(drag.tool)){if(Math.hypot(e.clientX-drag.screen[0],e.clientY-drag.screen[1])<3){selection=null;refreshSelection();}else finishSelection(drag.tool,selection.points);}else if(['editHandle','editMove'].includes(drag.tool))refreshSelection();drag=null;canvas.releasePointerCapture(e.pointerId);draw();};
 canvas.onpointercancel=()=>{drag=null;};
 for(const name of ['xz','yz']){
   const surface=$(name==='xz'?'orthXZCanvas':'orthYZCanvas');let captured=null;
@@ -861,7 +876,7 @@ $('dataset').onchange=selectDataset;
 for(const id of ['cuts','stretch'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['cmap','invert','threshold'])$(id).onchange=()=>{commitFrameChange('color');scheduleRender(0);};
 for(const id of ['low','high'])$(id).onchange=()=>{$('cuts').value='manual';commitFrameChange('bc');scheduleRender(0);};
-$('clear').onclick=()=>{roi=null;line=null;selection=null;vertices=[];$('region').textContent='Full image';draw();};
+$('clear').onclick=()=>{selection=null;vertices=[];refreshSelection();};
 for(const op of ['measure','histogram','profile'])$(op).onclick=()=>analyze(op);
 $('clearResults').onclick=()=>{measurementHistory.length=0;$('analysis').textContent='Results cleared.';chart([]);$('analysisPane').hidden=false;};
 $('summarize').onclick=()=>{
@@ -1003,7 +1018,10 @@ function derive(action,label,value){
   if(!dataset)return;
   const box=action==='crop'&&selection&&['roi','oval','polygon','freehand'].includes(selection.type)?selectionBounds(selection.points):[0,0,dataset.width,dataset.height];
   if(action==='crop'&&box[0]===0&&box[1]===0&&box[2]===dataset.width&&box[3]===dataset.height){showError(new Error('Select an area to crop.'));return;}
-  vscode.postMessage({type:'derive',fileFrame:activeFileFrame,label,args:{dataset:dataset.id,frame:Number($('frame').value)-1,box,action,value,displayLow:Number($('low').value),displayHigh:Number($('high').value)}});
+  vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action,args:{dataset:dataset.id,frame:Number($('frame').value)-1,box,action,value,displayLow:Number($('low').value),displayHigh:Number($('high').value)}});
+}
+function deriveNewFrame(action,label,value){
+  vscode.postMessage({type:'deriveNewFrame',fileFrame:activeFileFrame,label,args:{dataset:dataset.id,frame:Number($('frame').value)-1,box:[0,0,dataset.width,dataset.height],action,value,displayLow:Number($('low').value),displayHigh:Number($('high').value)}});
 }
 for(const [id,action] of [['flipHorizontal','flipHorizontal'],['flipVertical','flipVertical'],['rotateLeft','rotateLeft'],['rotateRight','rotateRight'],['rotate180','rotate180']])$(id).onclick=()=>vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action,args:base()});
 function openRotateDialog(){
@@ -1029,20 +1047,22 @@ function openRotateDialog(){
 $('rotateArbitrary').onclick=openRotateDialog;
 for(const [target,source] of [['toolMontage','montage'],['toolOrthogonal','stackOrthogonal'],['toolHistogram','histogram'],['toolMeasure','measure'],['toolFlipHorizontal','flipHorizontal'],['toolFlipVertical','flipVertical'],['toolRotateLeft','rotateLeft'],['toolRotateRight','rotateRight']])$(target).onclick=()=>$(source).click();
 for(const [id,action,label] of [['imageCrop','crop','Crop'],['type8','to8','8-bit'],['type16','to16','16-bit'],['type32','to32','32-bit'],['typeRgb','toRgb','RGB Color'],['processNormalize','normalize','Normalize'],['processSmooth','smooth','Smooth'],['processSharpen','sharpen','Sharpen'],['processEdges','findEdges','Find Edges'],['processErode','binaryErode','Erode'],['processDilate','binaryDilate','Dilate'],['processOpen','binaryOpen','Open'],['processClose','binaryClose','Close'],['processFft','fftPower','FFT'],['mathInvert','invertPixels','Invert'],['mathSqrt','sqrt','Square Root'],['mathSquare','square','Square'],['mathLog','log','Log'],['mathExp','exp','Exp'],['mathAbs','abs','Abs']])$(id).onclick=()=>derive(action,label);
-$('imageInfo').onclick=()=>openDialog('info','Image Info',`<pre>${escapeHtml(metadata.path)}\n${dataset.width} × ${dataset.height} · ${escapeHtml(dataset.dtype)}\n${escapeHtml(dataset.shape.join(' × '))} · ${escapeHtml(dataset.axes||'YX')}\nDisplay: ${$('low').value} … ${$('high').value}</pre>`);
+$('imageInfo').onclick=()=>openDialog('info','Image Info',`<pre>${escapeHtml(metadata.path)}\n${dataset.width} × ${dataset.height} · ${escapeHtml(dataset.dtype)}\n${escapeHtml(dataset.shape.join(' × '))} · ${escapeHtml(dataset.targetExpression||dataset.axes||'h w')}\nDisplay: ${$('low').value} … ${$('high').value}</pre>`);
 $('imageScale').onclick=()=>{
   document.querySelector('[data-dialog="scale"]')?.remove();
-  const dialog=openDialog('scale','Scale',`<label>Scale factor <input class="scale-factor" type="number" min="0.001" max="32" step="any" value="1"></label><div class="dialog-actions"><button class="scale-cancel">Cancel</button><button class="scale-run">Create Frame</button></div>`);
+  const dialog=openDialog('scale','Scale',`<label>Scale factor <input class="scale-factor" type="number" min="0.001" max="32" step="any" value="1"></label><div class="dialog-actions"><button class="scale-cancel">Cancel</button><button class="scale-run">Apply</button></div>`);
   dialog.querySelector('.scale-cancel').onclick=()=>dialog.remove();
   dialog.querySelector('.scale-run').onclick=()=>{const factor=Number(dialog.querySelector('.scale-factor').value);if(!Number.isFinite(factor)||factor<=0||factor>32){showError(new Error('Scale factor must be between 0 and 32.'));return;}derive('resize','Scale',factor);dialog.remove();};
 };
 $('processBinary').onclick=()=>{
   document.querySelector('[data-dialog="binary"]')?.remove();
-  const dialog=openDialog('binary','Make Binary',`<label>Threshold <input class="binary-threshold" type="number" step="any" value="${Number($('low').value)||0}"></label><div class="dialog-actions"><button class="binary-cancel">Cancel</button><button class="binary-run">Create Frame</button></div>`);
+  const dialog=openDialog('binary','Make Binary',`<label>Threshold <input class="binary-threshold" type="number" step="any" value="${Number($('low').value)||0}"></label><div class="dialog-actions"><button class="binary-cancel">Cancel</button><button class="binary-run">Apply</button></div>`);
   dialog.querySelector('.binary-cancel').onclick=()=>dialog.remove();
   dialog.querySelector('.binary-run').onclick=()=>{const value=Number(dialog.querySelector('.binary-threshold').value);if(!Number.isFinite(value)){showError(new Error('Enter a finite threshold.'));return;}derive('thresholdBinary','Binary',value);dialog.remove();};
 };
 for(const [id,action,label] of [['shadowNorth','shadowNorth','Shadows North'],['shadowSouth','shadowSouth','Shadows South'],['shadowEast','shadowEast','Shadows East'],['shadowWest','shadowWest','Shadows West'],['processFillHoles','binaryFillHoles','Fill Holes'],['processSkeletonize','binarySkeleton','Skeletonize']])$(id).onclick=()=>derive(action,label);
+$('processWatershed').onclick=()=>derive('binaryWatershed','Watershed');
+$('analyzeSkeleton').onclick=()=>derive('binarySkeleton','Skeleton');
 for(const [id,action,label,field,initial,min,max] of [
   ['processMaxima','findMaxima','Find Maxima','Noise tolerance',0,0,1e6],
   ['filterMean','mean','Mean','Radius (px)',1,1,20],['filterMin','minimum','Minimum','Radius (px)',1,1,20],
@@ -1051,26 +1071,35 @@ for(const [id,action,label,field,initial,min,max] of [
   ['processSaltPepper','saltPepper','Salt and Pepper','Pixel fraction',0.05,0,1],
   ['processBandpass','fftBandpass','FFT Bandpass','Low frequency cutoff',0.05,0,0.5]])$(id).onclick=()=>{
     document.querySelector('[data-dialog="process-number"]')?.remove();
-    const dialog=openDialog('process-number',label,`<label>${field} <input class="process-value" type="number" step="any" min="${min}" max="${max}" value="${initial}"></label><div class="dialog-actions"><button class="process-cancel">Cancel</button><button class="process-run">Create Frame</button></div>`);
+    const dialog=openDialog('process-number',label,`<label>${field} <input class="process-value" type="number" step="any" min="${min}" max="${max}" value="${initial}"></label><div class="dialog-actions"><button class="process-cancel">Cancel</button><button class="process-run">Apply</button></div>`);
     dialog.querySelector('.process-cancel').onclick=()=>dialog.remove();
     dialog.querySelector('.process-run').onclick=()=>{const value=Number(dialog.querySelector('.process-value').value);if(!Number.isFinite(value)||value<min||value>max){showError(new Error(`${field} must be between ${min} and ${max}.`));return;}derive(action,label,value);dialog.remove();};
   };
+$('processSpecifiedNoise').onclick=()=>$('processNoise').click();
+$('processRemoveOutliers').onclick=()=>{
+  const dialog=openDialog('remove-outliers','Remove Outliers',`<label>Radius <input class="outlier-radius" type="number" min="1" max="20" step="1" value="2"></label><label>Threshold <input class="outlier-threshold" type="number" min="0" step="any" value="50"></label><label>Which <select class="outlier-which"><option value="bright">Bright</option><option value="dark">Dark</option></select></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="outlier-cancel">Cancel</button><button class="outlier-run">Apply</button></div>`);
+  dialog.querySelector('.outlier-cancel').onclick=()=>dialog.remove();dialog.querySelector('.outlier-run').onclick=()=>{const radius=Number(dialog.querySelector('.outlier-radius').value),threshold=Number(dialog.querySelector('.outlier-threshold').value);if(!Number.isInteger(radius)||radius<1||radius>20||!Number.isFinite(threshold)||threshold<0){dialog.querySelector('.roi-dialog-error').textContent='Check radius and threshold.';return;}vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'removeOutliers',args:{...base(),radius,threshold,which:dialog.querySelector('.outlier-which').value}});dialog.remove();};
+};
+$('filterConvolve').onclick=()=>{
+  const dialog=openDialog('convolve','Convolve',`<label class="roi-points-label">Kernel<textarea class="convolve-kernel roi-points" rows="5">0 -1 0\n-1 5 -1\n0 -1 0</textarea></label><label><input class="convolve-normalize" type="checkbox"> Normalize kernel</label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="convolve-cancel">Cancel</button><button class="convolve-run">Apply</button></div>`);
+  dialog.querySelector('.convolve-cancel').onclick=()=>dialog.remove();dialog.querySelector('.convolve-run').onclick=()=>{const text=dialog.querySelector('.convolve-kernel').value.trim(),rows=text.split(/\n+/).map(row=>row.trim().split(/[\s,]+/).map(Number));if(!rows.length||rows.some(row=>row.length!==rows.length||row.some(value=>!Number.isFinite(value)))||rows.length%2!==1||rows.length>15){dialog.querySelector('.roi-dialog-error').textContent='Enter an odd square kernel up to 15×15.';return;}vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'convolve',args:{...base(),kernel:rows.flat(),normalize:dialog.querySelector('.convolve-normalize').checked}});dialog.remove();};
+};
 for(const [id,action,label] of [['mathAdd','add','Add'],['mathSubtract','subtract','Subtract'],['mathMultiply','multiply','Multiply'],['mathDivide','divide','Divide']])$(id).onclick=()=>{
   document.querySelector('[data-dialog="math"]')?.remove();
-  const dialog=openDialog('math',label,`<label>Value <input class="math-value" type="number" step="any" value="1"></label><div class="dialog-actions"><button class="math-cancel">Cancel</button><button class="math-run">Create Frame</button></div>`);
+  const dialog=openDialog('math',label,`<label>Value <input class="math-value" type="number" step="any" value="1"></label><div class="dialog-actions"><button class="math-cancel">Cancel</button><button class="math-run">Apply</button></div>`);
   dialog.querySelector('.math-cancel').onclick=()=>dialog.remove();
   dialog.querySelector('.math-run').onclick=()=>{const value=Number(dialog.querySelector('.math-value').value);if(!Number.isFinite(value)){showError(new Error('Enter a finite number.'));return;}derive(action,label,value);dialog.remove();};
 };
 for(const [id,action,label] of [['filterGaussian','gaussian','Gaussian Blur'],['filterMedian','median','Median'],['filterUnsharp','unsharp','Unsharp Mask']])$(id).onclick=()=>{
   document.querySelector('[data-dialog="filter"]')?.remove();
-  const dialog=openDialog('filter',label,`<label>${action==='median'?'Radius (1 or 2)':'Sigma'} (px) <input class="filter-radius" type="number" step="${action==='median'?'1':'any'}" min="${action==='median'?'1':'0.1'}" max="${action==='median'?'2':'20'}" value="1"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="filter-cancel">Cancel</button><button class="filter-run">Create Frame</button></div>`);
+  const dialog=openDialog('filter',label,`<label>${action==='median'?'Radius (1 or 2)':'Sigma'} (px) <input class="filter-radius" type="number" step="${action==='median'?'1':'any'}" min="${action==='median'?'1':'0.1'}" max="${action==='median'?'2':'20'}" value="1"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="filter-cancel">Cancel</button><button class="filter-run">Apply</button></div>`);
   dialog.querySelector('.filter-cancel').onclick=()=>dialog.remove();
   dialog.querySelector('.filter-run').onclick=()=>{const value=Number(dialog.querySelector('.filter-radius').value);if(!Number.isFinite(value)||value<=0||value>(action==='median'?2:20)||(action==='median'&&!Number.isInteger(value))){dialog.querySelector('.roi-dialog-error').textContent=action==='median'?'Enter radius 1 or 2.':'Enter a value between 0 and 20 pixels.';return;}derive(action,label,value);dialog.remove();};
 };
 $('zProject').onclick=()=>{
   if(!dataset||dataset.frames<2){showError(new Error('Z Project requires a stack.'));return;}
   document.querySelector('[data-dialog="z-project"]')?.remove();
-  const dialog=openDialog('z-project','Z Project',`<label>Projection <select class="z-method"><option value="zMax">Max Intensity</option><option value="zMean">Average Intensity</option><option value="zMin">Min Intensity</option></select></label><div class="dialog-actions"><button class="z-cancel">Cancel</button><button class="z-create">Create Frame</button></div>`);
+  const dialog=openDialog('z-project','Z Project',`<label>Projection <select class="z-method"><option value="zMax">Max Intensity</option><option value="zMean">Average Intensity</option><option value="zMin">Min Intensity</option></select></label><div class="dialog-actions"><button class="z-cancel">Cancel</button><button class="z-create">Apply</button></div>`);
   dialog.querySelector('.z-cancel').onclick=()=>dialog.remove();
   dialog.querySelector('.z-create').onclick=()=>{derive(dialog.querySelector('.z-method').value,'Z Project');dialog.remove();};
 };
@@ -1243,8 +1272,19 @@ async function showLutDialog(gallery=false){
 if($('colorShowLut'))$('colorShowLut').onclick=()=>showLutDialog(false);
 if($('colorDisplayLuts'))$('colorDisplayLuts').onclick=()=>showLutDialog(true);
 if($('colorInvertLuts'))$('colorInvertLuts').onclick=()=>{$('invert').checked=!$('invert').checked;commitFrameChange('color');scheduleRender(0);};
-if($('colorSplitChannels'))$('colorSplitChannels').onclick=()=>{if(!String(dataset.axes||'').endsWith('S')){showError(new Error('Split Channels requires an RGB image.'));return;}for(const [action,label] of [['channelRed','Red channel'],['channelGreen','Green channel'],['channelBlue','Blue channel']])derive(action,label);};
-for(const id of ['colorMergeChannels','colorChannelsTool','colorStackToRgb','colorMakeComposite'])if($(id)){$(id).disabled=true;$(id).title='Planned';}
+if($('colorSplitChannels'))$('colorSplitChannels').onclick=()=>{if(dataset.channel==null&&!(dataset.shape?.at(-1)===3)){showError(new Error('Split Channels requires an RGB image.'));return;}for(const [action,label] of [['channelRed','Red channel'],['channelGreen','Green channel'],['channelBlue','Blue channel']])deriveNewFrame(action,label);};
+function openStackChannels(title='Stack to RGB'){
+  if(dataset.frames<3){showError(new Error(`${title} requires at least three slices.`));return;}
+  const dialog=openDialog('stack-channels',title,`<label>Red slice <input class="channel-r" type="number" min="1" max="${dataset.frames}" value="1"></label><label>Green slice <input class="channel-g" type="number" min="1" max="${dataset.frames}" value="2"></label><label>Blue slice <input class="channel-b" type="number" min="1" max="${dataset.frames}" value="3"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="channels-cancel">Cancel</button><button class="channels-run">Apply</button></div>`);
+  dialog.querySelector('.channels-cancel').onclick=()=>dialog.remove();dialog.querySelector('.channels-run').onclick=()=>{const channelFrames=['r','g','b'].map(name=>Number(dialog.querySelector(`.channel-${name}`).value));if(channelFrames.some(value=>!Number.isInteger(value)||value<1||value>dataset.frames)){dialog.querySelector('.roi-dialog-error').textContent='Choose three valid slice numbers.';return;}vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'stackToRgb',args:{...base(),channelFrames}});dialog.remove();};
+}
+$('colorStackToRgb').onclick=()=>openStackChannels('Stack to RGB');$('colorMakeComposite').onclick=()=>openStackChannels('Make Composite');$('colorChannelsTool').onclick=()=>openStackChannels('Channels Tool');
+$('colorMergeChannels').onclick=()=>{
+  const choices=[...fileFrames].map(([id,state])=>`<option value="${id}">${escapeHtml(state.metadata.label||state.metadata.path.split(/[\\/]/).pop())}</option>`).join('');
+  if(fileFrames.size<2){showError(new Error('Open at least two Frames to merge channels.'));return;}
+  const dialog=openDialog('merge-channels','Merge Channels',`<label>Red <select class="merge-r">${choices}</select></label><label>Green <select class="merge-g">${choices}</select></label><label>Blue <select class="merge-b"><option value="">None</option>${choices}</select></label><div class="dialog-actions"><button class="merge-cancel">Cancel</button><button class="merge-run">Apply</button></div>`);
+  const ids=[...fileFrames.keys()];dialog.querySelector('.merge-r').value=ids[0];dialog.querySelector('.merge-g').value=ids[1];dialog.querySelector('.merge-cancel').onclick=()=>dialog.remove();dialog.querySelector('.merge-run').onclick=()=>{const channelFrameIds=['r','g','b'].map(name=>dialog.querySelector(`.merge-${name}`).value).filter(Boolean).map(Number);vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'mergeChannels',args:{...base(),channelFrameIds}});dialog.remove();};
+};
 function shortcutMatches(binding,event){
   if(!binding)return false;
   const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),key=parts.pop(),modifiers=new Set(parts);

@@ -6,11 +6,13 @@
 
 双击由 vivi 接管的图像，或选择 **Open**，会把它作为 Frame 加入最近使用的 vivi 编辑器标签页。**Open in New Tab** 会在当前编辑器组中新建独立标签页。通过 `vivi.managedExtensions` 选择由 vivi 接管的后缀；移出列表的文件使用编辑器原来的打开方式。命令面板运行 **vivi: Configure Menu Visibility**，勾选或取消图像视图一级、二级菜单项；默认全选。
 
-**Open Folder as Stack** 会询问读取模式：**Only 2D images** 跳过非 2D 文件，**All image planes** 将 2D 和 3D 文件的切片依次合并。右下角显示切片的源文件名及原文件中的编号。文件须具有相同的宽、高、数据类型和通道数。Explorer 的 **Remove** 会递归永久删除目标，操作前弹出确认。
+对于高维单文件，**Open As…** 会列出 TIFF 的每个 series 或 FITS 的每个 HDU、原始 shape 和可编辑目标轴。每个源轴字母必须恰好使用一次；连接字母可合并维度（如 `uv h w`），把检测到的通道移到 `h w` 前可将其作为 stack slice（如 `c h w`）。输入不合法时弹窗保留，可继续修改。
+
+**Open Folder as Stack** 会询问读取模式：**Only 2D images** 或 **All image planes**，随后可选填空格分隔的 `H W`。留空时采用第一个合格文件的高宽，之后高宽不同的文件会跳过。右下角显示切片的源文件名及原文件中的编号。Explorer 的 **Remove** 会递归永久删除目标，操作前弹出确认。
 
 ## Frame 与切片
 
-侧栏的 **Layout** 管理文件 Frame。新标签页默认显示单个 Frame。点击显示模式图标可切换平铺；拖动 Frame 行可排序，并可设置行数或列数。眼睛开关决定是否显示，旁边的锁开关决定是否参与参数同步。修改参数前先选中对应 Frame；平铺时方向键可在可见 Frame 间移动选中状态。只有参与锁定的 Frame 才同步 B&C、LUT、视野、缩放或切片。新加入锁定组的 Frame 会继承已启用的同步设置。
+侧栏的 **Layout** 管理文件 Frame。新标签页默认显示单个 Frame。点击显示模式图标可切换平铺；拖动 Frame 行可排序，并可设置行数或列数。眼睛开关决定是否显示，旁边的锁开关决定是否参与参数同步。修改参数前先选中对应 Frame；平铺时方向键可在可见 Frame 间移动选中状态。只有参与锁定的 Frame 才同步 B&C、LUT、视野、缩放、切片或 Selection。新加入锁定组的 Frame 会继承已启用的同步设置；tile 模式下可见且锁定的 Frame 会成组提交同一次显示更新。
 
 Layout 中右键 Frame 可重命名、复制或关闭。复制品添加到列表末尾，标题附加 `[copy N]`。Frame 列表支持滚轮滚动。
 
@@ -24,7 +26,7 @@ Layout 中右键 Frame 可重命名、复制或关闭。复制品添加到列表
 
 ## 生成的结果
 
-Duplicate、Crop、Montage、投影及多项 Process 命令会创建新 Frame。Montage 将原始灰度值写为 TIFF 像素；**Scale (%)** 改变每个拼块的像素尺寸。正交翻转和旋转则替换当前 Frame 的显示内容，最多可撤销或重做十步。磁盘上的源文件不变；生成的图像暂存在扩展主机，可通过相应的 File 命令导出。
+Image、Process 和 Analyze Skeleton 下的像素运算会替换当前 Frame 的临时工作副本，最多撤销或重做十步。尺寸兼容的 stack 运算保留其他 slice，几何运算处理整个 stack。Split Channels、Stack to Images 等天然产生多个结果的命令会创建额外 Frame。Montage 保留原始灰度 dtype 与数值；磁盘上的源文件始终不变。
 
 ## 常用设置
 

@@ -6,10 +6,10 @@ vivi 是面向 VS Code 和 Cursor 的科学图像与数据查看扩展。它在�
 
 ## 主要功能
 
-- 打开 PNG、JPEG、TIFF、FITS 等图像；浏览 TIFF stack、hyperstack 和 FITS 的多个 HDU。导入图像文件夹时可只选 2D 图像，或展开 2D、3D 文件的全部切片；切换 slice 时显示源文件名及原文件中的切片编号。具备相应解码器时，还可预览 AVI、MP4、MOV、MKV 视频。
+- 打开 PNG、JPEG、TIFF、FITS 等图像；浏览 TIFF stack、hyperstack 和 FITS 的多个 HDU。**Open As…** 会列出每个 series/HDU，并接受 `uv h w`、`c h w` 这类 rearrange 风格的轴表达式。导入图像文件夹时可只选 2D 图像，或展开全部图像平面，还可指定统一的 `H W`；切换 slice 时显示源文件名及原文件中的切片编号。具备相应解码器时，还可预览 AVI、MP4、MOV、MKV 视频。
 - 用 vivi Explorer 访问当前主机上任何有权限的路径，包括工作区以外的路径。通过 `vivi.managedExtensions` 选择哪些扩展名交由 vivi 双击打开；其他文件使用编辑器原有方式。
-- 在一个编辑器标签页中管理多个 Frame，可切换、平铺、排序，并选择哪些 Frame 参与显示参数同步。同名 Frame 自动编号；在 Layout 中右键 Rename 可修改显示标题，不会更改源文件。**Open in New Tab** 会打开独立标签页。
-- 调整亮度与对比度、拉伸、阈值和 LUT；绘制与测量选区；查看像素值和直方图。ImageJ 风格的菜单包含 stack 转换、montage、reslice、投影、正交视图、剖面及部分图像处理命令。正交截面可以复制为 2D Frame。
+- 在一个编辑器标签页中管理多个 Frame，可切换、平铺、排序，并选择哪些 Frame 实时同步 B&C、LUT、View、Zoom、Slice 和 Selection。锁定的 tile 会成组更新。同名 Frame 自动编号；在 Layout 中右键 Rename 可修改显示标题，不会更改源文件。**Open in New Tab** 会打开独立标签页。
+- 调整亮度与对比度、拉伸、阈值和 LUT；绘制与测量选区；查看像素值和直方图。ImageJ 风格的菜单包含 stack 转换、montage、reslice、投影、正交视图、剖面、颜色通道、滤波、二值形态学、两种 FFT 和分析功能。像素运算默认替换当前 Frame 并进入十步撤销记录；Split Channels 这类天然产生多个结果的命令会建立额外 Frame。
 - 当前切片显示后立即以原始分辨率预载整个 stack。默认保留像素的源 dtype，可选的可逆压缩降低 Remote SSH 传输量。大型浮点文件还可选择只对预览做有损编码，源文件和服务端分析保持原值。大型 stack 可能占用大量本机内存。
 
 **vivi 仍在开发中。** 灰色菜单项尚不可用，部分同名命令的行为也比 ImageJ 简化。进行分析前请查看[功能覆盖和差异说明](docs/imagej-menu-coverage.md)。

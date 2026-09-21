@@ -175,6 +175,18 @@ class StackTests(unittest.TestCase):
         finally:
             os.unlink(result["path"])
 
+    def test_in_place_filter_result_retains_other_stack_planes(self):
+        result = self.session.handle({"op": "derive", "action": "smooth", "dataset": 0,
+                                      "frame": 1, "preserveStack": True})
+        try:
+            actual = tifffile.imread(result["path"])
+            self.assertEqual(actual.shape, self.data.shape)
+            np.testing.assert_array_equal(actual[0], self.data[0].astype(actual.dtype))
+            np.testing.assert_array_equal(actual[2], self.data[2].astype(actual.dtype))
+            self.assertFalse(np.array_equal(actual[1], self.data[1]))
+        finally:
+            os.unlink(result["path"])
+
     def test_transform_preserves_hyperstack_axes(self):
         data = np.arange(2 * 3 * 4 * 5, dtype=np.float32).reshape(2, 3, 4, 5)
         path = str(Path(self.directory.name) / "hyper.tif")
@@ -209,6 +221,17 @@ class StackTests(unittest.TestCase):
         self.assertEqual(preview["rgb"][-1], [255, 255, 255])
         with self.assertRaisesRegex(ValueError, "Unknown LUT"):
             self.session.handle({"op": "lutPreview", "cmap": "missing"})
+
+    def test_stack_to_rgb_uses_selected_source_slices(self):
+        result = self.session.handle({"op": "derive", "action": "stackToRgb",
+                                      "channelFrames": [1, 2, 3], "dataset": 0, "frame": 0})
+        try:
+            actual = tifffile.imread(result["path"])
+            self.assertEqual(actual.shape, self.data.shape[1:] + (3,))
+            np.testing.assert_array_equal(actual[..., 0], self.data[0])
+            np.testing.assert_array_equal(actual[..., 2], self.data[2])
+        finally:
+            os.unlink(result["path"])
 
 
 if __name__ == "__main__":

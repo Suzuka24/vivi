@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 (development build; not published)
+- Add **Open As…** for multidimensional TIFF and FITS data. It lists every series or HDU, shows source shape and axis letters, validates rearrange-style target expressions, folds adjacent axes such as `uv h w`, and lets a channel axis become stack slices with `c h w`.
+- Let folder stacks optionally filter all candidate images by a user-provided `H W`; when omitted, the first qualifying image defines the required size. Mismatched files are skipped.
+- Refresh all visible locked tile Frames as one visual update for B&C, LUT, Slice, View, and Zoom. Add real-time Selection synchronization and render synchronized selections in every tile.
+- Apply Image, Process, FFT, Binary, Math, Filter, and Analyze Skeleton pixel operations to the current Frame with ten-step undo/redo; retain untouched stack slices where the operation keeps a compatible plane layout.
+- Add channel merge/stack-to-RGB controls, Convolve, Remove Outliers, Watershed, and Analyze Skeleton. Keep Split Channels as a multi-output command.
+- Keep the official ImageJ 1.x source in a local, untracked `ref/ImageJ` checkout for implementation comparison; exclude `ref/` from Git and VSIX packages.
+
 ## 0.6.24 (development build; not published)
 - Make wheel scroll slices upward to the next slice, Shift+wheel zoom at pointer, and platform modifier+wheel zoom at image center. Double-click fits the image.
 - Configure mouse gestures and default FPS (24), rename Pan to Hand (H), and bind Oval to O. Held slice arrows repeat at FPS.

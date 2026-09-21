@@ -6,6 +6,7 @@ tests/**
 worklog/**
 .vscode/**
 .git/**
+ref/**
 *.vsix
 pnpm-lock.yaml
 .gitignore

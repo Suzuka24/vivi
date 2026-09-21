@@ -12,6 +12,7 @@ import zlib
 
 import numpy as np
 from PIL import Image, ImageDraw
+from axis_layout import make_layout, storage_indices
 from luts import apply_lut
 from lossy_preview import encode_lossy
 
@@ -72,13 +73,16 @@ def rotate_image(image, options):
 
 
 class Source:
-    def __init__(self, path, max_pixels=64_000_000, sequence_mode="2d"):
+    def __init__(self, path, max_pixels=64_000_000, sequence_mode="2d",
+                 sequence_size=None, axis_layouts=None):
         self.path = os.path.abspath(os.path.expanduser(path))
         self.handles = []
         self.datasets = []
         self.levels = {}
         self.max_pixels = max_pixels
         self.sequence_mode = sequence_mode
+        self.sequence_size = tuple(sequence_size) if sequence_size else None
+        self.axis_layouts = axis_layouts or {}
         self.frame_cache = None
         self.frame_index = -1
         self.sequence_source = None
@@ -107,20 +111,25 @@ class Source:
                     try:
                         d=source.datasets[0]
                         if self.sequence_mode=="2d" and d['frames']!=1: continue
-                        signature=(d['width'],d['height'],d['dtype'],source.source_channels(d))
-                        if reference is None: reference=signature
-                        elif signature!=reference: raise ValueError(f'Image Sequence dimensions, type, and channels must match: {os.path.basename(file)}')
+                        size=(d['height'],d['width'])
+                        if reference is None: reference=self.sequence_size or size
+                        if size != reference: continue
                         for plane in range(d['frames']):
                             frames.append((file,plane))
                             labels.append(f'{os.path.basename(file)} · slice {plane+1}/{d["frames"]}' if self.sequence_mode=="all" else os.path.basename(file))
                     finally: source.close()
-                except ValueError:
-                    raise
+                except (ValueError, OSError):
+                    continue
             if not frames: raise ValueError('Folder contains no matching 2D images')
             self.kind='sequence';self.sequence_frames=frames;self.slice_labels=labels;self.sequence_shape=reference
-            width,height,dtype,channels=reference
+            height,width=reference
+            first=Source(frames[0][0],self.max_pixels)
+            try:
+                item=first.datasets[0];dtype=item['dtype'];channels=first.source_channels(item)
+            finally:
+                first.close()
             self._add(0,'Image Sequence',(len(frames),height,width)+(channels,) if channels>1 else (len(frames),height,width),'TYXS' if channels>1 else 'TYX',dtype)
-            self.warning='Image Sequence reads source planes on demand and shows their original filenames.'
+            self.warning=f'Image Sequence includes {len(frames)} matching plane(s) at {width}×{height} and reads them on demand.'
             return
         ext = os.path.splitext(self.path)[1].lower()
         if ext in (".fits", ".fit", ".fts", ".fz"):
@@ -180,17 +189,13 @@ class Source:
         shape = tuple(int(v) for v in shape)
         if any(v < 1 for v in shape):
             return
-        if axes:
-            if "Y" not in axes or "X" not in axes:
-                return
-            y, x = axes.index("Y"), axes.index("X")
-            c = axes.index("S") if "S" in axes and shape[axes.index("S")] in (3, 4) else None
-        else:
-            y, x, c = len(shape) - 2, len(shape) - 1, None
-        extra = [i for i in range(len(shape)) if i not in (y, x, c)]
-        self.datasets.append(dict(id=key, name=name, shape=shape, axes=axes, dtype=dtype,
-                                  width=shape[x], height=shape[y], frames=math.prod(shape[i] for i in extra),
-                                  y=y, x=x, channel=c, extra=extra))
+        target = self.axis_layouts.get(str(key), self.axis_layouts.get(key))
+        layout = make_layout(shape, axes, target)
+        layout.update(id=key, name=name, dtype=dtype, axes=axes,
+                      storageY=layout['labelToStorage']['h'],
+                      storageX=layout['labelToStorage']['w'],
+                      storageChannel=layout['labelToStorage'].get('c'))
+        self.datasets.append(layout)
 
     def dataset(self, key=0):
         return next((d for d in self.datasets if d["id"] == int(key)), self.datasets[0])
@@ -220,8 +225,8 @@ class Source:
                 self.sequence_source = Source(file, self.max_pixels)
                 self.sequence_index = file
                 item = self.sequence_source.datasets[0]
-                if (item['width'], item['height'], item['dtype'], self.sequence_source.source_channels(item)) != self.sequence_shape:
-                    raise ValueError(f'Image Sequence slice differs in size, type, or channels: {self.slice_labels[frame]}')
+                if (item['height'], item['width']) != self.sequence_shape:
+                    raise ValueError(f'Image Sequence slice differs in size: {self.slice_labels[frame]}')
             return self.sequence_source.read(self.sequence_source.datasets[0], plane, box, step, pyramid, raw_stored)
         if self.kind in ("raster", "video"):
             if self.frame_index != frame:
@@ -239,7 +244,7 @@ class Source:
                     self.frame_cache = np.array(self.file.convert("RGB") if self.raster_color else self.file)
                 self.frame_index = frame
             return self.frame_cache[y0:y1:step, x0:x1:step]
-        shape = d["shape"]
+        shape = tuple(d["storageShape"])
         target = None
         if self.kind == "tiff":
             import zarr
@@ -248,7 +253,7 @@ class Source:
             level = 0
             if pyramid:
                 for i, candidate in enumerate(series.levels):
-                    factor = d["width"] / candidate.shape[d["x"]]
+                    factor = d["width"] / candidate.shape[d["storageX"]]
                     if factor <= step:
                         level = i
             cache_key = (d["id"], level)
@@ -265,16 +270,11 @@ class Source:
                     self.levels[cache_key] = zarr.open(store, mode="r")
             target = self.levels[cache_key]
             shape = target.shape
-            fx, fy = d["width"] / shape[d["x"]], d["height"] / shape[d["y"]]
-            x0, x1 = int(x0 / fx), min(shape[d["x"]], math.ceil(x1 / fx))
-            y0, y1 = int(y0 / fy), min(shape[d["y"]], math.ceil(y1 / fy))
+            fx, fy = d["width"] / shape[d["storageX"]], d["height"] / shape[d["storageY"]]
+            x0, x1 = int(x0 / fx), min(shape[d["storageX"]], math.ceil(x1 / fx))
+            y0, y1 = int(y0 / fy), min(shape[d["storageY"]], math.ceil(y1 / fy))
             step = max(1, int(step / max(fx, fy)))
-        indices = [slice(None)] * len(shape)
-        frame_shape = tuple(d["shape"][i] for i in d["extra"])
-        coordinates = np.unravel_index(frame, frame_shape) if frame_shape else ()
-        for axis, coord in zip(d["extra"], coordinates):
-            indices[axis] = int(coord)
-        indices[d["y"]], indices[d["x"]] = slice(y0, y1, step), slice(x0, x1, step)
+        indices = storage_indices(d, frame, slice(y0, y1, step), slice(x0, x1, step))
         if self.kind == "fits":
             from astropy.io import fits
             hdu = self.file[d["id"]]
@@ -284,7 +284,7 @@ class Source:
                 key = ("fits", d["id"])
                 if key not in self.levels:
                     dtype = {8:"u1",16:">i2",32:">i4",64:">i8",-32:">f4",-64:">f8"}[hdu.header["BITPIX"]]
-                    mapped = np.memmap(self.path, mode="r", dtype=dtype, shape=d["shape"], offset=hdu.fileinfo()["datLoc"])
+                    mapped = np.memmap(self.path, mode="r", dtype=dtype, shape=tuple(d["storageShape"]), offset=hdu.fileinfo()["datLoc"])
                     self.levels[key] = mapped
                     self.handles.append(mapped._mmap)
                 raw = self.levels[key][tuple(indices)]
@@ -300,10 +300,11 @@ class Source:
                         data[raw == blank] = np.nan
         else:
             data = target[tuple(indices)]
-        remaining = [i for i in range(len(shape)) if i not in d["extra"]]
-        order = [remaining.index(d["y"]), remaining.index(d["x"])]
+        indexed = {axis for axis, value in enumerate(indices) if isinstance(value, (int, np.integer))}
+        remaining = [i for i in range(len(shape)) if i not in indexed]
+        order = [remaining.index(d["storageY"]), remaining.index(d["storageX"])]
         if d["channel"] is not None:
-            order.append(remaining.index(d["channel"]))
+            order.append(remaining.index(d["storageChannel"]))
         return np.transpose(np.asarray(data), order)
 
     def close(self):
@@ -429,12 +430,21 @@ class Session:
             if values.ndim == 1:
                 values = np.repeat(values[:, None], 3, axis=1)
             return {"cmap": cmap, "rgb": np.rint(np.clip(values, 0, 1) * 255).astype(np.uint8).tolist()}
+        if op == "inspect":
+            inspected = Source(req["path"], int(req.get("maxPixels", 64_000_000)))
+            try:
+                return dict(path=inspected.path, kind=inspected.kind,
+                            datasets=inspected.datasets, warning=inspected.warning)
+            finally:
+                inspected.close()
         if op == "open":
             if self.source:
                 self.source.close()
                 self.source = None
             self.cuts.clear()
-            self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)),req.get("sequenceMode","2d"))
+            self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)),
+                                 req.get("sequenceMode","2d"), req.get("sequenceSize"),
+                                 req.get("axisLayouts"))
             return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets, warning=self.source.warning,
                         sliceLabels=self.source.slice_labels)
         if not self.source:
@@ -519,13 +529,36 @@ class Session:
         if op == "derive":
             import tifffile
             action = req.get("action")
-            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "rotate", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"}
+            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "rotate", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "binaryWatershed", "removeOutliers", "convolve", "fftBandpass", "stackToRgb", "mergeChannels"}
             if action not in supported:
                 raise ValueError("Unsupported image operation")
             area = (box[2]-box[0])*(box[3]-box[1])
             if area > self.source.max_pixels:
                 raise ValueError("Image operation exceeds maxDecodedPixels; select a smaller area")
-            if action.startswith("z"):
+            if action == "mergeChannels":
+                paths = req.get("paths") or []
+                if not 2 <= len(paths) <= 4:
+                    raise ValueError("Merge Channels requires two to four source Frames")
+                channels = []
+                for source_path in paths:
+                    source = Source(source_path, self.source.max_pixels)
+                    try:
+                        item = source.datasets[0]
+                        image = scalar(source.read(item, min(frame, item["frames"] - 1), bounds(item)))
+                        if image.shape != (d["height"], d["width"]):
+                            raise ValueError("Merged channels must have matching width and height")
+                        channels.append(image)
+                    finally:
+                        source.close()
+                if len(channels) == 2:
+                    channels.append(np.zeros_like(channels[0]))
+                result = np.stack(channels[:3], axis=-1)
+            elif action == "stackToRgb":
+                frames = req.get("channelFrames", [1, 2, 3])
+                if len(frames) != 3 or any(not 1 <= int(value) <= d["frames"] for value in frames):
+                    raise ValueError("Choose three valid stack slices for red, green, and blue")
+                result = np.stack([scalar(self.source.read(d, int(value)-1, box)) for value in frames], axis=-1)
+            elif action.startswith("z"):
                 if d["frames"] > 256:
                     raise ValueError("Projection supports at most 256 slices")
                 result = None
@@ -606,7 +639,7 @@ class Session:
                         equalized = np.interp(channel, edges[1:], low + cdf * (high - low))
                         output.append(np.where(np.isfinite(channel), equalized, channel))
                     result = (np.stack(output, axis=-1) if data.ndim == 3 else output[0]).astype(result.dtype)
-                elif action in ("smooth", "sharpen", "findEdges", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "fftBandpass"):
+                elif action in ("smooth", "sharpen", "findEdges", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "binaryWatershed", "removeOutliers", "convolve", "fftBandpass"):
                     import cv2
                     data = np.ascontiguousarray(result.astype(np.float32))
                     if action == "smooth":
@@ -659,6 +692,33 @@ class Session:
                             current=eroded
                             if not np.any(current):break
                         result=skeleton
+                    elif action == "binaryWatershed":
+                        gray=np.mean(data[...,:3],axis=-1) if data.ndim==3 else data
+                        binary=np.uint8(gray>0)
+                        distance=cv2.distanceTransform(binary,cv2.DIST_L2,5)
+                        peaks=np.uint8(distance>=cv2.dilate(distance,np.ones((3,3),np.uint8)))
+                        _,markers=cv2.connectedComponents(peaks)
+                        markers=markers.astype(np.int32)+1
+                        markers[binary==0]=0
+                        source=np.uint8(np.clip(binary*255,0,255));rgb=cv2.cvtColor(source,cv2.COLOR_GRAY2BGR)
+                        cv2.watershed(rgb,markers)
+                        result=np.uint8((binary>0)&(markers!=-1))*255
+                    elif action == "removeOutliers":
+                        radius=int(finite_number(req.get("radius", req.get("value", 2)),2))
+                        threshold=finite_number(req.get("threshold"),50)
+                        if not 1<=radius<=20 or threshold<0: raise ValueError("Check outlier radius and threshold")
+                        kernel=radius*2+1;median=cv2.medianBlur(data,kernel if kernel in (3,5) else 5)
+                        difference=data-median;bright=req.get("which","bright")!="dark"
+                        mask=difference>threshold if bright else difference<-threshold
+                        result=np.where(mask,median,data)
+                    elif action == "convolve":
+                        values=req.get("kernel")
+                        if not isinstance(values,list) or not values: raise ValueError("Enter a convolution kernel")
+                        side=round(math.sqrt(len(values)))
+                        if side*side!=len(values) or side%2!=1 or side>15: raise ValueError("Kernel must be an odd square up to 15×15")
+                        kernel=np.asarray([finite_number(value,0) for value in values],np.float32).reshape(side,side)
+                        if req.get("normalize",True) and abs(float(kernel.sum()))>1e-12: kernel/=kernel.sum()
+                        result=cv2.filter2D(data,-1,kernel,borderType=cv2.BORDER_REPLICATE)
                     elif action == "fftBandpass":
                         low=finite_number(req.get("value"),0.05)
                         if not 0 <= low <= 0.5: raise ValueError("Cutoff must be between 0 and 0.5")
@@ -710,7 +770,10 @@ class Session:
                 if req.get("preserveStack") and action in ("flipHorizontal", "flipVertical", "rotateLeft", "rotateRight", "rotate180", "rotate") and d["frames"] > 1:
                     output_shape = list(d["shape"])
                     output_shape[d["y"]], output_shape[d["x"]] = result.shape[:2]
-                    output_axes = d["axes"] or "Q" * len(d["extra"]) + "YX"
+                    target_storage_order = [d["labelToStorage"][group[0]] for group in d["targetGroups"] if len(group) == 1]
+                    unchanged_layout = len(d["storageShape"]) == len(d["shape"]) and all(len(group) == 1 for group in d["targetGroups"]) and target_storage_order == list(range(len(d["storageShape"])))
+                    output_axes = d["axes"] if unchanged_layout and d["axes"] else \
+                        (("T" if len(d["extra"]) == 1 else "Q" * len(d["extra"])) + "YX" + ("S" if d["channel"] is not None else ""))
                     def transformed_planes():
                         for plane in range(d["frames"]):
                             if plane == frame:
@@ -725,6 +788,33 @@ class Session:
                     with tifffile.TiffWriter(destination, bigtiff=True) as writer:
                         writer.write(transformed_planes(), shape=tuple(output_shape), dtype=result.dtype,
                                      photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack",
+                                     metadata={"axes": output_axes})
+                elif req.get("preserveStack") and not action.startswith("z") and action not in ("stackToRgb", "mergeChannels") and d["frames"] > 1:
+                    def retained_planes():
+                        for plane in range(d["frames"]):
+                            if plane == frame:
+                                yield result
+                                continue
+                            image = np.asarray(self.source.read(d, plane, box))
+                            if action == "resize":
+                                import cv2
+                                image = cv2.resize(np.ascontiguousarray(image), (result.shape[1], result.shape[0]),
+                                                   interpolation=cv2.INTER_LINEAR)
+                            if image.ndim != result.ndim:
+                                if image.ndim == 2 and result.ndim == 3 and result.shape[-1] == 3:
+                                    image = np.repeat(image[..., None], 3, axis=-1)
+                                elif image.ndim == 3 and result.ndim == 2:
+                                    image = np.mean(image[..., :3], axis=-1)
+                                else:
+                                    raise ValueError("This operation changes the stack plane layout incompatibly")
+                            if image.shape != result.shape:
+                                raise ValueError("This operation changes the stack plane size incompatibly")
+                            yield np.ascontiguousarray(image, dtype=result.dtype)
+                    output_shape = (d["frames"],) + result.shape
+                    output_axes = "TYXS" if result.ndim == 3 and result.shape[-1] in (3, 4) else "TYX"
+                    with tifffile.TiffWriter(destination, bigtiff=True) as writer:
+                        writer.write(retained_planes(), shape=output_shape, dtype=result.dtype,
+                                     photometric="rgb" if output_axes == "TYXS" else "minisblack",
                                      metadata={"axes": output_axes})
                 else:
                     tifffile.imwrite(destination, result, bigtiff=True,

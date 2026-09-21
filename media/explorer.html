@@ -16,7 +16,7 @@
 
 
 <div id="frameItems" class="frame-items" aria-label="Drag to reorder frames"></div>
-<div class="lock-controls"><button id="lockAll" title="Include all Frames in locks">All lock</button><button id="unlockAllFrames" title="Remove all Frames from locks">Unlock</button><label><input type="checkbox" data-side-lock="bc">B&amp;C</label><label><input type="checkbox" data-side-lock="color">LUT</label><label><input type="checkbox" data-side-lock="view">View</label><label><input type="checkbox" data-side-lock="scale">Zoom</label><label><input type="checkbox" data-side-lock="slice">Slice</label></div>
+<div class="lock-controls"><button id="lockAll" title="Include all Frames in locks">All lock</button><button id="unlockAllFrames" title="Remove all Frames from locks">Unlock</button><label><input type="checkbox" data-side-lock="bc">B&amp;C</label><label><input type="checkbox" data-side-lock="color">LUT</label><label><input type="checkbox" data-side-lock="view">View</label><label><input type="checkbox" data-side-lock="scale">Zoom</label><label><input type="checkbox" data-side-lock="slice">Slice</label><label><input type="checkbox" data-side-lock="selection">Selection</label></div>
 </div></div></details>
 <details id="adjustModule" class="side-module" open><summary>ADJUST</summary><div class="side-module-body adjust-grid">
 <label>Auto <select id="adjustCuts"><option value="percentile">ImageJ 99%</option><option value="zscale">DS9 ZScale</option><option value="p90">DS9 90%</option><option value="p95">DS9 95%</option><option value="p99">DS9 99%</option><option value="p999">DS9 99.9%</option><option value="minmax">Min / Max</option><option value="manual">Manual</option></select></label>
@@ -28,4 +28,5 @@
 </div></details>
 <div id="contextMenu" class="context-menu" role="menu" hidden></div>
 <div id="sortMenu" class="context-menu" role="menu" hidden></div>
+<div id="openAsDialog" class="open-as-backdrop" hidden><form id="openAsForm" class="open-as-dialog" novalidate><div class="open-as-head"><strong>Open As</strong><button id="openAsClose" type="button" aria-label="Close">×</button></div><div class="open-as-body"><p>Use every source axis exactly once. Join letters to fold axes, for example <code>uv h w</code>.</p><div id="openAsRows"></div><div id="openAsError" role="alert"></div><div class="open-as-actions"><button id="openAsCancel" type="button">Cancel</button><button type="submit">Open</button></div></div></form></div>
 <script nonce="{{nonce}}" src="{{formatScript}}"></script><script nonce="{{nonce}}" src="{{script}}"></script></body></html>

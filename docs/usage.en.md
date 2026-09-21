@@ -6,11 +6,13 @@ Click the vivi activity-bar icon and enter a directory on the **extension host**
 
 Double-click a managed image or choose **Open** to add it as a Frame in the most recently used vivi editor tab. Choose **Open in New Tab** for a separate editor tab. The new tab stays in the current editor group. Set `vivi.managedExtensions` to decide which file suffixes vivi takes over; a file removed from the list follows the editor's normal opening behavior. Run **vivi: Configure Menu Visibility** to show or hide first- and second-level image viewer menu items; all are shown by default.
 
-**Open Folder as Stack** offers **Only 2D images** (skip multidimensional files) and **All image planes** (flatten 2D/3D files). The lower-right status shows the source filename and original plane number. Files must share width, height, dtype, and channel count. Explorer **Remove** permanently deletes files or folders recursively after confirmation.
+For a multidimensional file, **Open As…** lists each TIFF series or FITS HDU, its source shape, and editable target axes. Every source letter must occur once; joining letters folds dimensions (`uv h w`), while moving a detected channel before `h w` turns it into stack slices (`c h w`). Validation stays in the dialog so the expression can be corrected.
+
+**Open Folder as Stack** offers **Only 2D images** and **All image planes**, then accepts an optional `H W` filter. Blank uses the first qualifying image. Later files with another height or width are skipped. The lower-right status shows the source filename and original plane number. Explorer **Remove** permanently deletes files or folders recursively after confirmation.
 
 ## Frames and slices
 
-**Layout** in the sidebar manages file Frames. A new tab starts in single-Frame mode. Use the display icon to switch to tiled mode, drag Frame rows to reorder them, and set optional row or column counts. The eye toggle determines visibility. The adjacent lock toggle determines whether that Frame joins synchronization. Select a Frame before editing it; in a tile layout, the arrow keys move selection between visible Frames. Only selected lock participants receive synchronized B&C, LUT, view, zoom, or slice changes. A Frame joining an existing lock group adopts the group's enabled settings.
+**Layout** in the sidebar manages file Frames. A new tab starts in single-Frame mode. Use the display icon to switch to tiled mode, drag Frame rows to reorder them, and set optional row or column counts. The eye toggle determines visibility. The adjacent lock toggle determines whether that Frame joins synchronization. Select a Frame before editing it; in a tile layout, the arrow keys move selection between visible Frames. Only selected lock participants receive synchronized B&C, LUT, view, zoom, slice, or selection changes. A Frame joining an existing lock group adopts the group's enabled settings. In tiled mode, visible locked Frames commit a synchronized display update together.
 
 Right-click a Layout Frame to rename, duplicate, or close it. Copies append at the end with a `[copy N]` suffix. The Frame list scrolls with the mouse wheel.
 
@@ -24,7 +26,7 @@ The viewer toolbar includes ImageJ-style region and drawing tools, magnifier, ha
 
 ## Generated results
 
-Image operations such as Duplicate, Crop, Montage, projections, and many Process commands create a new Frame. Montage lays out original grayscale values as TIFF pixels; **Scale (%)** changes the pixel dimensions of each tile. Orthogonal flips and rotations instead replace the current Frame's display content. Undo/Redo records up to ten such transforms. The source file on disk remains unchanged; generated images use temporary files on the extension host and can be exported with the relevant File command.
+Pixel operations under Image, Process, and Analyze Skeleton replace the current Frame's temporary working copy. Undo/Redo records up to ten operations. Compatible stack operations preserve untouched slices; geometry operations transform the stack. Commands with multiple outputs, including Split Channels and Stack to Images, create additional Frames. Montage lays out original grayscale values as TIFF pixels; **Scale (%)** changes each tile's dimensions. The source file on disk remains unchanged.
 
 ## Common settings
 

@@ -1,13 +1,13 @@
-# ImageJ 菜单覆盖情况（vivi 0.6.1）
+# ImageJ 菜单覆盖情况（vivi 0.7.0）
 
-此清单以 [ImageJ Image](https://imagej.net/ij/docs/menus/image.html)、[Process](https://imagej.net/ij/docs/menus/process.html)、[Analyze](https://imagej.net/ij/docs/menus/analyze) 菜单为参照。可运行的命令与 ImageJ 同名，但仅在下述范围内实现；灰色命令不执行操作。源数据按只读方式打开，新的图像结果作为新的 vivi Frame。
+此清单以 ImageJ 1.x 源码中的 `ij/plugin`、`ij/plugin/filter` 和 `ij/process` 实现为参照。开发时可把官方源码检出到不会提交和打包的 `ref/ImageJ`。可运行命令与 ImageJ 同名，但仅在下述范围内实现；灰色命令不执行操作。源文件始终只读，像素运算替换当前 vivi Frame 的工作副本，可撤销十步。
 
 | 菜单 | 已可运行 | 尚未实现或尚不等价 |
 | --- | --- | --- |
-| Image | Type: 8/16/32-bit、RGB；Adjust: Auto、ZScale、百分位、手动 B&C、四组滑块、Threshold；Show Info；Color: Split Channels、LUT 预览；Stacks: Images to Stack、Stack to Images、Montage、Reslice、Z Projection、Z-axis Profile、Measure Stack、Statistics；Crop、Duplicate、Rename、Scale；Transform: 水平/垂直翻转、90°/180°旋转；Zoom: In/Out/Original/Fit；Overlay: Add Selection | 8-bit Color、Color 的 Merge Channels/Composite 和完整 Channels Tool、Stack 增删与重排、任意角度旋转/平移、Overlay 隐藏/显示/Flatten/导出、Hyperstack 各轴范围处理 |
-| Process | Smooth、Sharpen、Find Edges；Find Maxima 的基本局部峰值；Enhance Contrast 的 Auto/Normalize/Equalize；Noise 的 Gaussian/Salt and Pepper/Despeckle；Shadows 四向；Binary 的二值化、腐蚀、膨胀、开、闭、填洞、形态骨架；Math 的四则运算、Invert/Sqrt/Square/Log/Exp/Abs；FFT 原尺寸及 ImageJ 2 的幂补齐功率谱与基本高通；Filters 的 Gaussian/Median/Unsharp/Mean/Min/Max/Variance | Find Maxima 的全部输出模式与精确 ImageJ 容差、完整 Noise/Shadows/Binary/Math/FFT/Filters 参数及批处理、Convolve、Watershed、Inverse FFT；命令处理当前切片并创建新 Frame |
-| Analyze | Measure、Summarize、Distribution（测量值直方图）、Label Selection、Clear Results、Set Measurements（显示字段）、Set Scale（面积单位）、Histogram、Plot Profile、ROI Manager | Analyze Particles、Skeleton 分析、更多 Set Measurements 指标、校准与完整结果表、Profile 插值及 ROI Manager 全部操作 |
-| File/Edit | Open、Close Frame、预览 PNG/CSV 导出；选区创建、调整、指定、ROI Manager/Overlay；当前 Frame 翻转和正交旋转的十步 Undo/Redo | New/Import/Save As 多格式、其他操作的 Undo/Redo、剪贴板、完整 Edit Options |
+| Image | Type: 8/16/32-bit、RGB；Adjust；Show Info；Color: Split/Merge Channels、Channels Tool、Stack to RGB、Make Composite、LUT；Stacks: Images to Stack、Stack to Images、Montage、Reslice、Orthogonal Views、Z Projection、Z-axis Profile、Measure Stack、Statistics；Crop、Copy、Duplicate、Rename、Scale；Transform: 翻转、90°/180°和任意角度旋转；Zoom；Overlay: Add Selection | 8-bit Color、HSB Stack、Stack 增删与重排、Overlay Flatten/导出、Properties |
+| Process | Smooth、Sharpen、Find Edges；Find Maxima 的局部峰值结果；Auto/Normalize/Equalize；Gaussian/Salt and Pepper/Despeckle/Remove Outliers；Shadows；Binary 二值化、腐蚀、膨胀、开、闭、填洞、Watershed、Skeletonize；Math；原尺寸 FFT、ImageJ 幂次尺寸 FFT 和 Bandpass；Gaussian/Median/Unsharp/Mean/Min/Max/Variance/Convolve | Find Maxima 的全部输出模式、ImageJ FFT 所附带复数变换数据及 Inverse FFT、批处理与部分高级参数 |
+| Analyze | Measure、Summarize、Distribution、Label、Clear Results、Set Measurements、Set Scale、Histogram、Plot Profile、Skeleton、ROI Manager | Analyze Particles、更多测量字段、校准条及 ROI Manager 全部操作 |
+| File/Edit | Open/Open As、文件夹序列、Close Frame、PNG/CSV 导出、Copy Image；选区创建与编辑；所有当前 Frame 像素运算的十步 Undo/Redo | New、Raw/URL Import、原格式覆盖保存、Print、Cut/Paste、完整 Edit Options |
 
 ## 关键行为与限制
 
@@ -16,5 +16,6 @@
 - Duplicate 对 2D 图像提供标题；对 stack 提供 Duplicate stack 与切片范围；面积选区可裁切或忽略。多轴 hyperstack 暂时用线性切片序号表示范围。
 - Montage 按 Scale (%) 缩放每张切片，再按指定列数排布；灰度输出保持原始 dtype，比例为 100% 时保持原始数值。翻转与正交旋转替换当前 Frame 的显示内容并保留其 stack 切片，源文件不写回磁盘。最多记录十次撤销。
 - ImageJ 核心内置 LUT 之外，vivi 还提供 [ImageJ 官方 LUT 归档](https://imagej.net/ij/download/luts/luts.zip)的 68 个原始色表和先前的自定义色表。来源与转换方式见 [`backend/IMAGEJ_LUTS.md`](../backend/IMAGEJ_LUTS.md)。这覆盖该归档中的全部 `.lut` 文件，不包含第三方插件或用户自行安装的 LUT。
-- 图像处理操作目前仅取当前切片；多数 ImageJ 原命令可直接修改像素，而 vivi 生成新 Frame。数值算法在同名但简化的操作上可能与 ImageJ 不逐像素相同。
+- 图像处理操作默认修改当前 Frame 的工作副本，不写回源文件；stack 中尺寸兼容的操作保留其余 slice，几何操作处理整个 stack。Split Channels、Stack to Images 等多输出命令仍会创建 Frame。
+- Smooth、Sharpen、Find Edges 的核或算子按 ImageJ 1.x 实现选择；OpenCV/NumPy 的边界处理和浮点舍入可能造成边缘像素不逐位一致。Inverse FFT 仍标灰，因为 TIFF 工作副本无法携带 ImageJ `FHT` 的复数变换属性。
 - Threshold 在显示层将 Min 到 Max 之间的原始像素显示为白色，范围外为黑色。Process → Binary → Make Binary 则创建真实二值图像。

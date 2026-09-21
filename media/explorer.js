@@ -1,11 +1,12 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
-const labels = { open: 'Open', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
+const labels = { open: 'Open', openAs:'Open As…', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
+let openAsPath='';
 const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function frameIcon(symbol,title,pressed,action){
@@ -139,13 +140,14 @@ function run(action, item) {
   if (action === 'open' || action === 'openNewTab') {
     if (item.directory) list(item.path);
     else vscode.postMessage({ type: 'open', path: item.path, newTab: action === 'openNewTab' });
-  } else if(action==='openStack')vscode.postMessage({type:'openSequence',path:item.path});
+  } else if(action==='openAs')vscode.postMessage({type:'inspectOpenAs',path:item.path});
+  else if(action==='openStack')vscode.postMessage({type:'openSequence',path:item.path});
   else vscode.postMessage({ type: 'action', action, path: item.path, folder: current });
 }
 function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false');$('historyMenu').hidden=true;$('pathHistory').setAttribute('aria-expanded','false'); }
 function showMenu(event, item) {
   event.preventDefault(); closeMenu();select(item);
-  const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder','openStack'].includes(action)) && (action !== 'openNewTab' || !item.directory));
+  const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder','openStack'].includes(action)) && (!item.directory || !['openAs','openNewTab'].includes(action)));
   if (!allowed.length) return;
   const menu = $('contextMenu');
   for (const action of allowed) {
@@ -218,8 +220,31 @@ for(const button of document.querySelectorAll('.icon-button')) button.dataset.ti
 document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
 $('contextMenu').addEventListener('mouseleave', closeMenu);
 document.addEventListener('keydown', event => { if (event.key === 'Escape'){closeMenu();if(!$('filter').hidden)$('filterToggle').click();} });
+function targetShape(dataset,expression){
+  const groups=expression.trim().toLowerCase().split(/[\s,]+/).filter(Boolean),labels=dataset.sourceAxes,sizes=Object.fromEntries(labels.map((name,index)=>[name,dataset.sourceShape[index]]));
+  const flat=[...groups.join('')];
+  if(!groups.length||flat.some(name=>!sizes[name])||new Set(flat).size!==flat.length||flat.length!==labels.length||labels.some(name=>!flat.includes(name)))throw new Error('Use every source axis exactly once.');
+  if(!groups.includes('h')||!groups.includes('w'))throw new Error('h and w must remain separate dimensions.');
+  const channel=groups.at(-1)==='c',end=groups.length-(channel?1:0);
+  if(groups[end-2]!=='h'||groups[end-1]!=='w')throw new Error('Target must end with h w, optionally followed by c.');
+  return groups.map(group=>[...group].reduce((value,name)=>value*sizes[name],1));
+}
+function updateOpenAsRow(row,dataset){
+  try{row.querySelector('.open-as-target').textContent=`Target shape: ${targetShape(dataset,row.querySelector('input').value).join(' × ')}`;row.dataset.valid='true';}
+  catch(error){row.querySelector('.open-as-target').textContent=error.message;row.dataset.valid='false';}
+}
+function showOpenAs(path,result){
+  openAsPath=path;$('openAsRows').replaceChildren();$('openAsError').textContent='';
+  for(const dataset of result.datasets){const row=document.createElement('div');row.className='open-as-row';row.dataset.id=dataset.id;const title=document.createElement('strong');title.textContent=dataset.name;const source=document.createElement('div');source.className='open-as-shape';source.textContent=`Source: ${dataset.sourceShape.join(' × ')}   (${dataset.sourceAxes.join(' ')})`;const label=document.createElement('label');label.append(document.createTextNode('Target axes'));const input=document.createElement('input');input.value=dataset.targetExpression;input.autocomplete='off';label.append(input);const target=document.createElement('div');target.className='open-as-target';row.append(title,source,label,target);input.oninput=()=>updateOpenAsRow(row,dataset);updateOpenAsRow(row,dataset);$('openAsRows').append(row);}
+  $('openAsDialog').hidden=false;$('openAsRows').querySelector('input')?.focus();
+}
+function closeOpenAs(){$('openAsDialog').hidden=true;openAsPath='';$('openAsRows').replaceChildren();$('openAsError').textContent='';}
+$('openAsClose').onclick=closeOpenAs;$('openAsCancel').onclick=closeOpenAs;
+$('openAsForm').onsubmit=event=>{event.preventDefault();const rows=[...$('openAsRows').children];for(const row of rows)row.querySelector('input').dispatchEvent(new Event('input'));if(rows.some(row=>row.dataset.valid!=='true')){$('openAsError').textContent='Correct the invalid target axes before opening.';return;}const axisLayouts=Object.fromEntries(rows.map(row=>[row.dataset.id,row.querySelector('input').value.trim().toLowerCase()]));$('openAsError').textContent='Opening…';vscode.postMessage({type:'openAs',path:openAsPath,axisLayouts});};
 window.addEventListener('message', ({data:message}) => {
-  if (message.type === 'error') { loading=false;$('error').textContent = message.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(()=>{if(Date.now()>=errorUntil)$('error').textContent='';},2600);return; }
+  if (message.type === 'error') { loading=false;if(!$('openAsDialog').hidden){$('openAsError').textContent=message.message;return;}$('error').textContent = message.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(()=>{if(Date.now()>=errorUntil)$('error').textContent='';},2600);return; }
+  if(message.type==='openAsInfo'){showOpenAs(message.path,message.result);return;}
+  if(message.type==='openAsAccepted'){closeOpenAs();return;}
   if(message.type==='sidebarState'){renderSidebar(message.state);return;}
   if(message.type==='sidebarClear'){renderSidebar(null);return;}
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}

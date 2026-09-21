@@ -53,6 +53,20 @@ class SequenceTests(unittest.TestCase):
                 if session.source:
                     session.source.close()
 
+    def test_optional_height_width_filter_skips_nonmatching_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Image.fromarray(np.full((3, 4), 3, np.uint8)).save(Path(folder) / "a.png")
+            Image.fromarray(np.full((5, 6), 5, np.uint8)).save(Path(folder) / "b.png")
+            Image.fromarray(np.full((3, 4), 7, np.uint8)).save(Path(folder) / "c.png")
+            session = Session()
+            try:
+                info = session.handle({"op": "open", "path": folder, "sequenceSize": [3, 4]})
+                self.assertEqual(info["sliceLabels"], ["a.png", "c.png"])
+                self.assertEqual(info["datasets"][0]["frames"], 2)
+            finally:
+                if session.source:
+                    session.source.close()
+
 
 if __name__ == '__main__':
     unittest.main()
