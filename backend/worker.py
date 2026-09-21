@@ -1178,12 +1178,14 @@ class Session:
             else stack.reshape((len(frames) * frame_height, width))
         bscale, bzero, blank = self.source.calibration(d)
         mode = req.get("cuts", "percentile")
-        def plane_limits(plane):
-            if mode == "manual":
-                low, high = finite_number(req.get("low"), 0), finite_number(req.get("high"), 1)
-                if high <= low:
-                    raise ValueError("Maximum must be greater than minimum")
-                return low, high
+        reference_frame = int(req.get("frame", frames[0]))
+        reference_plane = planes[frames.index(reference_frame)] if reference_frame in frames else planes[0]
+        if mode == "manual":
+            low, high = finite_number(req.get("low"), 0), finite_number(req.get("high"), 1)
+            if high <= low:
+                raise ValueError("Maximum must be greater than minimum")
+        else:
+            plane = reference_plane
             flat = plane.reshape(-1)
             sample_step = max(1, math.ceil(flat.size / 262_144))
             sampled = flat[::sample_step]
@@ -1193,7 +1195,7 @@ class Session:
             if blank is not None and transport.dtype.kind in "iu":
                 values[sampled == blank] = np.nan
             values = values[np.isfinite(values)]
-            if transport.ndim == 3 and transport.dtype == np.uint8 and mode == "percentile":
+            if plane.ndim == 3 and plane.dtype == np.uint8 and mode == "percentile":
                 low, high = 0., 255.
             elif not values.size:
                 low, high = 0., 1.
@@ -1209,10 +1211,7 @@ class Session:
                 low, high = map(float, np.percentile(values, [0.5, 99.5]))
             if high <= low:
                 high = low + 1
-            return low, high
-        limits = [plane_limits(plane) for plane in planes]
-        low, high = limits[0]
-        result = dict(frames=frames, limits=limits, channels=channels, box=box, width=width,
+        result = dict(frames=frames, channels=channels, box=box, width=width,
                       height=transport.shape[0], frameHeight=frame_height,
                       low=low, high=high, step=1, bscale=bscale, bzero=bzero,
                       blank=str(blank) if blank is not None else None)

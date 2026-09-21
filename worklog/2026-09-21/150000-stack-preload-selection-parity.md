@@ -34,11 +34,13 @@ Python worker 批量读取与图像处理、扩展主机二进制转发、viewer
 
 - 目标 `wdf_c0.tiff` 大小 1,020,244 bytes，shape `15×15×33×33`，float32，无压缩，225 pages。远程 `tifffile.asarray()` 整体读取约 0.81 ms，225 page 逐页读取合计约 39 ms，vivi 原 `Source.read` 逐 plane 合计约 43 ms；原实现的主要成本是 225 次独立协议往返和分散的前端构建。
 - `renderBatch` 现在一次读取并传输完整 stack，保留源 dtype；有损与无损压缩仍按现有设置依次作用于同一个完整载荷。Webview 收齐后拆分 typed-array view，并为全部 slice 建立 canvas，再首次显示图像。
-- Auto、MinMax、Percentile 和 ZScale 范围按每个 slice 独立计算并随完整载荷返回。远程实测第 1 slice Curve 为 `3.34375–20.19125`，切至第 2 slice 后立即更新为 `4.95125–28.3925`，不重新读取或传输。
+- Auto、MinMax、Percentile 和 ZScale 在打开 stack 或用户触发时根据当前 slice 确定一次共享 B&C 范围，之后应用到整个 stack；存在面积 selection 时，Auto/Reset 仅用选区像素计算。切换 slice 只刷新 Curve 的直方图和数据范围，Minimum、Maximum 与显示曲线保持不变，不重新读取或传输。
 - Reslice 使用当前直线、分段线或自由线逐层采样；区域 Selection 会限制 Smooth 等支持的 Process 操作，区域外像素保持不变。Skeleton 对非 8-bit binary 输入返回明确提示。
 - Montage 默认列数使用 slice 数平方根取整。一维 profile 支持悬停读数、滚轮缩放、拖动平移和双击复位；Measure Stack 等结果改为可滚动的无边框表格。
 
 ## 总结
+
+- 0.7.3 恢复 stack 共享 B&C 语义，并补充当前切片、当前面积 selection 的 Auto/Reset 计算；Python 45/45、Node 21/21 和静态检查通过。
 
 - 自动化验证：Python 45/45、Node 21/21，`npm run check` 和 VSIX 打包通过。
 - hyh-batchcom2 Cursor 打开目标 TIFF：先保持 `0/225 ready` 和 Loading 状态，完成后一次变为 `225/225 ready`，首次显示发生在全部 slice 的 canvas 构建完成后；本轮观察到总时长约 1.5–3 秒。

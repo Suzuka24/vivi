@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.3 (development build; not published)
+- Restore one shared B&C range for an entire stack. Slice changes refresh the Curve histogram and source range while keeping Minimum, Maximum, and the display transfer line unchanged. Auto and Reset use the current slice, restricted to the active area selection when present, then apply the result to the full stack.
+
 ## 0.7.2 (development build; not published)
 - Reverse the default slice wheel direction: scroll up selects the previous slice and scroll down selects the next slice.
 

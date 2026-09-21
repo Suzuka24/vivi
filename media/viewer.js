@@ -323,9 +323,8 @@ async function decodePreviewBatch(result,argsByFrame){
     const stored=sourceRaw.subarray(from,to),storedBytes=new Uint8Array(stored.buffer,stored.byteOffset,stored.byteLength);
     const calibrated=scale!==1||zero!==0||blank!=null;
     const raw=calibrated?Float64Array.from(stored,value=>blank!=null&&String(value)===String(blank)?NaN:Number(value)*scale+zero):stored;
-    const limits=Array.isArray(result.limits?.[index])?result.limits[index]:[result.low,result.high];
-    const itemResult={...result,frames:undefined,limits:undefined,payload:undefined,height:frameHeight,box:[...result.box],low:limits[0],high:limits[1]};
-    const entry={image:null,raw,sourceRaw:stored,sourceBytes:storedBytes,channels,result:itemResult,sourceFrame:frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:limits,bytes:raw.byteLength};
+    const itemResult={...result,frames:undefined,payload:undefined,height:frameHeight,box:[...result.box]};
+    const entry={image:null,raw,sourceRaw:stored,sourceBytes:storedBytes,channels,result:itemResult,sourceFrame:frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength};
     await recolorEntry(entry,args);entries.push(entry);
   }
   delete result.payload;
@@ -337,7 +336,8 @@ function showPreview(entry, ticket) {
   renderedRevision = ticket; $('empty').hidden = true; clearExpiredError();
   if ($('cuts').value !== 'manual') {
     $('low').value = entry.result.low; $('high').value = entry.result.high;
-    saveFileFrame();publishSidebar();
+    $('cuts').value='manual';
+    commitFrameChange('bc');
   }
   $('busy').textContent = ''; draw();drawTransferCurve();
   loadTransferHistogram();publishSidebar();
@@ -376,7 +376,8 @@ async function preloadFrames() {
     const frames=Array.from({length:dataset.frames},(_,frame)=>frame);
     const argsByFrame=new Map(frames.map(frame=>[frame,renderArgs(frame)]));
     if(frames.every(frame=>frameCache.has(cacheKey(frame,argsByFrame.get(frame).box))))return;
-    const first=argsByFrame.get(0),result=await request('renderBatch',{...first,frames},true);
+    const referenceFrame=Math.max(0,Math.min(dataset.frames-1,Number($('frame').value)-1));
+    const first=argsByFrame.get(referenceFrame),result=await request('renderBatch',{...first,frames},true);
     const entries=await decodePreviewBatch(result,argsByFrame);
     if(generation!==cacheGeneration)return;
     frameCache.clear();cacheBytes=0;
@@ -489,13 +490,37 @@ function loadTransferHistogram(){
 function drawTransferCurve(){
   const canvas=$('transferCurve'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,low=Number($('low').value),high=Number($('high').value);if(!Number.isFinite(low)||!Number.isFinite(high))return;
   const histogram=transferHistograms.get(`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`);
-  const bounds=displayBounds.get(`${activeFileFrame}:${dataset?.id}`),span=Math.max(Number.MIN_VALUE,high-low),start=bounds?.[0]??histogram?.min??low,end=bounds?.[1]??histogram?.max??high,extent=Math.max(Number.MIN_VALUE,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
+  const bounds=displayBounds.get(`${activeFileFrame}:${dataset?.id}`),span=Math.max(Number.MIN_VALUE,high-low),start=histogram?.min??bounds?.[0]??low,end=histogram?.max??bounds?.[1]??high,extent=Math.max(Number.MIN_VALUE,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
   g.fillStyle='#1a2028';g.fillRect(0,0,w,h);
   if(histogram){const peak=Math.max(1,...histogram.counts);g.fillStyle='#55626d';for(let i=0;i<histogram.counts.length;i++){const height=Math.min(h-4,histogram.counts[i]/peak*(h-4));g.fillRect(i*w/histogram.counts.length,h-height,Math.max(1,w/histogram.counts.length),height);}}
   const y=value=>h-Math.max(0,Math.min(1,(value-low)/span))*h;
   g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();g.moveTo(0,y(start));if(low>start&&low<end)g.lineTo(x(low),h);if(high>start&&high<end)g.lineTo(x(high),0);g.lineTo(w,y(end));g.stroke();
   g.fillStyle='#d5e4e7';for(const value of [low,high]){const px=x(value);g.fillRect(Math.max(0,Math.min(w-1,px)),h-5,1,5);}
   $('transferLow').textContent=formatValue(low);$('transferHigh').textContent=formatValue(high);
+}
+function currentRawEntry(){
+  const frame=Number($('frame').value)-1;
+  return [...frameCache.values()].find(entry=>entry.sourceDataset===dataset.id&&entry.sourceFrame===frame&&entry.raw);
+}
+function selectionSamples(entry){
+  if(!selection||!['roi','oval','polygon','freehand'].includes(selection.type))return entry.raw;
+  const width=entry.result.width,height=entry.result.height,channels=entry.channels||1,box=entry.result.box;
+  const bounds=selectionBounds(selection.points,selection.type),left=Math.max(0,Math.floor((bounds[0]-box[0])/(box[2]-box[0])*width)),right=Math.min(width,Math.ceil((bounds[2]-box[0])/(box[2]-box[0])*width));
+  const top=Math.max(0,Math.floor((bounds[1]-box[1])/(box[3]-box[1])*height)),bottom=Math.min(height,Math.ceil((bounds[3]-box[1])/(box[3]-box[1])*height));
+  const area=Math.max(1,(right-left)*(bottom-top)),step=Math.max(1,Math.floor(Math.sqrt(area/262144))),values=[];
+  for(let py=top;py<bottom;py+=step)for(let px=left;px<right;px+=step){
+    const x=box[0]+(px+.5)*(box[2]-box[0])/width,y=box[1]+(py+.5)*(box[3]-box[1])/height;
+    if(!insideSelection([x,y]))continue;
+    const offset=(py*width+px)*channels;for(let channel=0;channel<channels;channel++)values.push(entry.raw[offset+channel]);
+  }
+  return values.length?values:entry.raw;
+}
+function applyAutoCuts(mode,resetStretch=false){
+  const entry=currentRawEntry();
+  if(!entry){$('cuts').value=mode;if(resetStretch)$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);return;}
+  const [low,high]=autoLimits(selectionSamples(entry),entry.channels,mode);
+  $('cuts').value='manual';$('low').value=low;$('high').value=high;if(resetStretch)$('stretch').value='linear';
+  drawTransferCurve();commitFrameChange('bc');scheduleRender(0);publishSidebar();
 }
 function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}
 function saveFileFrame() {
@@ -1000,9 +1025,12 @@ function applySidebarAction(action,value){
   else if(action==='lockAll'){for(const id of fileFrames.keys())setFrameLockMember(id,true);}
   else if(action==='unlockAll'){for(const state of fileFrames.values())state.lockMember=false;frameList();if(tileMode)scheduleTileRefresh(0);}
   else if(action==='toggleBC'){transferVisible=!transferVisible;$('transferPanel').hidden=!transferVisible;publishSidebar();}
+  else if(action==='autoCuts')applyAutoCuts(value?.mode||'percentile',!!value?.resetStretch);
   else if(action==='adjust'){
-    for(const key of ['cuts','low','high','stretch','cmap'])$(key).value=value[key];
+    for(const key of ['low','high','stretch','cmap'])$(key).value=value[key];
     $('invert').checked=!!value.invert;if('threshold' in value)$('threshold').checked=!!value.threshold;
+    if(value.cuts!=='manual'){applyAutoCuts(value.cuts);commitFrameChange('color');return;}
+    $('cuts').value='manual';
     drawTransferCurve();commitFrameChange('bc');commitFrameChange('color');scheduleRender(0);publishSidebar();
   }
 }
@@ -1215,8 +1243,8 @@ function openMontageDialog(){
   };
 }
 $('openBC').onclick=openBCDialog;
-$('autoCuts').onclick=()=>{$('cuts').value='percentile';commitFrameChange('bc');scheduleRender(0);};
-$('resetCuts').onclick=()=>{$('cuts').value='minmax';$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);};
+$('autoCuts').onclick=()=>applyAutoCuts('percentile');
+$('resetCuts').onclick=()=>applyAutoCuts('minmax',true);
 $('montage').onclick=openMontageDialog;
 function stackRangeFields(){return `<label>First slice <input class="stack-first" type="number" min="1" max="${dataset.frames}" value="1"></label><label>Last slice <input class="stack-last" type="number" min="1" max="${dataset.frames}" value="${dataset.frames}"></label>`;}
 function stackRange(dialog){const start=Number(dialog.querySelector('.stack-first').value),end=Number(dialog.querySelector('.stack-last').value);if(!Number.isInteger(start)||!Number.isInteger(end)||start<1||end>dataset.frames||end<start)throw new Error(`Choose slices between 1 and ${dataset.frames}.`);return {start,end};}

@@ -116,8 +116,8 @@ for(const [id,kind] of [['adjustBrightnessRange','brightness'],['adjustContrastR
   };
 }
 for(const [id,slider] of [['adjustBrightnessValue','adjustBrightnessRange'],['adjustContrastValue','adjustContrastRange']])$(id).onchange=()=>{const value=Number($(id).value);if(!Number.isFinite(value))return;$(slider).value=Math.max(0,Math.min(1000,Math.round(value*1000)));$(slider).oninput();};
-$('adjustAuto').onclick=()=>{$('adjustCuts').value='percentile';sendAdjust();};
-$('adjustReset').onclick=()=>{if(adjustSource&&adjustSource.max>adjustSource.min){$('adjustCuts').value='manual';$('adjustLow').value=formatAdjust(adjustSource.min);$('adjustHigh').value=formatAdjust(adjustSource.max);syncAdjustRanges();}else $('adjustCuts').value='minmax';$('adjustStretch').value='linear';sendAdjust();};
+$('adjustAuto').onclick=()=>sideAction('autoCuts',{mode:'percentile'});
+$('adjustReset').onclick=()=>sideAction('autoCuts',{mode:'minmax',resetStretch:true});
 $('adjustToggleBC').onclick=()=>sideAction('toggleBC');
 for(const id of ['adjustCuts','adjustStretch','adjustLut','adjustInvert'])$(id).onchange=sendAdjust;
 for(const id of ['adjustLow','adjustHigh'])$(id).onchange=()=>{$('adjustCuts').value='manual';syncAdjustRanges();sendAdjust();};
