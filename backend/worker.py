@@ -17,15 +17,6 @@ from luts import apply_lut
 from lossy_preview import encode_lossy
 
 
-def report_progress(req, stage, value):
-    if not req.get("reportProgress"):
-        return
-    message = json.dumps({"id": req.get("id"), "progress": {"stage": stage, "value": value}},
-                         separators=(",", ":"))
-    sys.stdout.buffer.write(message.encode("utf-8") + b"\n")
-    sys.stdout.buffer.flush()
-
-
 def finite_number(value, default):
     value = float(default if value is None else value)
     if not math.isfinite(value):
@@ -1176,11 +1167,8 @@ class Session:
         if len(set(frames)) != len(frames) or any(frame < 0 or frame >= d["frames"] for frame in frames):
             raise ValueError("renderBatch frame indexes are invalid")
         planes = []
-        progress_step = max(1, len(frames) // 100)
-        for index, frame in enumerate(frames):
+        for frame in frames:
             planes.append(np.ascontiguousarray(self.source.read(d, frame, box, raw_stored=True)))
-            if (index + 1) % progress_step == 0 or index + 1 == len(frames):
-                report_progress(req, "read", (index + 1) / len(frames))
         shape = planes[0].shape
         dtype = planes[0].dtype
         if any(plane.shape != shape or plane.dtype != dtype for plane in planes):

@@ -16,7 +16,7 @@ const fileFrames = new Map();
 let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVariant = '';
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane'],selection:['roi','line','selection','orthogonalState']};
-let tileRefreshTimer, sidebarTimer, layoutColumns=0, layoutRows=0;
+let tileRefreshTimer, tileRefreshRunning=false, tileRefreshWanted=false, sidebarTimer, layoutColumns=0, layoutRows=0;
 let keyboardShortcuts={fit:'f',hand:'h',pointer:'shift+p',roi:'',oval:'o',line:'l',measure:'',clear:'',undoTransform:'z',redoTransform:'shift+z',zoomIn:'=',zoomOut:'-',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'m'};
 let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'shift+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
 let defaultFps=24,transformsRunning=0;
@@ -59,13 +59,14 @@ function tileViewport(){
   if(index<0||!dataset)return null;
   const left=(index%cols)*tw,top=Math.floor(index/cols)*th;
   const state=fileFrames.get(activeFileFrame),picture=state?.tilePreview||preview;
+  if(state?.orthogonalState){const layout=tileOrthogonalLayout(state,dataset,left,top,tw,th);return {left,top,tw,th,pixelsPerImage:layout.ratio,imageLeft:layout.xy.x,imageTop:layout.xy.y,orthogonal:layout};}
   const pixelsPerImage=picture?tilePictureRatio(state,dataset,picture,w,tw,th)*picture.width/dataset.width:Math.min((tw-16)/dataset.width,(th-34)/dataset.height);
-  return {left,top,tw,th,pixelsPerImage};
+  return {left,top,tw,th,pixelsPerImage,imageLeft:left+tw/2-(state?.cx??dataset.width/2)*pixelsPerImage,imageTop:top+22+(th-26)/2-(state?.cy??dataset.height/2)*pixelsPerImage};
 }
-function transform(x,y) {const tile=tileMode?tileViewport():null;if(tile)return [tile.left+tile.tw/2+(x-cx)*tile.pixelsPerImage,tile.top+22+(tile.th-26)/2+(y-cy)*tile.pixelsPerImage];const {w,h}=size();return [(x-cx)*scale+w/2,(y-cy)*scale+h/2]; }
+function transform(x,y) {const tile=tileMode?tileViewport():null;if(tile)return [tile.imageLeft+x*tile.pixelsPerImage,tile.imageTop+y*tile.pixelsPerImage];const {w,h}=size();return [(x-cx)*scale+w/2,(y-cy)*scale+h/2]; }
 function position(e) {
   const rect=canvas.getBoundingClientRect(),{w,h}=size(),tile=tileMode?tileViewport():null;
-  if(tile)return [(e.clientX-rect.left-tile.left-tile.tw/2)/tile.pixelsPerImage+cx,(e.clientY-rect.top-tile.top-22-(tile.th-26)/2)/tile.pixelsPerImage+cy];
+  if(tile)return [(e.clientX-rect.left-tile.imageLeft)/tile.pixelsPerImage,(e.clientY-rect.top-tile.imageTop)/tile.pixelsPerImage];
   return [(e.clientX-rect.left-w/2)/scale+cx,(e.clientY-rect.top-h/2)/scale+cy];
 }
 function bounded(p) { return [Math.max(0,Math.min(dataset.width-1,p[0])),Math.max(0,Math.min(dataset.height-1,p[1]))]; }
@@ -85,6 +86,23 @@ function drawTileSelection(state,x,y,tw,th,d,picture,w){
   else{const a=point(pts[0]);ctx.moveTo(...a);for(const item of pts.slice(1))ctx.lineTo(...point(item));if(['roi','polygon','freehand'].includes(selected.type))ctx.closePath();}
   ctx.stroke();ctx.restore();
 }
+function tileOrthogonalLayout(state,d,x,y,tw,th){
+  const depth=state.orthogonalState?.depth||1,availableWidth=Math.max(1,tw-8),availableHeight=Math.max(1,th-29);
+  const ratio=Math.max(.01,Math.min(availableWidth/(d.width+depth),availableHeight/(d.height+depth)));
+  const totalWidth=(d.width+depth)*ratio,totalHeight=(d.height+depth)*ratio,left=x+4+(availableWidth-totalWidth)/2,top=y+24+(availableHeight-totalHeight)/2;
+  return {ratio,xy:{x:left,y:top,w:d.width*ratio,h:d.height*ratio},yz:{x:left+d.width*ratio,y:top,w:depth*ratio,h:d.height*ratio},xz:{x:left,y:top+d.height*ratio,w:d.width*ratio,h:depth*ratio}};
+}
+function drawTileOrthogonal(state,d,picture,x,y,tw,th){
+  const view=state.orthogonalState,layout=tileOrthogonalLayout(state,d,x,y,tw,th),images=state.tileOrthogonalImages;
+  ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.imageSmoothingEnabled=false;
+  if(picture)ctx.drawImage(picture,layout.xy.x,layout.xy.y,layout.xy.w,layout.xy.h);
+  if(images?.yz)ctx.drawImage(images.yz,layout.yz.x,layout.yz.y,layout.yz.w,layout.yz.h);
+  if(images?.xz)ctx.drawImage(images.xz,layout.xz.x,layout.xz.y,layout.xz.w,layout.xz.h);
+  ctx.strokeStyle='#f4cf65';ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(layout.yz.x,layout.xy.y);ctx.lineTo(layout.yz.x,layout.xy.y+layout.xy.h);ctx.moveTo(layout.xz.x,layout.xz.y);ctx.lineTo(layout.xz.x+layout.xz.w,layout.xz.y);ctx.stroke();
+  ctx.setLineDash([4,3]);ctx.beginPath();const px=layout.xy.x+(view.x+.5)*layout.ratio,py=layout.xy.y+(view.y+.5)*layout.ratio,pzX=layout.yz.x+(view.z+.5)*layout.ratio,pzY=layout.xz.y+(view.z+.5)*layout.ratio;
+  ctx.moveTo(px,layout.xy.y);ctx.lineTo(px,layout.xz.y+layout.xz.h);ctx.moveTo(layout.xy.x,py);ctx.lineTo(layout.yz.x+layout.yz.w,py);ctx.moveTo(pzX,layout.yz.y);ctx.lineTo(pzX,layout.yz.y+layout.yz.h);ctx.moveTo(layout.xz.x,pzY);ctx.lineTo(layout.xz.x+layout.xz.w,pzY);ctx.stroke();ctx.restore();
+  return layout;
+}
 function draw() {
   const {w,h}=size(),dpr=window.devicePixelRatio||1;
   if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
@@ -95,7 +113,7 @@ function draw() {
       const state=fileFrames.get(id),picture=state.tilePreview||(id===activeFileFrame?preview:state.preview);
       const x=(index%cols)*tw,y=Math.floor(index/cols)*th;
       ctx.fillStyle='#11151b';ctx.fillRect(x+2,y+2,tw-4,th-4);
-      if(picture){const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));const ratio=tilePictureRatio(state,d,picture,w,tw,th);const pw=picture.width*ratio,ph=picture.height*ratio,centerX=state.tilePreview?(state.cx??d.width/2)/d.width*picture.width:picture.width/2,centerY=state.tilePreview?(state.cy??d.height/2)/d.height*picture.height:picture.height/2;ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.drawImage(picture,x+tw/2-centerX*ratio,y+22+(th-26)/2-centerY*ratio,pw,ph);ctx.restore();if(id!==activeFileFrame)drawTileSelection(state,x,y,tw,th,d,picture,w);}
+      if(picture){const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));if(state.orthogonalState)drawTileOrthogonal(state,d,picture,x,y,tw,th);else{const ratio=tilePictureRatio(state,d,picture,w,tw,th);const pw=picture.width*ratio,ph=picture.height*ratio,centerX=state.tilePreview?(state.cx??d.width/2)/d.width*picture.width:picture.width/2,centerY=state.tilePreview?(state.cy??d.height/2)/d.height*picture.height:picture.height/2;ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.drawImage(picture,x+tw/2-centerX*ratio,y+22+(th-26)/2-centerY*ratio,pw,ph);ctx.restore();if(id!==activeFileFrame)drawTileSelection(state,x,y,tw,th,d,picture,w);}}
       ctx.strokeStyle=id===activeFileFrame?'#72d4b5':'#7b899450';ctx.lineWidth=id===activeFileFrame?2:1;ctx.strokeRect(x+1,y+1,tw-2,th-2);
       ctx.fillStyle='#d9e2e9';ctx.font='11px sans-serif';ctx.fillText(`${id}: ${state.metadata.label||state.metadata.path.split(/[\\/]/).pop()}`,x+8,y+16,tw-14);
     });
@@ -164,6 +182,21 @@ async function colorOrthogonal(){
   }
   view.images=images;view.colorKey=key;drawOrthogonalViews();
 }
+async function refreshTileOrthogonalState(id,state){
+  const view=state?.orthogonalState,d=state?.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
+  if(!tileMode||!view||!d?.extra?.length||!state.frameCache?.size){if(state){state.tileOrthogonalImages=null;state.tileOrthogonalKey='';}return;}
+  const axis=d.extra.includes(view.axis)?view.axis:d.extra.at(-1),axisAt=d.extra.indexOf(axis),depth=d.shape[axis],stride=d.extra.slice(axisAt+1).reduce((product,item)=>product*d.shape[item],1),flat=Math.max(0,(state.plane||1)-1),current=Math.floor(flat/stride)%depth,baseFlat=flat-current*stride;
+  const x=Math.max(0,Math.min(d.width-1,Math.floor(view.x))),y=Math.max(0,Math.min(d.height-1,Math.floor(view.y))),settings={low:Number(state.low??0),high:Number(state.high??1),stretch:state.stretch||'linear',cmap:state.cmap||'gray',invert:!!state.invert,threshold:!!state.threshold};
+  const key=JSON.stringify([state.cacheSignature,axis,baseFlat,x,y,settings]);if(state.tileOrthogonalKey===key&&state.tileOrthogonalImages)return;
+  const slices=[];for(let z=0;z<depth;z++){const entry=state.frameCache.get(cacheKey(baseFlat+z*stride,[0,0,d.width,d.height]));if(!entry?.raw)return;slices.push(entry);}
+  const channels=slices[0].channels;if(depth*(d.width+d.height)*channels>16_000_000)return;
+  const xz=new Float32Array(depth*d.width*channels),yz=new Float32Array(d.height*depth*channels);
+  for(let z=0;z<depth;z++){const raw=slices[z].raw;for(let px=0;px<d.width;px++)for(let c=0;c<channels;c++)xz[(z*d.width+px)*channels+c]=Number(raw[(y*d.width+px)*channels+c]);for(let py=0;py<d.height;py++)for(let c=0;c<channels;c++)yz[(py*depth+z)*channels+c]=Number(raw[(py*d.width+x)*channels+c]);}
+  const ticket=state.tileOrthogonalTicket=(state.tileOrthogonalTicket||0)+1,lut=channels>1&&!settings.threshold?null:await lutTable(settings.cmap);if(fileFrames.get(id)!==state||ticket!==state.tileOrthogonalTicket)return;
+  const images={};for(const [name,raw,width,height] of [['xz',xz,d.width,depth],['yz',yz,depth,d.height]]){const surface=document.createElement('canvas');surface.width=width;surface.height=height;surface.getContext('2d').putImageData(new ImageData(renderPixels(raw,width,height,channels,settings,lut),width,height),0,0);images[name]=surface;}
+  state.tileOrthogonalImages=images;state.tileOrthogonalKey=key;if(tileMode)draw();
+}
+function refreshTileOrthogonalStates(){if(!tileMode)return;for(const [id,state] of fileFrames)if(state.visible!==false&&state.orthogonalState)refreshTileOrthogonalState(id,state).catch(showError);}
 function orthogonalRect(name,canvas){
   const width=name==='xz'?dataset.width:orthogonal.depth, height=name==='xz'?orthogonal.depth:dataset.height;
   return {left:0,top:0,ratio:scale,width,height};
@@ -205,14 +238,14 @@ function disableOrthogonal(refit=false){
 }
 function orthogonalSnapshot(){return orthogonal?{axis:orthogonal.axis,x:orthogonal.x,y:orthogonal.y,z:orthogonal.z,depth:orthogonal.depth}:null;}
 function enableOrthogonal(saved=null,refit=true){
-  if(!dataset||tileMode||dataset.frames<2||!sliceAxes().length){showError(new Error('Orthogonal Views requires one stack Frame in Single display mode.'));return;}
+  if(!dataset||dataset.frames<2||!sliceAxes().length){showError(new Error('Orthogonal Views requires a stack Frame.'));return;}
   const axis=sliceAxes().includes(saved?.axis)?saved.axis:sliceAxes()[axisIndex()],depth=dataset.shape[axis];
   orthogonal={axis,x:Math.max(0,Math.min(dataset.width-1,Math.floor(saved?.x??dataset.width/2))),y:Math.max(0,Math.min(dataset.height-1,Math.floor(saved?.y??dataset.height/2))),z:Math.max(0,Math.min(depth-1,Math.floor(saved?.z??slicePosition()-1))),depth,sectionKey:'',colorKey:'',colorTicket:0};
-  $('stage').classList.add('orthogonal');$('orthYZ').hidden=false;$('orthXZ').hidden=false;$('stackOrthogonal').setAttribute('aria-pressed','true');$('toolOrthogonal').classList.add('selected');$('toolOrthogonal').setAttribute('aria-pressed','true');
-  requestAnimationFrame(()=>{if(refit)fit();else draw();refreshOrthogonal(0);});
+  $('stage').classList.toggle('orthogonal',!tileMode);$('orthYZ').hidden=tileMode;$('orthXZ').hidden=tileMode;$('stackOrthogonal').setAttribute('aria-pressed','true');$('toolOrthogonal').classList.add('selected');$('toolOrthogonal').setAttribute('aria-pressed','true');
+  requestAnimationFrame(()=>{if(refit&&!tileMode)fit();else draw();refreshOrthogonal(0);if(tileMode){saveFileFrame();refreshTileOrthogonalStates();}});
 }
 function toggleOrthogonal(){
-  if(orthogonal){disableOrthogonal(true);commitFrameChange('selection');return;}
+  if(orthogonal){disableOrthogonal(!tileMode);commitFrameChange('selection');return;}
   enableOrthogonal();
   if(orthogonal)commitFrameChange('selection');
 }
@@ -223,7 +256,20 @@ function orthogonalPoint(name,event){
     if(name==='xz')view.x=horizontal;else view.y=vertical;
     if(z!==view.z){view.z=z;setAxisSlice(z+1);frameLabel();commitFrameChange('slice');scheduleRender(0);}
   }
-  commitFrameChange('selection');draw();refreshOrthogonal();
+  commitFrameChange('selection');draw();refreshOrthogonal();refreshTileOrthogonalStates();
+}
+function tileOrthogonalViewAt(event){
+  const viewport=tileViewport(),layout=viewport?.orthogonal;if(!layout)return null;
+  const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+  for(const name of ['xy','yz','xz']){const area=layout[name];if(x>=area.x&&x<=area.x+area.w&&y>=area.y&&y<=area.y+area.h)return name;}
+  return null;
+}
+function tileOrthogonalPoint(name,event){
+  const layout=tileViewport()?.orthogonal,view=orthogonal;if(!layout||!view)return;
+  const rect=canvas.getBoundingClientRect(),area=layout[name],horizontal=Math.max(0,Math.floor((event.clientX-rect.left-area.x)/layout.ratio)),vertical=Math.max(0,Math.floor((event.clientY-rect.top-area.y)/layout.ratio));
+  if(name==='xy'){view.x=Math.min(dataset.width-1,horizontal);view.y=Math.min(dataset.height-1,vertical);}
+  else{const z=Math.min(view.depth-1,name==='xz'?vertical:horizontal);if(name==='xz')view.x=Math.min(dataset.width-1,horizontal);else view.y=Math.min(dataset.height-1,vertical);if(z!==view.z){view.z=z;setAxisSlice(z+1);frameLabel();commitFrameChange('slice');scheduleRender(0);}}
+  commitFrameChange('selection');draw();refreshOrthogonal();refreshTileOrthogonalStates();
 }
 function drawOverlay(item){
   const points=item.points;if(!points?.length)return;
@@ -252,11 +298,12 @@ function ensureCache(signature) {
   frameCache.clear(); cacheBytes = 0; cacheSignature = signature; cacheGeneration++;
   clearTimeout(preloadTimer); updateCacheStatus();
 }
-function showLoadProgress(value=0){
-  const progress=$('cacheStatus'),percent=Math.max(0,Math.min(100,Math.round(value*100)));progress.hidden=false;
-  progress.setAttribute('aria-valuenow',String(percent));progress.firstElementChild.style.width=`${percent}%`;progress.lastElementChild.textContent=`${percent}%`;
+function showLoadProgress(value=null){
+  const progress=$('cacheStatus');progress.hidden=false;
+  if(value==null){progress.classList.add('indeterminate');progress.removeAttribute('aria-valuenow');progress.setAttribute('aria-valuetext','Loading stack');progress.lastElementChild.textContent='';return;}
+  const percent=Math.max(0,Math.min(100,Math.round(value*100)));progress.classList.remove('indeterminate');progress.removeAttribute('aria-valuetext');progress.setAttribute('aria-valuenow',String(percent));progress.firstElementChild.style.width=`${percent}%`;progress.lastElementChild.textContent=`${percent}%`;
 }
-function hideLoadProgress(){const progress=$('cacheStatus');progress.hidden=true;progress.setAttribute('aria-valuenow','0');progress.firstElementChild.style.width='0';progress.lastElementChild.textContent='0%';}
+function hideLoadProgress(){const progress=$('cacheStatus');progress.hidden=true;progress.classList.remove('indeterminate');progress.removeAttribute('aria-valuetext');progress.setAttribute('aria-valuenow','0');progress.firstElementChild.style.width='0';progress.lastElementChild.textContent='';}
 function updateCacheStatus() {
   const count=new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size;
   if(!dataset||dataset.frames<2||count===dataset.frames)hideLoadProgress();
@@ -390,13 +437,13 @@ async function preloadFrames() {
     if(frames.every(frame=>frameCache.has(cacheKey(frame,argsByFrame.get(frame).box))))return;
     const referenceFrame=Math.max(0,Math.min(dataset.frames-1,Number($('frame').value)-1));
     const first=argsByFrame.get(referenceFrame),requestFrame=activeFileFrame;
-    const result=await request('renderBatch',{...first,frames},true,requestFrame,showLoadProgress);
-    showLoadProgress(.75);
-    const entries=await decodePreviewBatch(result,argsByFrame,value=>showLoadProgress(.75+.25*value));
+    const result=await request('renderBatch',{...first,frames},true,requestFrame);
+    hideLoadProgress();
+    const entries=await decodePreviewBatch(result,argsByFrame);
     if(generation!==cacheGeneration)return;
     frameCache.clear();cacheBytes=0;
     for(const entry of entries){const args=argsByFrame.get(entry.sourceFrame);frameCache.set(cacheKey(entry.sourceFrame,args.box),entry);cacheBytes+=entry.bytes;}
-    updateCacheStatus();draw();
+    updateCacheStatus();draw();if(tileMode){scheduleTileRefresh(0);refreshTileOrthogonalStates();}
   } catch(error) {
     hideLoadProgress();showError(error);
   } finally {
@@ -465,7 +512,7 @@ function frameLabel(){
   const sourceName=metadata.sliceLabels?.[Number($('frame').value)-1]||'';
   $('sliceName').textContent=sourceName;$('sliceName').title=sourceName;
   syncViewerToolbar();
-  if(orthogonal){orthogonal.z=slicePosition()-1;drawOrthogonalViews();refreshOrthogonal();}
+  if(orthogonal){orthogonal.z=slicePosition()-1;if(tileMode){saveFileFrame();refreshTileOrthogonalStates();draw();}else{drawOrthogonalViews();refreshOrthogonal();}}
   publishSidebar();
 }
 function sliceAxes(){return dataset?.extra||[];}
@@ -543,28 +590,39 @@ function saveFileFrame() {
   Object.assign(fileFrames.get(activeFileFrame), {metadata,datasetId:dataset?.id,plane:Number($('frame').value),sliceAxis,scale,cx,cy,preview,previewBox,activePng,frameCache,cacheSignature,cacheBytes,
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,stretch:$('stretch').value,cmap:$('cmap').value,invert:$('invert').checked,threshold:$('threshold').checked,roi,line,selection,orthogonalState:orthogonalSnapshot(),annotations,overlays,roiManager,calibration});
 }
-function scheduleTileRefresh(delay=80){if(!tileMode)return;clearTimeout(tileRefreshTimer);tileRefreshTimer=setTimeout(refreshTilePreviews,delay);}
+function scheduleTileRefresh(delay=0){
+  if(!tileMode)return;tileRefreshWanted=true;
+  if(tileRefreshRunning||tileRefreshTimer)return;
+  tileRefreshTimer=setTimeout(()=>{tileRefreshTimer=null;refreshTilePreviews();},delay);
+}
 async function refreshTilePreviews(){
-  if(!tileMode)return;
-  saveFileFrame();
-  const jobs=[];
-  for(const [id,state] of fileFrames){
-    if(state.visible===false)continue;
-    const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
-    if(!d)continue;
-    const args={dataset:d.id,frame:Math.max(0,Math.min(d.frames-1,(state.plane||1)-1)),box:[0,0,d.width,d.height],size:Math.min(1024,state.metadata.maxSize),raw:true,cuts:state.cuts||'percentile',low:Number(state.low??0),high:Number(state.high??1),stretch:state.stretch||'linear',cmap:state.cmap||'gray',invert:!!state.invert,threshold:!!state.threshold,thresholdLow:Number(state.low??0),thresholdHigh:Number(state.high??1)};
-    const signature=JSON.stringify(args);
-    if(signature===state.tileSignature)continue;
-    state.tileSignature=signature;
-    const generation=(state.tileGeneration||0)+1;state.tileGeneration=generation;
-    const cached=state.frameCache?.get(cacheKey(args.frame,args.box))||state.tileEntry;
-    const reusable=cached&&cached.sourceFrame===args.frame&&cached.sourceDataset===args.dataset&&cached.result.box.join(',')===args.box.join(',');
-    const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,false));
-    jobs.push(source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return null;await recolorEntry(entry,args);return {id,state,generation,entry};}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';return null;}));
+  if(!tileMode||tileRefreshRunning)return;
+  tileRefreshRunning=true;tileRefreshWanted=false;
+  try{
+    saveFileFrame();
+    const jobs=[];
+    for(const [id,state] of fileFrames){
+      if(state.visible===false)continue;
+      const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
+      if(!d)continue;
+      const args={dataset:d.id,frame:Math.max(0,Math.min(d.frames-1,(state.plane||1)-1)),box:[0,0,d.width,d.height],size:Math.min(1024,state.metadata.maxSize),raw:true,cuts:state.cuts||'percentile',low:Number(state.low??0),high:Number(state.high??1),stretch:state.stretch||'linear',cmap:state.cmap||'gray',invert:!!state.invert,threshold:!!state.threshold,thresholdLow:Number(state.low??0),thresholdHigh:Number(state.high??1)};
+      const signature=JSON.stringify(args);
+      if(signature===state.tileSignature)continue;
+      state.tileSignature=signature;
+      const generation=(state.tileGeneration||0)+1;state.tileGeneration=generation;
+      const cached=state.frameCache?.get(cacheKey(args.frame,args.box))||state.tileEntry;
+      const reusable=cached&&cached.sourceFrame===args.frame&&cached.sourceDataset===args.dataset&&cached.result.box.join(',')===args.box.join(',');
+      if(reusable&&cached.image){state.tileEntry=cached;state.tilePreview=cached.image;continue;}
+      const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,false));
+      jobs.push(source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return null;await recolorEntry(entry,args);return {id,state,generation,entry};}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';return null;}));
+    }
+    const ready=await Promise.all(jobs);
+    for(const item of ready)if(item&&fileFrames.get(item.id)===item.state&&item.state.tileGeneration===item.generation){item.state.tileEntry=item.entry;item.state.tilePreview=item.entry.image;}
+    draw();for(const item of ready)if(item)scheduleCachedRecolor(item.id,item.state);
+    refreshTileOrthogonalStates();
+  }finally{
+    tileRefreshRunning=false;if(tileRefreshWanted)scheduleTileRefresh(0);
   }
-  const ready=await Promise.all(jobs);
-  for(const item of ready)if(item&&fileFrames.get(item.id)===item.state&&item.state.tileGeneration===item.generation){item.state.tileEntry=item.entry;item.state.tilePreview=item.entry.image;}
-  if(ready.some(Boolean)){draw();for(const item of ready)if(item)scheduleCachedRecolor(item.id,item.state);}
 }
 function commitFrameChange(group){
   if(!activeFileFrame||!fileFrames.has(activeFileFrame))return;
@@ -587,13 +645,14 @@ function commitFrameChange(group){
     if(group==='bc'||group==='color'||group==='slice')state.tileSignature='';
     if((group==='bc'||group==='color')&&!tileMode)scheduleCachedRecolor(id,state);
   }
-  if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
+  if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode){refreshTileOrthogonalStates();draw();}
 }
 function syncOrthogonalState(source,state){
   const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id)),view=source.orthogonalState;
   if(!view||!d?.extra?.length){state.orthogonalState=null;return;}
   const axis=d.extra.includes(view.axis)?view.axis:d.extra.at(-1),depth=d.shape[axis],z=Math.max(0,Math.min(depth-1,view.z));
   state.orthogonalState={axis,x:Math.max(0,Math.min(d.width-1,view.x)),y:Math.max(0,Math.min(d.height-1,view.y)),z,depth};
+  state.tileOrthogonalKey='';
   const axes=d.extra,index=axes.indexOf(axis),stride=axes.slice(index+1).reduce((product,item)=>product*d.shape[item],1),flat=Math.max(0,(state.plane||1)-1),current=Math.floor(flat/stride)%depth;
   state.plane=flat+(z-current)*stride+1;
 }
@@ -830,8 +889,8 @@ function finishSelection(type,points){
 }
 canvas.onpointerdown=e=>{
   if(!dataset)return;canvas.focus();
-  if(orthogonal&&e.button===0&&!mouseMatches(mouseShortcuts.orthogonalTool,e,'click')){canvas.setPointerCapture(e.pointerId);drag={tool:'orthogonal'};orthogonalPoint('xy',e);return;}
-  if(tileMode){const rect=canvas.getBoundingClientRect(),{ids,cols,rows}=tileGeometry(rect.width,rect.height),col=Math.floor((e.clientX-rect.left)/(rect.width/cols)),row=Math.floor((e.clientY-rect.top)/(rect.height/rows)),id=ids[row*cols+col];if(!id)return;if(id!==activeFileFrame){selectFileFrame(id);draw();return;}}
+  if(tileMode){const rect=canvas.getBoundingClientRect(),{ids,cols,rows}=tileGeometry(rect.width,rect.height),col=Math.floor((e.clientX-rect.left)/(rect.width/cols)),row=Math.floor((e.clientY-rect.top)/(rect.height/rows)),id=ids[row*cols+col];if(!id)return;if(id!==activeFileFrame){selectFileFrame(id);draw();}}
+  if(orthogonal&&e.button===0&&!mouseMatches(mouseShortcuts.orthogonalTool,e,'click')){const name=tileMode?tileOrthogonalViewAt(e):'xy';if(!name)return;canvas.setPointerCapture(e.pointerId);drag={tool:'orthogonal',orthogonalName:name};if(tileMode)tileOrthogonalPoint(name,e);else orthogonalPoint('xy',e);return;}
   const contrastDrag=mouseMatches(mouseShortcuts.contrastDrag,e,'drag'),handDrag=mouseMatches(mouseShortcuts.handDrag,e,'drag');
   if((e.button===2&&!contrastDrag)||(e.button===1&&!handDrag))return;
   stopPlay();const raw=bounded(position(e)),tool=contrastDrag?'contrast':handDrag?'pan':$('tool').value;
@@ -862,7 +921,7 @@ canvas.onpointerdown=e=>{
 canvas.ondblclick=e=>{if(mouseMatches(mouseShortcuts.fit,e,'doubleclick')){vertices=[];fit();}};
 canvas.onpointermove=e=>{
   if(!dataset)return;
-  if(drag?.tool==='orthogonal'){orthogonalPoint('xy',e);return;}
+  if(drag?.tool==='orthogonal'){if(tileMode)tileOrthogonalPoint(drag.orthogonalName,e);else orthogonalPoint('xy',e);return;}
   const p=position(e);
   if(drag){const dx=e.clientX-drag.screen[0],dy=e.clientY-drag.screen[1];
     if(drag.tool==='editHandle'||drag.tool==='editMove'){dragEditedSelection(e,roiGeometry.pixelPoint(p,dataset.width,dataset.height));return;}
@@ -1003,7 +1062,7 @@ $('saveCsv').onclick=()=>vscode.postMessage({type:'export',kind:'csv',fileFrame:
 $('fileFrames').onchange=()=>selectFileFrame($('fileFrames').value);
 $('previousFileFrame').onclick=()=>moveFileFrame(-1);
 $('nextFileFrame').onclick=()=>moveFileFrame(1);
-$('tile').onclick=()=>{saveFileFrame();disableOrthogonal();tileMode=!tileMode;frameList();if(!tileMode&&fileFrames.get(activeFileFrame)?.orthogonalState)enableOrthogonal(fileFrames.get(activeFileFrame).orthogonalState,false);draw();if(tileMode)scheduleTileRefresh(0);};
+$('tile').onclick=()=>{saveFileFrame();const saved=fileFrames.get(activeFileFrame)?.orthogonalState;disableOrthogonal();tileMode=!tileMode;frameList();if(saved)enableOrthogonal(saved,false);draw();if(tileMode){scheduleTileRefresh(0);refreshTileOrthogonalStates();}};
 $('tileLayout').onchange=()=>{if(tileMode)draw();};
 $('lockView').onclick=()=>{const enabled=frameLocks.size!==Object.keys(lockGroups).length;for(const group of Object.keys(lockGroups))setFrameLock(group,enabled);};
 for(const input of document.querySelectorAll('[data-frame-lock]'))input.onchange=()=>setFrameLock(input.dataset.frameLock,input.checked);
@@ -1437,14 +1496,6 @@ window.addEventListener('message',({data:m})=>{
     const state=fileFrames.get(m.frameId);if(state){state.metadata={...state.metadata,...m};if(m.frameId===activeFileFrame){metadata=state.metadata;$('filename').textContent=metadata.label;$('filename').title=metadata.path;}frameList();draw();}
   }else if(m.type==='memoryInfo'){
     const mib=n=>formatValue(n/1048576);const dialog=openDialog('memory','Monitor Memory',`<pre>Extension host RSS: ${mib(m.host.rss)} MiB\nHost free: ${mib(m.free)} / ${mib(m.total)} MiB\nCurrent preview cache: ${mib(cacheBytes)} MiB\nImage Frames: ${fileFrames.size}</pre>`);dialog.hidden=false;
-  }else if(m.type==='loadProgress'){
-    pending.get(m.id)?.onProgress?.(m.value);
-  }else if(m.type==='binaryStart'){
-    const p=pending.get(m.id);if(p)p.binary={result:m.result,byteLength:m.byteLength,parts:[]};
-  }else if(m.type==='binaryChunk'){
-    const p=pending.get(m.id),binary=p?.binary;if(binary)binary.parts.push(new Uint8Array(m.payload));
-  }else if(m.type==='binaryEnd'){
-    const p=pending.get(m.id),binary=p?.binary;if(p&&binary){const payload=new Uint8Array(binary.byteLength);let offset=0;for(const part of binary.parts){payload.set(part,offset);offset+=part.byteLength;}binary.result.payload=payload.buffer;pending.delete(m.id);p.resolve(binary.result);}
   }else if(m.type==='result'||m.type==='error'){
     const p=pending.get(m.id);if(p){pending.delete(m.id);m.type==='error'?p.reject(new Error(m.message)):p.resolve(m.result);}else if(m.type==='error')showError(new Error(m.message));
   }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.6 (development build; not published)
+- Prioritize stack transfer speed by sending one complete binary payload without application-level Webview chunks. Because VS Code does not expose partial receipt of one message, loading uses an indeterminate animation instead of a misleading percentage.
+- Update locked tile Frames immediately from their preloaded slice canvases during slider dragging, arrow stepping, held-button playback, and normal playback.
+- Support Orthogonal Views in Tile display. Each enabled tile shows aligned XY, YZ, and XZ views, and Selection locking synchronizes all three crosshair coordinates and view updates across compatible stack Frames.
+
 ## 0.7.5 (development build; not published)
 - Show a numeric percentage inside the stack loading bar. Progress combines server-side slice reads, chunked Remote SSH transfer, and local slice canvas construction while preserving all-at-once display.
 - Preserve Orthogonal Views per Frame when switching Frames. Selection locking now synchronizes the orthogonal X, Y, and Z crosshair coordinates between compatible stack Frames.
