@@ -42,8 +42,10 @@ Python worker 批量读取与图像处理、扩展主机二进制转发、viewer
 
 - 0.7.3 恢复 stack 共享 B&C 语义，并补充当前切片、当前面积 selection 的 Auto/Reset 计算；Python 45/45、Node 21/21 和静态检查通过。
 - 0.7.4 删除常驻的 `n/n ready` 文本；完整 stack 读取和传输期间显示不定进度，载荷到达后按 slice canvas 构建数量显示确定进度，全部就绪后自动隐藏。
+- 0.7.5 将加载状态改为明确的 0–100%：服务器逐 slice 读取占 0–20%，worker 二进制接收占 20–25%，Remote SSH 分块传输占 25–75%，本机解码并构建全部 canvas 占 75–100%。Orthogonal Views 状态按 Frame 保存，Selection lock 同步 X/Y/Z 三条十字线。
 
-- 自动化验证：Python 45/45、Node 21/21，`npm run check` 和 VSIX 打包通过。
+- 自动化验证：Python 45/45、Node 22/22，`npm run check` 和 VSIX 打包通过；新增进度事件不会提前 resolve 整栈请求的回归测试。
+- hyh-batchcom2 Cursor 使用 101×795×795 float32 目标 TIFF 验证 0.7.5：加载条可访问值从 29%、40%、71% 持续增长，完整加载前保持 `Preparing preview…`，完成后进度条消失并一次显示图像。两个 stack Frame 间切换后 Orthogonal 高亮和 YZ/XZ 视图恢复；两个 Frame 加入 lock 并启用 Selection 后，X/Y/Z 十字线状态同步到目标 Frame。
 - hyh-batchcom2 Cursor 打开目标 TIFF：先保持 `0/225 ready` 和 Loading 状态，完成后一次变为 `225/225 ready`，首次显示发生在全部 slice 的 canvas 构建完成后；本轮观察到总时长约 1.5–3 秒。
-- `Suzuka24.vivi 0.7.1` 已安装到本地、hyh-batchcom2 和 ssk-CAST，两个远程安装目录的 `viewer.js` 与 `worker.py` SHA-256 均和源码一致。
+- `Suzuka24.vivi 0.7.5` 已安装到本地、hyh-batchcom2 和 ssk-CAST，两个远程安装目录的 `viewer.js` 与 `worker.py` SHA-256 均和源码一致。
 - 未完成事项：对数 GB 级 stack 的单一载荷会带来较高峰值内存，这是用户明确要求的整体加载语义；当前未设置预览缓存预算上限。

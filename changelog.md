@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.5 (development build; not published)
+- Show a numeric percentage inside the stack loading bar. Progress combines server-side slice reads, chunked Remote SSH transfer, and local slice canvas construction while preserving all-at-once display.
+- Preserve Orthogonal Views per Frame when switching Frames. Selection locking now synchronizes the orthogonal X, Y, and Z crosshair coordinates between compatible stack Frames.
+
 ## 0.7.4 (development build; not published)
 - Replace the persistent stack ready count with a temporary loading progress bar. It is indeterminate while the complete stack is read and transferred, reports construction progress after arrival, and disappears when every slice is ready.
 

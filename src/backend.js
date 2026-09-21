@@ -27,6 +27,7 @@ class Backend {
         state.parts.push(chunk.subarray(offset, offset + take));
         state.bytes += take;
         offset += take;
+        this.progress(state.msg.id, {stage:'backendBinary', value:state.bytes/state.length});
         if (state.bytes < state.length) return;
         const payload = Buffer.concat(state.parts, state.length);
         const {msg} = state;
@@ -61,17 +62,19 @@ class Backend {
   complete(msg) {
     const item = this.pending.get(msg.id);
     if (!item) return;
+    if (msg.progress) { item.onProgress?.(msg.progress); return; }
     clearTimeout(item.timer);
     this.pending.delete(msg.id);
     if (msg.error) item.reject(new Error(msg.error)); else item.resolve(msg.result);
   }
-  request(op, args = {}) {
+  progress(id, progress) { this.pending?.get(id)?.onProgress?.(progress); }
+  request(op, args = {}, onProgress = null) {
     if (this.dead) return Promise.reject(new Error('Backend stopped. Reopen this image to restart.'));
     if (this.pending.size >= 8) return Promise.reject(new Error('Backend busy; please wait.'));
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
       const timer = setTimeout(() => this.stop(new Error('Backend request timed out and was stopped. Reopen the image or increase vivi.requestTimeoutSeconds.')), this.timeout);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, onProgress });
       this.child.stdin.write(JSON.stringify({ ...args, op, id }) + '\n');
     });
   }

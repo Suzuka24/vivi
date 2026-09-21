@@ -449,6 +449,7 @@ function activate(context) {
           const args = { ...msg.args };
           if (msg.op === 'render' || msg.op === 'renderBatch') {
             args.binary = true;
+            if (msg.op === 'renderBatch') args.reportProgress = true;
             Object.assign(args, previewCompressionOptions({
               lossless: config().get('losslessCompression', true),
               lossy: config().get('lossyCompression', false),
@@ -457,10 +458,24 @@ function activate(context) {
               tolerance: config().get('lossyTolerance', 1e-4)
             }, frame.sourceFileBytes));
           }
-          const result = await frame.worker.request(msg.op, args);
+          const result = await frame.worker.request(msg.op, args, progress => {
+            if(disposed||msg.op!=='renderBatch')return;
+            const value=progress.stage==='read'?.2*progress.value:.2+.05*progress.value;
+            panel.webview.postMessage({type:'loadProgress',id:msg.id,value});
+          });
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };
-          if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result });
+          if (!disposed&&msg.op==='renderBatch'&&result.payload instanceof ArrayBuffer) {
+            const payload=result.payload,metadata={...result};delete metadata.payload;
+            const chunkSize=2*1024*1024,total=Math.max(1,Math.ceil(payload.byteLength/chunkSize));
+            await panel.webview.postMessage({type:'binaryStart',id:msg.id,op:msg.op,result:metadata,byteLength:payload.byteLength});
+            for(let index=0;index<total;index++){
+              const from=index*chunkSize,to=Math.min(payload.byteLength,from+chunkSize);
+              await panel.webview.postMessage({type:'binaryChunk',id:msg.id,payload:payload.slice(from,to)});
+              await panel.webview.postMessage({type:'loadProgress',id:msg.id,value:.25+.5*(index+1)/total});
+            }
+            await panel.webview.postMessage({type:'binaryEnd',id:msg.id});
+          } else if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result });
         } else if (msg.type === 'export') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
