@@ -22,10 +22,10 @@ test('in-place preview transforms preserve the raw values and box geometry',()=>
   assert.deepEqual([...raw],[1,2,3,4,5,6]);
 });
 
-test('stack preload keeps every slice in source order as one unit',()=>{
+test('stack preload visits the active frame first and then adjacent frames',()=>{
   const large=preloadFrameOrder(4200,95,256*256*4);
   assert.equal(large.length,4200);
-  assert.deepEqual(large.slice(0,5),[0,1,2,3,4]);
+  assert.deepEqual(large.slice(0,5),[95,96,94,97,93]);
   assert.ok(large.every(frame=>frame>=0&&frame<4200));
   assert.equal(preloadFrameOrder(101,50,795*795*4).length,101);
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.8 (development build; not published)
+
+- Restore the latest sequential per-frame stack transport used before whole-stack batch payloads.
+- Apply flip and rotate operations to every locked Frame when View synchronization is enabled.
+- Make pan, zoom, locked viewport changes, and Shift-assisted tools affect tile orthogonal views.
+
 ## 0.7.7 (development build; not published)
 
 - Restored the pre-0.7.4 whole-stack single-payload transport path and ready counter.

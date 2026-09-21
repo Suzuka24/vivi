@@ -2,7 +2,7 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -74,7 +74,7 @@ function visibleBox() {
   const {w,h}=size();
   return [Math.max(0,Math.floor(cx-w/2/scale)),Math.max(0,Math.floor(cy-h/2/scale)),Math.min(dataset.width,Math.ceil(cx+w/2/scale)),Math.min(dataset.height,Math.ceil(cy+h/2/scale))];
 }
-function clampCenter() { cx=Math.max(0,Math.min(dataset.width,cx));cy=Math.max(0,Math.min(dataset.height,cy)); }
+function clampCenter() {const depth=orthogonal?.depth||0;cx=Math.max(0,Math.min(dataset.width+depth,cx));cy=Math.max(0,Math.min(dataset.height+depth,cy));}
 function drawTileSelection(state,x,y,tw,th,d,picture,w){
   const selected=state.selection;if(!selected||!picture)return;
   const ratio=tilePictureRatio(state,d,picture,w,tw,th),centerX=(state.cx??d.width/2),centerY=(state.cy??d.height/2);
@@ -88,8 +88,11 @@ function drawTileSelection(state,x,y,tw,th,d,picture,w){
 }
 function tileOrthogonalLayout(state,d,x,y,tw,th){
   const depth=state.orthogonalState?.depth||1,availableWidth=Math.max(1,tw-8),availableHeight=Math.max(1,th-29);
-  const ratio=Math.max(.01,Math.min(availableWidth/(d.width+depth),availableHeight/(d.height+depth)));
-  const totalWidth=(d.width+depth)*ratio,totalHeight=(d.height+depth)*ratio,left=x+4+(availableWidth-totalWidth)/2,top=y+24+(availableHeight-totalHeight)/2;
+  const fitRatio=Math.max(.01,Math.min(availableWidth/(d.width+depth),availableHeight/(d.height+depth)));
+  const viewport=size(),normalScale=Math.max(.01,Math.min(viewport.w/(d.width+depth),viewport.h/(d.height+depth))*.96);
+  const ratio=fitRatio*Math.max(.01,state.scale??normalScale)/normalScale;
+  const centerX=state.cx??(d.width+depth)/2,centerY=state.cy??(d.height+depth)/2;
+  const left=x+4+availableWidth/2-centerX*ratio,top=y+24+availableHeight/2-centerY*ratio;
   return {ratio,xy:{x:left,y:top,w:d.width*ratio,h:d.height*ratio},yz:{x:left+d.width*ratio,y:top,w:depth*ratio,h:d.height*ratio},xz:{x:left,y:top+d.height*ratio,w:d.width*ratio,h:depth*ratio}};
 }
 function drawTileOrthogonal(state,d,picture,x,y,tw,th){
@@ -363,25 +366,6 @@ async function decodePreview(result,args,paint=true) {
   const image=new Image();image.src='data:image/png;base64,'+result.png;await image.decode();
   return {image,result,bytes:image.width*image.height*4+result.png.length*.75};
 }
-async function decodePreviewBatch(result,argsByFrame){
-  if(!(result.payload instanceof ArrayBuffer)||!Array.isArray(result.frames)||!result.frames.length)throw new Error('Invalid batch preview');
-  const {raw:sourceRaw,sourceBytes}=await decodeRawPayload(result),channels=Number(result.channels)||1;
-  const frameHeight=Number(result.frameHeight),frameValues=Number(result.width)*frameHeight*channels;
-  if(!Number.isInteger(frameHeight)||frameHeight<1||sourceRaw.length!==frameValues*result.frames.length)throw new Error('Batch preview shape mismatch');
-  const scale=Number(result.bscale??1),zero=Number(result.bzero??0),blank=result.blank,entries=[];
-  for(let index=0;index<result.frames.length;index++){
-    const frame=result.frames[index],args=argsByFrame.get(frame),from=index*frameValues,to=from+frameValues;
-    if(!args)continue;
-    const stored=sourceRaw.subarray(from,to),storedBytes=new Uint8Array(stored.buffer,stored.byteOffset,stored.byteLength);
-    const calibrated=scale!==1||zero!==0||blank!=null;
-    const raw=calibrated?Float64Array.from(stored,value=>blank!=null&&String(value)===String(blank)?NaN:Number(value)*scale+zero):stored;
-    const itemResult={...result,frames:undefined,payload:undefined,height:frameHeight,box:[...result.box]};
-    const entry={image:null,raw,sourceRaw:stored,sourceBytes:storedBytes,channels,result:itemResult,sourceFrame:frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength};
-    await recolorEntry(entry,args);entries.push(entry);
-  }
-  delete result.payload;
-  return entries;
-}
 function showPreview(entry, ticket) {
   if (ticket !== revision) return;
   preview = entry.image; previewBox = entry.result.box; activePng = entry.result.png||'';
@@ -421,22 +405,22 @@ function schedulePreload() {
 async function preloadFrames() {
   if (preloadRunning || renderRunning || renderWanted || !dataset || dataset.frames < 2) return;
   preloadRunning = true;
-  const generation = cacheGeneration, signature = cacheSignature;
+  const generation = cacheGeneration, signature = cacheSignature, active = Number($('frame').value)-1;
+  const order=preloadFrameOrder(dataset.frames,active);
   try {
-    // A stack is one preload unit: decode, transport and construct every slice together.
-    // This avoids hundreds of SSH request/response and canvas creation round trips.
-    const frames=Array.from({length:dataset.frames},(_,frame)=>frame);
-    const argsByFrame=new Map(frames.map(frame=>[frame,renderArgs(frame)]));
-    if(frames.every(frame=>frameCache.has(cacheKey(frame,argsByFrame.get(frame).box))))return;
-    const referenceFrame=Math.max(0,Math.min(dataset.frames-1,Number($('frame').value)-1));
-    const first=argsByFrame.get(referenceFrame),result=await request('renderBatch',{...first,frames},true);
-    const entries=await decodePreviewBatch(result,argsByFrame);
-    if(generation!==cacheGeneration)return;
-    frameCache.clear();cacheBytes=0;
-    for(const entry of entries){const args=argsByFrame.get(entry.sourceFrame);frameCache.set(cacheKey(entry.sourceFrame,args.box),entry);cacheBytes+=entry.bytes;}
-    updateCacheStatus();draw();if(tileMode){scheduleTileRefresh(0);refreshTileOrthogonalStates();}
-  } catch(error) {
-    showError(error);
+    for (const frame of order) {
+      if (generation !== cacheGeneration || renderRunning || renderWanted) break;
+      const args = renderArgs(frame),key=cacheKey(frame,args.box);
+      if (frameCache.has(key)) continue;
+      if (signatureOf(args) !== signature) break;
+      try {
+        const entry = await decodePreview(await request('render',args,true),args);
+        if (generation !== cacheGeneration) break;
+        await recolorEntry(entry,renderArgs(frame));
+        if (generation !== cacheGeneration) break;
+        frameCache.set(key,entry); cacheBytes += entry.bytes; updateCacheStatus();
+      } catch (error) { showError(error); break; }
+    }
   } finally {
     preloadRunning = false;
     if (preloadRestartWanted) { preloadRestartWanted = false; schedulePreload(); }
@@ -455,13 +439,6 @@ async function render() {
       showPreview(cached,ticket);schedulePlayback();schedulePreload();
     }
     catch(error){showError(error);}
-    return;
-  }
-  if(dataset.frames>1&&frameCache.size===0){
-    $('busy').textContent='Loading stack…';
-    await preloadFrames();
-    const loaded=frameCache.get(cacheKey(frame,args.box));
-    if(loaded){showPreview(loaded,ticket);schedulePlayback();if(renderWanted)render();}
     return;
   }
   renderRunning=true;
@@ -1167,7 +1144,17 @@ function derive(action,label,value){
 function deriveNewFrame(action,label,value){
   vscode.postMessage({type:'deriveNewFrame',fileFrame:activeFileFrame,label,args:{dataset:dataset.id,frame:Number($('frame').value)-1,box:[0,0,dataset.width,dataset.height],action,value,displayLow:Number($('low').value),displayHigh:Number($('high').value)}});
 }
-for(const [id,action] of [['flipHorizontal','flipHorizontal'],['flipVertical','flipVertical'],['rotateLeft','rotateLeft'],['rotateRight','rotateRight'],['rotate180','rotate180']])$(id).onclick=()=>vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action,args:base()});
+function transformViewFrames(action,extra={}){
+  saveFileFrame();
+  const active=fileFrames.get(activeFileFrame),locked=frameLocks.has('view')&&active?.lockMember;
+  for(const [id,state] of fileFrames){
+    if(id!==activeFileFrame&&(!locked||!state.lockMember))continue;
+    const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
+    if(!d)continue;
+    vscode.postMessage({type:'transformFrame',fileFrame:id,action,args:{dataset:d.id,frame:Math.max(0,Math.min(d.frames-1,(state.plane||1)-1)),...extra}});
+  }
+}
+for(const [id,action] of [['flipHorizontal','flipHorizontal'],['flipVertical','flipVertical'],['rotateLeft','rotateLeft'],['rotateRight','rotateRight'],['rotate180','rotate180']])$(id).onclick=()=>transformViewFrames(action);
 function openRotateDialog(){
   if(!dataset)return;
   document.querySelector('[data-dialog="rotate-arbitrary"]')?.remove();
@@ -1185,7 +1172,7 @@ function openRotateDialog(){
   angle.oninput=()=>{slider.value=String(Math.max(-180,Math.min(180,Number(angle.value)||0)));previewRotation();};slider.oninput=()=>{angle.value=slider.value;previewRotation();};
   for(const element of dialog.querySelectorAll('.rotate-grid,.rotate-interpolation,.rotate-background,.rotate-enlarge,.rotate-live'))element.oninput=previewRotation;
   dialog.querySelector('.rotate-cancel').onclick=()=>dialog.remove();
-  dialog.querySelector('.rotate-run').onclick=()=>{const value=Number(angle.value);if(!Number.isFinite(value)||Math.abs(value)>3600){dialog.querySelector('.roi-dialog-error').textContent='Enter an angle within ±3600°.';return;}vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'rotate',args:{...base(),angle:value,interpolation:dialog.querySelector('.rotate-interpolation').value,fillBackground:dialog.querySelector('.rotate-background').checked,enlarge:dialog.querySelector('.rotate-enlarge').checked}});dialog.remove();};
+  dialog.querySelector('.rotate-run').onclick=()=>{const value=Number(angle.value);if(!Number.isFinite(value)||Math.abs(value)>3600){dialog.querySelector('.roi-dialog-error').textContent='Enter an angle within ±3600°.';return;}transformViewFrames('rotate',{angle:value,interpolation:dialog.querySelector('.rotate-interpolation').value,fillBackground:dialog.querySelector('.rotate-background').checked,enlarge:dialog.querySelector('.rotate-enlarge').checked});dialog.remove();};
   previewRotation();
 }
 $('rotateArbitrary').onclick=openRotateDialog;

@@ -93,18 +93,6 @@ class StackTests(unittest.TestCase):
         finally:
             os.unlink(result["path"])
 
-    def test_batch_render_returns_complete_stack_in_source_dtype(self):
-        result = self.session.handle({"op": "renderBatch", "dataset": 0,
-                                      "frames": [0, 1, 2], "box": [0, 0, 5, 4],
-                                      "raw": True, "binary": True, "compress": False,
-                                      "cuts": "minmax", "frame": 1})
-        payload = result.pop("_binary")
-        self.assertEqual(result["frames"], [0, 1, 2])
-        self.assertEqual(result["dtype"], self.data.dtype.str)
-        self.assertEqual(result["frameHeight"], 4)
-        self.assertEqual((result["low"], result["high"]), (1020.0, 1039.0))
-        np.testing.assert_array_equal(np.frombuffer(payload, dtype=self.data.dtype).reshape(self.data.shape), self.data)
-
     def test_smooth_only_changes_area_selection(self):
         data = np.zeros((3, 4, 5), dtype=np.uint16)
         data[:, 2, 2] = 1000

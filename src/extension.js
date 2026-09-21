@@ -443,11 +443,11 @@ function activate(context) {
             if (!frames.has(activeId)) activeId = frames.keys().next().value;
             panel.title = frames.size === 1 ? (frames.get(activeId).label || path.basename(frames.get(activeId).file)) : `vivi · ${frames.size} frames`;
           } else panel.dispose();
-        } else if (msg.type === 'request' && ['render','renderBatch','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
+        } else if (msg.type === 'request' && ['render','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
           const args = { ...msg.args };
-          if (msg.op === 'render' || msg.op === 'renderBatch') {
+          if (msg.op === 'render') {
             args.binary = true;
             Object.assign(args, previewCompressionOptions({
               lossless: config().get('losslessCompression', true),
