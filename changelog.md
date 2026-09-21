@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.11 (development build; not published)
+
+- Remember the most recently opened file or entered child directory per Explorer folder, with persistent styling distinct from hover and selection.
+- Preserve Shift constraints for rectangle, oval, and line tools invoked with Space while Orthogonal Views is active.
+- Use vertical previous/next Frame icons in LAYOUT.
+- Make Plot Profile and Plot Z-axis Profile charts resizable and responsive, with clipped curves, boxed axes, grid lines, numeric ticks, and hover coordinates.
+
 ## 0.7.10 (development build; not published)
 
 - Migrate the former `shift+click` Orthogonal Views tool gesture saved in user, workspace, or workspace-folder settings to `space+click` while preserving all other mouse bindings.

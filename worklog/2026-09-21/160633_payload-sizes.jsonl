@@ -1,0 +1,14 @@
+{"mode": "raw", "bytes": 255338908, "MiB": 243.51015853881836, "ratio_to_raw": 1.0, "encode_seconds": 0.05087634176015854}
+{"mode": "lossless", "bytes": 159086467, "MiB": 151.71667766571045, "ratio_to_raw": 0.6230404455242677, "encode_seconds": 6.091730024665594}
+{"mode": "zfp", "bytes": 45231056, "MiB": 43.13569641113281, "ratio_to_raw": 0.17714126043023573, "encode_seconds": 1.2242251504212618}
+{"mode": "zfp+zlib", "bytes": 44639041, "MiB": 42.571106910705566, "ratio_to_raw": 0.17482271444507, "encode_seconds": 2.776926437392831}
+{"mode": "float16", "bytes": 127669858, "MiB": 121.75546455383301, "ratio_to_raw": 0.5000015822108865, "encode_seconds": 0.3252588789910078}
+{"mode": "float16+zlib", "bytes": 70314896, "MiB": 67.05751037597656, "ratio_to_raw": 0.27537869786769825, "encode_seconds": 2.9510736018419266}
+{"mode": "bfloat16", "bytes": 127669858, "MiB": 121.75546455383301, "ratio_to_raw": 0.5000015822108865, "encode_seconds": 0.4263774994760752}
+{"mode": "bfloat16+zlib", "bytes": 55079729, "MiB": 52.528122901916504, "ratio_to_raw": 0.21571224468462127, "encode_seconds": 2.799618462100625}
+{"mode": "block8", "bytes": 63971885, "MiB": 61.00834369659424, "ratio_to_raw": 0.2505371605959872, "encode_seconds": 0.43535659275949}
+{"mode": "block8+zlib", "bytes": 35574194, "MiB": 33.92619514465332, "ratio_to_raw": 0.1393214777906076, "encode_seconds": 1.8274969067424536}
+{"mode": "block12", "bytes": 95889299, "MiB": 91.44716167449951, "ratio_to_raw": 0.37553735837234803, "encode_seconds": 0.5974330566823483}
+{"mode": "block12+zlib", "bytes": 75615538, "MiB": 72.11259651184082, "ratio_to_raw": 0.2961379391502685, "encode_seconds": 3.4841226544231176}
+{"mode": "block16", "bytes": 127806410, "MiB": 121.88569068908691, "ratio_to_raw": 0.5005363694905439, "encode_seconds": 0.46529880352318287}
+{"mode": "block16+zlib", "bytes": 100248025, "MiB": 95.60396671295166, "ratio_to_raw": 0.3926077141365389, "encode_seconds": 4.105783350765705}
