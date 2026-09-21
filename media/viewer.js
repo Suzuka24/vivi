@@ -49,8 +49,8 @@ function sidebarState(){
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin:(displayBounds.get(`${activeFileFrame}:${dataset.id}`)||[])[0]??Number($('low').value),rangeMax:(displayBounds.get(`${activeFileFrame}:${dataset.id}`)||[])[1]??Number($('high').value),stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked,bcVisible:transferVisible};
 }
 function publishSidebar(delay=20){clearTimeout(sidebarTimer);sidebarTimer=setTimeout(()=>{const state=sidebarState();if(state)vscode.postMessage({type:'sidebarState',state});},delay);}
-function request(op, args, prefetch = false, fileFrame = activeFileFrame, onProgress = null) {
-  return new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject,onProgress});vscode.postMessage({type:'request',id,op,args,prefetch,fileFrame});});
+function request(op, args, prefetch = false, fileFrame = activeFileFrame) {
+  return new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});vscode.postMessage({type:'request',id,op,args,prefetch,fileFrame});});
 }
 function base() { return {dataset:dataset.id,frame:Number($('frame').value)-1}; }
 function size() { return {w:canvas.clientWidth,h:canvas.clientHeight}; }
@@ -298,15 +298,9 @@ function ensureCache(signature) {
   frameCache.clear(); cacheBytes = 0; cacheSignature = signature; cacheGeneration++;
   clearTimeout(preloadTimer); updateCacheStatus();
 }
-function showLoadProgress(value=null){
-  const progress=$('cacheStatus');progress.hidden=false;
-  if(value==null){progress.classList.add('indeterminate');progress.removeAttribute('aria-valuenow');progress.setAttribute('aria-valuetext','Loading stack');progress.lastElementChild.textContent='';return;}
-  const percent=Math.max(0,Math.min(100,Math.round(value*100)));progress.classList.remove('indeterminate');progress.removeAttribute('aria-valuetext');progress.setAttribute('aria-valuenow',String(percent));progress.firstElementChild.style.width=`${percent}%`;progress.lastElementChild.textContent=`${percent}%`;
-}
-function hideLoadProgress(){const progress=$('cacheStatus');progress.hidden=true;progress.classList.remove('indeterminate');progress.removeAttribute('aria-valuetext');progress.setAttribute('aria-valuenow','0');progress.firstElementChild.style.width='0';progress.lastElementChild.textContent='';}
 function updateCacheStatus() {
   const count=new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size;
-  if(!dataset||dataset.frames<2||count===dataset.frames)hideLoadProgress();
+  $('cacheStatus').textContent=dataset?.frames>1?`${count}/${dataset.frames} ready`:'';
 }
 async function lutTable(name){
   if(name==='gray')return null;
@@ -369,7 +363,7 @@ async function decodePreview(result,args,paint=true) {
   const image=new Image();image.src='data:image/png;base64,'+result.png;await image.decode();
   return {image,result,bytes:image.width*image.height*4+result.png.length*.75};
 }
-async function decodePreviewBatch(result,argsByFrame,onProgress=()=>{}){
+async function decodePreviewBatch(result,argsByFrame){
   if(!(result.payload instanceof ArrayBuffer)||!Array.isArray(result.frames)||!result.frames.length)throw new Error('Invalid batch preview');
   const {raw:sourceRaw,sourceBytes}=await decodeRawPayload(result),channels=Number(result.channels)||1;
   const frameHeight=Number(result.frameHeight),frameValues=Number(result.width)*frameHeight*channels;
@@ -383,7 +377,7 @@ async function decodePreviewBatch(result,argsByFrame,onProgress=()=>{}){
     const raw=calibrated?Float64Array.from(stored,value=>blank!=null&&String(value)===String(blank)?NaN:Number(value)*scale+zero):stored;
     const itemResult={...result,frames:undefined,payload:undefined,height:frameHeight,box:[...result.box]};
     const entry={image:null,raw,sourceRaw:stored,sourceBytes:storedBytes,channels,result:itemResult,sourceFrame:frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength};
-    await recolorEntry(entry,args);entries.push(entry);onProgress((index+1)/result.frames.length);
+    await recolorEntry(entry,args);entries.push(entry);
   }
   delete result.payload;
   return entries;
@@ -428,7 +422,6 @@ async function preloadFrames() {
   if (preloadRunning || renderRunning || renderWanted || !dataset || dataset.frames < 2) return;
   preloadRunning = true;
   const generation = cacheGeneration, signature = cacheSignature;
-  showLoadProgress(0);
   try {
     // A stack is one preload unit: decode, transport and construct every slice together.
     // This avoids hundreds of SSH request/response and canvas creation round trips.
@@ -436,20 +429,17 @@ async function preloadFrames() {
     const argsByFrame=new Map(frames.map(frame=>[frame,renderArgs(frame)]));
     if(frames.every(frame=>frameCache.has(cacheKey(frame,argsByFrame.get(frame).box))))return;
     const referenceFrame=Math.max(0,Math.min(dataset.frames-1,Number($('frame').value)-1));
-    const first=argsByFrame.get(referenceFrame),requestFrame=activeFileFrame;
-    const result=await request('renderBatch',{...first,frames},true,requestFrame);
-    hideLoadProgress();
+    const first=argsByFrame.get(referenceFrame),result=await request('renderBatch',{...first,frames},true);
     const entries=await decodePreviewBatch(result,argsByFrame);
     if(generation!==cacheGeneration)return;
     frameCache.clear();cacheBytes=0;
     for(const entry of entries){const args=argsByFrame.get(entry.sourceFrame);frameCache.set(cacheKey(entry.sourceFrame,args.box),entry);cacheBytes+=entry.bytes;}
     updateCacheStatus();draw();if(tileMode){scheduleTileRefresh(0);refreshTileOrthogonalStates();}
   } catch(error) {
-    hideLoadProgress();showError(error);
+    showError(error);
   } finally {
     preloadRunning = false;
     if (preloadRestartWanted) { preloadRestartWanted = false; schedulePreload(); }
-    else hideLoadProgress();
   }
 }
 async function render() {
@@ -595,6 +585,11 @@ function scheduleTileRefresh(delay=0){
   if(tileRefreshRunning||tileRefreshTimer)return;
   tileRefreshTimer=setTimeout(()=>{tileRefreshTimer=null;refreshTilePreviews();},delay);
 }
+function invalidateTilePreview(state){
+  if(!state)return;
+  state.tileSignature='';
+  state.tileGeneration=(state.tileGeneration||0)+1;
+}
 async function refreshTilePreviews(){
   if(!tileMode||tileRefreshRunning)return;
   tileRefreshRunning=true;tileRefreshWanted=false;
@@ -612,7 +607,6 @@ async function refreshTilePreviews(){
       const generation=(state.tileGeneration||0)+1;state.tileGeneration=generation;
       const cached=state.frameCache?.get(cacheKey(args.frame,args.box))||state.tileEntry;
       const reusable=cached&&cached.sourceFrame===args.frame&&cached.sourceDataset===args.dataset&&cached.result.box.join(',')===args.box.join(',');
-      if(reusable&&cached.image){state.tileEntry=cached;state.tilePreview=cached.image;continue;}
       const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,false));
       jobs.push(source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return null;await recolorEntry(entry,args);return {id,state,generation,entry};}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';return null;}));
     }
@@ -628,12 +622,14 @@ function commitFrameChange(group){
   if(!activeFileFrame||!fileFrames.has(activeFileFrame))return;
   saveFileFrame();
   publishSidebar();
+  const active=fileFrames.get(activeFileFrame),refreshesTile=['bc','color','slice'].includes(group);
+  if(refreshesTile)invalidateTilePreview(active);
   if((group==='bc'||group==='color')&&!tileMode)scheduleCachedRecolor(activeFileFrame,fileFrames.get(activeFileFrame));
   if(!frameLocks.has(group)||!fileFrames.get(activeFileFrame)?.lockMember){
-    if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode)draw();
+    if(refreshesTile)scheduleTileRefresh();else if(tileMode)draw();
     return;
   }
-  const active=fileFrames.get(activeFileFrame),keys=lockGroups[group];
+  const keys=lockGroups[group];
   for(const [id,state] of fileFrames){
     if(id===activeFileFrame||!state.lockMember)continue;
     for(const key of keys)state[key]=group==='selection'&&active[key]!=null?structuredClone(active[key]):active[key];
@@ -642,10 +638,10 @@ function commitFrameChange(group){
       const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));
       state.plane=Math.max(1,Math.min(d.frames,active.plane));
     }
-    if(group==='bc'||group==='color'||group==='slice')state.tileSignature='';
+    if(refreshesTile)invalidateTilePreview(state);
     if((group==='bc'||group==='color')&&!tileMode)scheduleCachedRecolor(id,state);
   }
-  if(['bc','color','slice'].includes(group))scheduleTileRefresh();else if(tileMode){refreshTileOrthogonalStates();draw();}
+  if(refreshesTile)scheduleTileRefresh();else if(tileMode){refreshTileOrthogonalStates();draw();}
 }
 function syncOrthogonalState(source,state){
   const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id)),view=source.orthogonalState;

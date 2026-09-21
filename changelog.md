@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.7 (development build; not published)
+
+- Restored the pre-0.7.4 whole-stack single-payload transport path and ready counter.
+- Repaint all visible locked tile Frames together when B&C or color settings change.
+
 ## 0.7.6 (development build; not published)
 - Prioritize stack transfer speed by sending one complete binary payload without application-level Webview chunks. Because VS Code does not expose partial receipt of one message, loading uses an indeterminate animation instead of a misleading percentage.
 - Update locked tile Frames immediately from their preloaded slice canvases during slider dragging, arrow stepping, held-button playback, and normal playback.

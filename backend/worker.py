@@ -1166,9 +1166,7 @@ class Session:
         frames = [int(frame) for frame in frames]
         if len(set(frames)) != len(frames) or any(frame < 0 or frame >= d["frames"] for frame in frames):
             raise ValueError("renderBatch frame indexes are invalid")
-        planes = []
-        for frame in frames:
-            planes.append(np.ascontiguousarray(self.source.read(d, frame, box, raw_stored=True)))
+        planes = [np.ascontiguousarray(self.source.read(d, frame, box, raw_stored=True)) for frame in frames]
         shape = planes[0].shape
         dtype = planes[0].dtype
         if any(plane.shape != shape or plane.dtype != dtype for plane in planes):

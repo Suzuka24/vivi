@@ -85,11 +85,3 @@ test('backend framing accepts fragmented binary with newline bytes and adjacent 
   assert.deepEqual([...new Uint8Array(received[0].result.payload)],[1,10,0,255]);
   assert.equal(received[1].result.ok,true);
 });
-
-test('backend progress reports without completing the pending stack request',()=>{
-  const backend=Object.create(Backend.prototype),events=[];
-  backend.pending=new Map([[7,{onProgress:value=>events.push(value),resolve:value=>events.push(value)}]]);
-  backend.complete({id:7,progress:{stage:'read',value:.5}});
-  assert.deepEqual(events,[{stage:'read',value:.5}]);
-  assert.equal(backend.pending.has(7),true);
-});
