@@ -39,7 +39,9 @@ Duplicate、Crop、Montage、投影及多项 Process 命令会创建新 Frame。
 | `vivi.lossyMinFileMiB` | 有损编码的源文件大小阈值，默认 128 MiB；只有严格大于阈值的文件才启用。 |
 | `vivi.lossyMethod` | 默认 ZFP，也可选 float16、bfloat16 或 64×64 分块的 8/12/16 位量化。整数图像和非有限值帧保留原始字节。 |
 | `vivi.lossyTolerance` | ZFP 绝对误差目标占当前预览帧最大值与最小值之差的比例，默认 0.0001；其他方法不使用该设置。 |
-| `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。默认 `=` / `-` 缩放、左右方向键切换切片、上下方向键切换 Frame、`m` 切换 Single/Tile、`shift+p` 选 Pointer。空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
+| `vivi.defaultFps` | 新查看器默认 24 FPS，长按左右切片按钮及播放均使用当前 FPS；可设置为 1–60。 |
+| `vivi.mouseShortcuts` | 鼠标组合手势：默认 `wheel` 切片（上滚向右）、`shift+wheel` 以鼠标缩放、`mod+wheel` 以图像中心缩放、正交视图中 `shift+click` 使用选中工具、`middle+drag` 拖动图像、`alt+right+drag` 调整亮度与对比度、`doubleclick` 适配窗口。`mod` 在 macOS 是 Command，在 Windows/Linux 是 Ctrl。可将动作改为如 `alt+wheel`，或留空禁用。 |
+| `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。默认 `=` / `-` 缩放、左右方向键切换切片、上下方向键切换 Frame、`m` 切换 Single/Tile、`shift+p` 选 Pointer、`h` 选 Hand、`o` 选 Oval。空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
 
 后端配置见[安装指南](installation.md)，主机数据存储与传输见[隐私说明](../PRIVACY.md)。
 

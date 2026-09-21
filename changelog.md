@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.24 (development build; not published)
+- Make wheel scroll slices upward to the next slice, Shift+wheel zoom at pointer, and platform modifier+wheel zoom at image center. Double-click fits the image.
+- Configure mouse gestures and default FPS (24), rename Pan to Hand (H), and bind Oval to O. Held slice arrows repeat at FPS.
+- Let Shift activate the selected tool in Orthogonal Views; show flip state on toolbar buttons and a processing notice during transforms, including undo/redo.
+
 ## 0.6.23 (development build; not published)
 - Repaint cached stack slices promptly when B&C, stretch, LUT, invert, or threshold changes, including synchronized Frames; keep the existing canvas visible until its replacement is complete.
 - Transform cached canvases with flips and 90-degree rotations so already loaded slices remain ready to display. Newly arriving preload results pick up the latest display settings.

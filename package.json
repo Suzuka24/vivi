@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.6.23",
+  "version": "0.6.24",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -306,13 +306,42 @@
           "maximum": 0.1,
           "description": "ZFP absolute error target as a fraction of the current preview plane's min–max range, default 0.0001. Only used by ZFP. ZFP 绝对误差目标相对于当前预览平面最小最大值范围的比例，默认 0.0001；仅适用于 ZFP。"
         },
+        "vivi.defaultFps": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "Default slice playback and held-arrow speed in frames per second; the viewer can override it for the current session. 切片播放及长按左右箭头的默认每秒帧数；可在查看器中临时修改。"
+        },
+        "vivi.mouseShortcuts": {
+          "type": "object",
+          "default": {
+            "slice": "wheel",
+            "zoomAtPointer": "shift+wheel",
+            "zoomAtCenter": "mod+wheel",
+            "orthogonalTool": "shift+click",
+            "handDrag": "middle+drag",
+            "contrastDrag": "alt+right+drag",
+            "fit": "doubleclick"
+          },
+          "description": "Mouse gestures: wheel scrolls slices (up=next); shift+wheel zooms at pointer; mod+wheel zooms at image center (mod is Cmd on macOS, Ctrl on Windows/Linux); shift+click uses the selected tool in Orthogonal Views; doubleclick fits. Set a gesture to empty to disable it. 鼠标手势：滚轮切片（上滚向右）；shift+wheel 以指针缩放；mod+wheel 以图像中心缩放（macOS 为 Command，Windows/Linux 为 Ctrl）；正交视图中 shift+click 使用当前工具；middle+drag 拖动图像，alt+right+drag 调整亮度对比度；doubleclick 适配窗口。填写组合格式如 alt+wheel，留空停用。",
+          "properties": {
+            "slice": {"type":"string","default":"wheel","description":"Slice stepping. Example: wheel. 切片切换，例如 wheel。"},
+            "zoomAtPointer": {"type":"string","default":"shift+wheel","description":"Zoom at mouse pointer. Example: shift+wheel. 以鼠标位置缩放，例如 shift+wheel。"},
+            "zoomAtCenter": {"type":"string","default":"mod+wheel","description":"Zoom at image center. mod means Cmd on macOS or Ctrl on Windows/Linux. 以图像中心缩放；mod 在 macOS 代表 Command，在 Windows/Linux 代表 Ctrl。"},
+            "orthogonalTool": {"type":"string","default":"shift+click","description":"Hold modifier while clicking or dragging with selected tool in Orthogonal Views. 正交视图中按住修饰键并点击或拖动，使用所选工具。"},
+            "handDrag": {"type":"string","default":"middle+drag","description":"Drag image with middle mouse button. 鼠标中键拖动图像。"},
+            "contrastDrag": {"type":"string","default":"alt+right+drag","description":"Adjust brightness and contrast while dragging with Alt and right mouse button. 按住 Alt 和鼠标右键拖动以调节亮度与对比度。"},
+            "fit": {"type":"string","default":"doubleclick","description":"Fit image by double-clicking. 双击图像适配窗口。"}
+          }
+        },
         "vivi.keyboardShortcuts": {
           "type": "object",
           "default": {
             "fit": "f",
-            "pan": "p",
+            "hand": "h",
             "roi": "",
-            "oval": "c",
+            "oval": "o",
             "line": "l",
             "measure": "",
             "clear": "",
@@ -440,10 +469,10 @@
               "default": "f",
               "description": "Key or modifier combination for fit; empty disables it."
             },
-            "pan": {
+            "hand": {
               "type": "string",
-              "default": "p",
-              "description": "Key or modifier combination for pan; empty disables it."
+              "default": "h",
+              "description": "Hand tool. Enter a key such as h or a combination such as shift+h; empty disables it. 手形拖动工具；填写 h 或 shift+h 等组合键，留空则停用。"
             },
             "roi": {
               "type": "string",
@@ -452,8 +481,8 @@
             },
             "oval": {
               "type": "string",
-              "default": "c",
-              "description": "Oval selection; default C. 椭圆选区；默认按 C。"
+              "default": "o",
+              "description": "Oval selection; default O. 椭圆选区；默认按 O。"
             },
             "line": {
               "type": "string",

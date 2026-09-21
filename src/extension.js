@@ -233,13 +233,13 @@ function activate(context) {
           const sourceFileBytes = sourceStat?.isFile() ? sourceStat.size : 0;
           const id = ++nextId;
           label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
-          frames.set(id, { id, file, label, worker, generated, sequenceMode, sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
+          frames.set(id, { id, file, label, worker, generated, sequenceMode, sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], flipState: {horizontal:false,vertical:false}, undoFlipStates:[], redoFlipStates:[], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
             maxSize: Math.max(...data.datasets.map(item => Math.max(item.width, item.height))),
             menuVisibility: menuVisibility(),
-            keyboardShortcuts: config().get('keyboardShortcuts', {}) });
+            keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: config().get('mouseShortcuts', {}), defaultFps:config().get('defaultFps', 24), flipState:frames.get(id).flipState });
         } catch (error) { worker.dispose(); throw error; }
       }
     };
@@ -335,6 +335,7 @@ function activate(context) {
           if (!['flipHorizontal','flipVertical','rotateLeft','rotateRight','rotate180','rotate','undo','redo'].includes(action))
             throw new Error('Unsupported frame transform.');
           const update = async () => {
+            panel.webview.postMessage({type:'transformBusy',frameId:frame.id,action,busy:true});
             if (!frames.has(frame.id)) throw new Error('Frame closed.');
             if (action === 'undo' && !frame.undoPaths.length) throw new Error('Nothing to undo.');
             if (action === 'redo' && !frame.redoPaths.length) throw new Error('Nothing to redo.');
@@ -359,11 +360,19 @@ function activate(context) {
             if (action === 'undo') {
               frame.undoPaths.pop();
               frame.undoActions.pop();
+              frame.redoFlipStates.push(frame.flipState);
+              frame.flipState=frame.undoFlipStates.pop() || {horizontal:false,vertical:false};
               frame.redoPaths = [...frame.redoPaths, previous].slice(-10);
               frame.redoActions = [...frame.redoActions, inverse[displayTransform]].slice(-10);
             } else {
               if (action === 'redo') { frame.redoPaths.pop(); frame.redoActions.pop(); }
-              else { frame.redoPaths = []; frame.redoActions = []; }
+              else { frame.redoPaths = []; frame.redoActions = []; frame.redoFlipStates=[]; }
+              frame.undoFlipStates.push(frame.flipState);
+              frame.undoFlipStates=frame.undoFlipStates.slice(-10);
+              if(action==='redo')frame.flipState=frame.redoFlipStates.pop() || frame.flipState;
+              else if(action==='flipHorizontal')frame.flipState={...frame.flipState,horizontal:!frame.flipState.horizontal};
+              else if(action==='flipVertical')frame.flipState={...frame.flipState,vertical:!frame.flipState.vertical};
+              else if(action==='rotateLeft'||action==='rotateRight')frame.flipState={horizontal:frame.flipState.vertical,vertical:frame.flipState.horizontal};
               frame.undoPaths = [...frame.undoPaths, previous].slice(-10);
               frame.undoActions = [...frame.undoActions, displayTransform].slice(-10);
             }
@@ -373,11 +382,12 @@ function activate(context) {
             frame.latestPng = null;
             frame.lastResult = null;
             panel.webview.postMessage({type:'frameUpdated',frameId:frame.id,label:frame.label,
-              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,displayTransform,...data});
+              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,displayTransform,flipState:frame.flipState,...data});
           };
           const queued = frame.transformQueue.then(update);
           frame.transformQueue = queued.catch(() => {});
-          await queued;
+          try { await queued; }
+          finally { panel.webview.postMessage({type:'transformBusy',frameId:frame.id,action,busy:false}); }
         } else if (msg.type === 'selectionMask') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
