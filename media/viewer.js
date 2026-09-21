@@ -17,9 +17,10 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch'],color:['cmap','invert','threshold'],view:['cx','cy'],scale:['scale'],slice:['plane'],selection:['roi','line','selection','orthogonalState']};
 let tileRefreshTimer, tileRefreshRunning=false, tileRefreshWanted=false, sidebarTimer, layoutColumns=0, layoutRows=0;
-let keyboardShortcuts={fit:'f',hand:'h',pointer:'shift+p',roi:'',oval:'o',line:'l',measure:'',clear:'',undoTransform:'z',redoTransform:'shift+z',zoomIn:'=',zoomOut:'-',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'m'};
-let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'shift+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
+let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'c',line:'l',measure:'m',clear:'',undoTransform:'z',redoTransform:'shift+z',zoomIn:'=',zoomOut:'-',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'d'};
+let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
 let defaultFps=24,transformsRunning=0;
+let spaceHeld=false;
 let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
 const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
 let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelRunning = false;
@@ -77,8 +78,9 @@ function visibleBox() {
 function clampCenter() {const depth=orthogonal?.depth||0;cx=Math.max(0,Math.min(dataset.width+depth,cx));cy=Math.max(0,Math.min(dataset.height+depth,cy));}
 function drawTileSelection(state,x,y,tw,th,d,picture,w){
   const selected=state.selection;if(!selected||!picture)return;
-  const ratio=tilePictureRatio(state,d,picture,w,tw,th),centerX=(state.cx??d.width/2),centerY=(state.cy??d.height/2);
-  const point=([px,py])=>[x+tw/2+(px-centerX)*ratio*picture.width/d.width,y+22+(th-26)/2+(py-centerY)*ratio*picture.height/d.height];
+  const orthogonalLayout=state.orthogonalState?tileOrthogonalLayout(state,d,x,y,tw,th):null;
+  const ratio=orthogonalLayout?.ratio??tilePictureRatio(state,d,picture,w,tw,th),centerX=(state.cx??d.width/2),centerY=(state.cy??d.height/2);
+  const point=orthogonalLayout?([px,py])=>[orthogonalLayout.xy.x+px*ratio,orthogonalLayout.xy.y+py*ratio]:([px,py])=>[x+tw/2+(px-centerX)*ratio*picture.width/d.width,y+22+(th-26)/2+(py-centerY)*ratio*picture.height/d.height];
   const pts=selected.points||[];if(!pts.length)return;
   ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.strokeStyle=selected.stroke||'#72ebc4';ctx.lineWidth=selected.strokeWidth||1.5;ctx.setLineDash([5,3]);ctx.beginPath();
   if(selected.type==='roi'&&pts.length>=2){const a=point(pts[0]),b=point(pts[1]);ctx.rect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));}
@@ -116,7 +118,7 @@ function draw() {
       const state=fileFrames.get(id),picture=state.tilePreview||(id===activeFileFrame?preview:state.preview);
       const x=(index%cols)*tw,y=Math.floor(index/cols)*th;
       ctx.fillStyle='#11151b';ctx.fillRect(x+2,y+2,tw-4,th-4);
-      if(picture){const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));if(state.orthogonalState)drawTileOrthogonal(state,d,picture,x,y,tw,th);else{const ratio=tilePictureRatio(state,d,picture,w,tw,th);const pw=picture.width*ratio,ph=picture.height*ratio,centerX=state.tilePreview?(state.cx??d.width/2)/d.width*picture.width:picture.width/2,centerY=state.tilePreview?(state.cy??d.height/2)/d.height*picture.height:picture.height/2;ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.drawImage(picture,x+tw/2-centerX*ratio,y+22+(th-26)/2-centerY*ratio,pw,ph);ctx.restore();if(id!==activeFileFrame)drawTileSelection(state,x,y,tw,th,d,picture,w);}}
+      if(picture){const d=state.metadata.datasets.find(item=>item.id===(state.datasetId??state.metadata.datasets[0].id));if(state.orthogonalState){drawTileOrthogonal(state,d,picture,x,y,tw,th);if(id!==activeFileFrame)drawTileSelection(state,x,y,tw,th,d,picture,w);}else{const ratio=tilePictureRatio(state,d,picture,w,tw,th);const pw=picture.width*ratio,ph=picture.height*ratio,centerX=state.tilePreview?(state.cx??d.width/2)/d.width*picture.width:picture.width/2,centerY=state.tilePreview?(state.cy??d.height/2)/d.height*picture.height:picture.height/2;ctx.save();ctx.beginPath();ctx.rect(x+3,y+22,tw-6,th-25);ctx.clip();ctx.drawImage(picture,x+tw/2-centerX*ratio,y+22+(th-26)/2-centerY*ratio,pw,ph);ctx.restore();if(id!==activeFileFrame)drawTileSelection(state,x,y,tw,th,d,picture,w);}}
       ctx.strokeStyle=id===activeFileFrame?'#72d4b5':'#7b899450';ctx.lineWidth=id===activeFileFrame?2:1;ctx.strokeRect(x+1,y+1,tw-2,th-2);
       ctx.fillStyle='#d9e2e9';ctx.font='11px sans-serif';ctx.fillText(`${id}: ${state.metadata.label||state.metadata.path.split(/[\\/]/).pop()}`,x+8,y+16,tw-14);
     });
@@ -764,7 +766,7 @@ function mouseMatches(binding,event,gesture){
   if(!binding)return false;
   const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),name=parts.pop(),mods=new Set(parts);
   const mac=/Mac/i.test(navigator.platform);
-  return name===gesture&&(!mods.has('left')||event.button===0)&&(!mods.has('middle')||event.button===1)&&(!mods.has('right')||event.button===2)&&event.shiftKey===mods.has('shift')&&event.altKey===(mods.has('alt')||mods.has('option'))&&event.ctrlKey===(mods.has('ctrl')||mods.has('control')||(!mac&&mods.has('mod')))&&event.metaKey===(mods.has('cmd')||mods.has('meta')||(mac&&mods.has('mod')));
+  return name===gesture&&spaceHeld===mods.has('space')&&(!mods.has('left')||event.button===0)&&(!mods.has('middle')||event.button===1)&&(!mods.has('right')||event.button===2)&&event.shiftKey===mods.has('shift')&&event.altKey===(mods.has('alt')||mods.has('option'))&&event.ctrlKey===(mods.has('ctrl')||mods.has('control')||(!mac&&mods.has('mod')))&&event.metaKey===(mods.has('cmd')||mods.has('meta')||(mac&&mods.has('mod')));
 }
 function imageWheel(event){
   if(!dataset||event.deltaY===0)return;
@@ -1425,6 +1427,7 @@ function shortcutMatches(binding,event){
 }
 document.addEventListener('keydown',e=>{
   if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
+  if(e.code==='Space'&&orthogonal){spaceHeld=true;e.preventDefault();return;}
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,e))?.[0];
   if(!action)return;
   e.preventDefault();
@@ -1443,8 +1446,9 @@ document.addEventListener('keydown',e=>{
   else if(action==='zoomIn'||action==='zoomOut'||action==='actual')$(action).click();
   else $(action)?.click();
 });
+document.addEventListener('keyup',e=>{if(e.code==='Space')spaceHeld=false;});
 new ResizeObserver(()=>{if(dataset)scheduleRender(80);}).observe($('stage'));
-document.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlay();stopSliceHold();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){spaceHeld=false;stopPlay();stopSliceHold();}});
 window.addEventListener('message',({data:m})=>{
   if(m.type==='frameAdded'){
     if(m.menuVisibility)applyMenuVisibility(m.menuVisibility);

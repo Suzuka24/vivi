@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -319,17 +319,17 @@
             "slice": "wheel",
             "zoomAtPointer": "shift+wheel",
             "zoomAtCenter": "mod+wheel",
-            "orthogonalTool": "shift+click",
+            "orthogonalTool": "space+click",
             "handDrag": "middle+drag",
             "contrastDrag": "alt+right+drag",
             "fit": "doubleclick"
           },
-          "description": "Mouse gestures: wheel scrolls slices (up=previous, down=next); shift+wheel zooms at pointer; mod+wheel zooms at image center (mod is Cmd on macOS, Ctrl on Windows/Linux); shift+click uses the selected tool in Orthogonal Views; doubleclick fits. Set a gesture to empty to disable it. 鼠标手势：滚轮切片（上滚向左、下滚向右）；shift+wheel 以指针缩放；mod+wheel 以图像中心缩放（macOS 为 Command，Windows/Linux 为 Ctrl）；正交视图中 shift+click 使用当前工具；middle+drag 拖动图像，alt+right+drag 调整亮度对比度；doubleclick 适配窗口。填写组合格式如 alt+wheel，留空停用。",
+          "description": "Mouse gestures: wheel scrolls slices (up=previous, down=next); shift+wheel zooms at pointer; mod+wheel zooms at image center (mod is Cmd on macOS, Ctrl on Windows/Linux); space+click uses the selected tool in Orthogonal Views; doubleclick fits. Set a gesture to empty to disable it. 鼠标手势：滚轮切片（上滚向左、下滚向右）；shift+wheel 以指针缩放；mod+wheel 以图像中心缩放（macOS 为 Command，Windows/Linux 为 Ctrl）；正交视图中 space+click 使用当前工具；middle+drag 拖动图像，alt+right+drag 调整亮度对比度；doubleclick 适配窗口。填写组合格式如 alt+wheel，留空停用。",
           "properties": {
             "slice": {"type":"string","default":"wheel","description":"Slice stepping. Example: wheel. 切片切换，例如 wheel。"},
             "zoomAtPointer": {"type":"string","default":"shift+wheel","description":"Zoom at mouse pointer. Example: shift+wheel. 以鼠标位置缩放，例如 shift+wheel。"},
             "zoomAtCenter": {"type":"string","default":"mod+wheel","description":"Zoom at image center. mod means Cmd on macOS or Ctrl on Windows/Linux. 以图像中心缩放；mod 在 macOS 代表 Command，在 Windows/Linux 代表 Ctrl。"},
-            "orthogonalTool": {"type":"string","default":"shift+click","description":"Hold modifier while clicking or dragging with selected tool in Orthogonal Views. 正交视图中按住修饰键并点击或拖动，使用所选工具。"},
+            "orthogonalTool": {"type":"string","default":"space+click","description":"Hold Space while clicking or dragging with the selected tool in Orthogonal Views. 正交视图中按住 Space 并点击或拖动，使用所选工具。"},
             "handDrag": {"type":"string","default":"middle+drag","description":"Drag image with middle mouse button. 鼠标中键拖动图像。"},
             "contrastDrag": {"type":"string","default":"alt+right+drag","description":"Adjust brightness and contrast while dragging with Alt and right mouse button. 按住 Alt 和鼠标右键拖动以调节亮度与对比度。"},
             "fit": {"type":"string","default":"doubleclick","description":"Fit image by double-clicking. 双击图像适配窗口。"}
@@ -340,13 +340,13 @@
           "default": {
             "fit": "f",
             "hand": "h",
-            "roi": "",
-            "oval": "o",
+            "roi": "r",
+            "oval": "c",
             "line": "l",
-            "measure": "",
+            "measure": "m",
             "clear": "",
             "undoTransform": "z",
-            "pointer": "shift+p",
+            "pointer": "p",
             "polygon": "",
             "freehand": "",
             "angle": "",
@@ -360,7 +360,7 @@
             "previousSlice": "arrowleft",
             "nextFrame": "arrowdown",
             "previousFrame": "arrowup",
-            "toggleFrameDisplay": "m",
+            "toggleFrameDisplay": "d",
             "toggleBC": "",
             "redoTransform": "shift+z",
             "openFile": "",
@@ -476,13 +476,13 @@
             },
             "roi": {
               "type": "string",
-              "default": "",
-              "description": "Rectangle selection; no default key. 矩形选区；默认不设快捷键。"
+              "default": "r",
+              "description": "Rectangle selection; default R. 矩形选区；默认按 R。"
             },
             "oval": {
               "type": "string",
-              "default": "o",
-              "description": "Oval selection; default O. 椭圆选区；默认按 O。"
+              "default": "c",
+              "description": "Oval selection; default C. 椭圆选区；默认按 C。"
             },
             "line": {
               "type": "string",
@@ -491,8 +491,8 @@
             },
             "measure": {
               "type": "string",
-              "default": "",
-              "description": "Measure; no default key because M toggles Frame display. 测量；默认不设快捷键，因为 M 用于切换 Frame 显示模式。"
+              "default": "m",
+              "description": "Measure; default M. 测量；默认按 M。"
             },
             "clear": {
               "type": "string",
@@ -506,8 +506,8 @@
             },
             "pointer": {
               "type": "string",
-              "default": "shift+p",
-              "description": "Pointer tool. Default: Shift+P. Join modifiers and a key with '+', such as Shift+P or Ctrl+Alt+P; empty disables it. 指针工具默认 Shift+P；用加号连接修饰键与按键，例如 Shift+P 或 Ctrl+Alt+P；留空则禁用。"
+              "default": "p",
+              "description": "Pointer tool. Default: P. Join modifiers and a key with '+', such as Shift+P or Ctrl+Alt+P; empty disables it. 指针工具默认 P；用加号连接修饰键与按键，例如 Shift+P 或 Ctrl+Alt+P；留空则禁用。"
             },
             "polygon": {
               "type": "string",
@@ -576,8 +576,8 @@
             },
             "toggleFrameDisplay": {
               "type": "string",
-              "default": "m",
-              "description": "Toggle Single/Tile Frame display; default M. 切换单图或平铺显示；默认按 M。"
+              "default": "d",
+              "description": "Toggle Single/Tile Frame display; default D. 切换单图或平铺显示；默认按 D。"
             },
             "toggleBC": {
               "type": "string",

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.9 (development build; not published)
+
+- Change the default shortcuts to Pointer=P, Rectangle=R, Oval=C, Measure=M, and Single/Tile display=D.
+- Use Space+mouse for selected tools while Orthogonal Views is enabled.
+- Draw locked selections on every tile's orthogonal XY view using the synchronized viewport.
+
 ## 0.7.8 (development build; not published)
 
 - Restore the latest sequential per-frame stack transport used before whole-stack batch payloads.
