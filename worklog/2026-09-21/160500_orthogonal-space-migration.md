@@ -12,3 +12,9 @@
 - 根因是 Cursor 用户、工作区或工作区文件夹设置的旧值优先级高于扩展新版默认值。
 - 激活扩展时检查三个设置层级，仅当 `orthogonalTool` 恰好为旧默认 `shift+click` 时改为 `space+click`，其余自定义鼠标绑定保持不变。
 - viewer 初始化时也会将尚未落盘完成的旧值规范化为 `space+click`。
+
+## 总结
+
+- `npm run check`、21 项 Node 测试和 44 项 Python 测试通过。
+- 已生成并安装 `Suzuka24.vivi 0.7.10` 到本地 Cursor、hyh-batchcom2 和 ssk-CAST；三处安装版的 `src/extension.js` 与 `media/viewer.js` SHA-256 一致，远端临时 VSIX 已删除。
+- 实现提交 `f0bef58` 已推送至 GitHub `main`。按用户要求未操作 Cursor 窗口。
