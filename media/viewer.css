@@ -8,7 +8,11 @@
 .viewer #viewerSliceCount{font-size:10px;color:var(--vscode-descriptionForeground,#9ca8b4)}
 .viewer #viewerSliceFps{width:43px;height:25px;padding:2px 3px}
 .viewer #viewerSlicePrev,.viewer #viewerSliceNext,.viewer #viewerSlicePlay{font-size:16px;line-height:1}
-.viewer #cacheStatus{flex:none;margin-left:6px}
+.viewer #cacheStatus{flex:none;margin-left:6px;width:88px;height:4px;overflow:hidden;border-radius:2px;background:var(--vscode-progressBar-background,#0e70c0)33}
+.viewer #cacheStatus[hidden]{display:none}
+.viewer #cacheStatus span{display:block;width:0;height:100%;border-radius:inherit;background:var(--vscode-progressBar-background,#0e70c0);transition:width 80ms linear}
+.viewer #cacheStatus.indeterminate span{width:38%;animation:vivi-stack-progress 1s ease-in-out infinite}
+@keyframes vivi-stack-progress{from{transform:translateX(-110%)}to{transform:translateX(290%)}}
 .viewer footer{align-items:center}
 .viewer footer #pixel{flex:0 1 auto}
 .viewer footer #region{flex:1;min-width:0}

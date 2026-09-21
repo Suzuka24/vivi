@@ -246,9 +246,15 @@ function ensureCache(signature) {
   frameCache.clear(); cacheBytes = 0; cacheSignature = signature; cacheGeneration++;
   clearTimeout(preloadTimer); updateCacheStatus();
 }
+function showLoadProgress(value=null){
+  const progress=$('cacheStatus'),fill=progress.firstElementChild;progress.hidden=false;
+  if(value==null){progress.classList.add('indeterminate');progress.removeAttribute('aria-valuenow');fill.style.width='';}
+  else{const percent=Math.max(0,Math.min(100,Math.round(value*100)));progress.classList.remove('indeterminate');progress.setAttribute('aria-valuenow',String(percent));fill.style.width=`${percent}%`;}
+}
+function hideLoadProgress(){const progress=$('cacheStatus');progress.hidden=true;progress.classList.remove('indeterminate');progress.removeAttribute('aria-valuenow');progress.firstElementChild.style.width='0';}
 function updateCacheStatus() {
   const count=new Set([...frameCache.keys()].map(key=>key.split(':')[0])).size;
-  $('cacheStatus').textContent=dataset?.frames>1?`${count}/${dataset.frames} ready`:'';
+  if(!dataset||dataset.frames<2||count===dataset.frames)hideLoadProgress();
 }
 async function lutTable(name){
   if(name==='gray')return null;
@@ -311,7 +317,7 @@ async function decodePreview(result,args,paint=true) {
   const image=new Image();image.src='data:image/png;base64,'+result.png;await image.decode();
   return {image,result,bytes:image.width*image.height*4+result.png.length*.75};
 }
-async function decodePreviewBatch(result,argsByFrame){
+async function decodePreviewBatch(result,argsByFrame,onProgress=()=>{}){
   if(!(result.payload instanceof ArrayBuffer)||!Array.isArray(result.frames)||!result.frames.length)throw new Error('Invalid batch preview');
   const {raw:sourceRaw,sourceBytes}=await decodeRawPayload(result),channels=Number(result.channels)||1;
   const frameHeight=Number(result.frameHeight),frameValues=Number(result.width)*frameHeight*channels;
@@ -325,7 +331,7 @@ async function decodePreviewBatch(result,argsByFrame){
     const raw=calibrated?Float64Array.from(stored,value=>blank!=null&&String(value)===String(blank)?NaN:Number(value)*scale+zero):stored;
     const itemResult={...result,frames:undefined,payload:undefined,height:frameHeight,box:[...result.box]};
     const entry={image:null,raw,sourceRaw:stored,sourceBytes:storedBytes,channels,result:itemResult,sourceFrame:frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength};
-    await recolorEntry(entry,args);entries.push(entry);
+    await recolorEntry(entry,args);entries.push(entry);onProgress((index+1)/result.frames.length);
   }
   delete result.payload;
   return entries;
@@ -370,6 +376,7 @@ async function preloadFrames() {
   if (preloadRunning || renderRunning || renderWanted || !dataset || dataset.frames < 2) return;
   preloadRunning = true;
   const generation = cacheGeneration, signature = cacheSignature;
+  showLoadProgress();
   try {
     // A stack is one preload unit: decode, transport and construct every slice together.
     // This avoids hundreds of SSH request/response and canvas creation round trips.
@@ -378,16 +385,18 @@ async function preloadFrames() {
     if(frames.every(frame=>frameCache.has(cacheKey(frame,argsByFrame.get(frame).box))))return;
     const referenceFrame=Math.max(0,Math.min(dataset.frames-1,Number($('frame').value)-1));
     const first=argsByFrame.get(referenceFrame),result=await request('renderBatch',{...first,frames},true);
-    const entries=await decodePreviewBatch(result,argsByFrame);
+    showLoadProgress(0);
+    const entries=await decodePreviewBatch(result,argsByFrame,showLoadProgress);
     if(generation!==cacheGeneration)return;
     frameCache.clear();cacheBytes=0;
     for(const entry of entries){const args=argsByFrame.get(entry.sourceFrame);frameCache.set(cacheKey(entry.sourceFrame,args.box),entry);cacheBytes+=entry.bytes;}
     updateCacheStatus();draw();
   } catch(error) {
-    showError(error);
+    hideLoadProgress();showError(error);
   } finally {
     preloadRunning = false;
     if (preloadRestartWanted) { preloadRestartWanted = false; schedulePreload(); }
+    else hideLoadProgress();
   }
 }
 async function render() {

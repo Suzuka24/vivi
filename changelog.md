@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.4 (development build; not published)
+- Replace the persistent stack ready count with a temporary loading progress bar. It is indeterminate while the complete stack is read and transferred, reports construction progress after arrival, and disappears when every slice is ready.
+
 ## 0.7.3 (development build; not published)
 - Restore one shared B&C range for an entire stack. Slice changes refresh the Curve histogram and source range while keeping Minimum, Maximum, and the display transfer line unchanged. Auto and Reset use the current slice, restricted to the active area selection when present, then apply the result to the full stack.
 

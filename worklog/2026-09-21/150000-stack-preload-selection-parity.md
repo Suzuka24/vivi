@@ -41,6 +41,7 @@ Python worker 批量读取与图像处理、扩展主机二进制转发、viewer
 ## 总结
 
 - 0.7.3 恢复 stack 共享 B&C 语义，并补充当前切片、当前面积 selection 的 Auto/Reset 计算；Python 45/45、Node 21/21 和静态检查通过。
+- 0.7.4 删除常驻的 `n/n ready` 文本；完整 stack 读取和传输期间显示不定进度，载荷到达后按 slice canvas 构建数量显示确定进度，全部就绪后自动隐藏。
 
 - 自动化验证：Python 45/45、Node 21/21，`npm run check` 和 VSIX 打包通过。
 - hyh-batchcom2 Cursor 打开目标 TIFF：先保持 `0/225 ready` 和 Loading 状态，完成后一次变为 `225/225 ready`，首次显示发生在全部 slice 的 canvas 构建完成后；本轮观察到总时长约 1.5–3 秒。
