@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.10 (development build; not published)
+
+- Migrate the former `shift+click` Orthogonal Views tool gesture saved in user, workspace, or workspace-folder settings to `space+click` while preserving all other mouse bindings.
+
 ## 0.7.9 (development build; not published)
 
 - Change the default shortcuts to Pointer=P, Rectangle=R, Oval=C, Measure=M, and Single/Tile display=D.

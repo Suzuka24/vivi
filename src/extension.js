@@ -47,6 +47,19 @@ function activate(context) {
     config().update('explorerContextMenu', allVisible, target).then(undefined,
       error => output.appendLine(`Menu setting migration: ${error.message}`));
   }
+  const previousMouseSetting = config().inspect('mouseShortcuts');
+  for (const [value, target] of [
+    [previousMouseSetting?.globalValue, vscode.ConfigurationTarget.Global],
+    [previousMouseSetting?.workspaceValue, vscode.ConfigurationTarget.Workspace],
+    [previousMouseSetting?.workspaceFolderValue, vscode.ConfigurationTarget.WorkspaceFolder]
+  ]) if (value && typeof value === 'object' && value.orthogonalTool === 'shift+click') {
+    config().update('mouseShortcuts', {...value, orthogonalTool:'space+click'}, target).then(undefined,
+      error => output.appendLine(`Mouse setting migration: ${error.message}`));
+  }
+  const mouseShortcuts = () => {
+    const value=config().get('mouseShortcuts', {});
+    return value?.orthogonalTool==='shift+click'?{...value,orthogonalTool:'space+click'}:value;
+  };
   const managed = file => isManaged(file, config().get('managedExtensions', []));
   const menuItems = () => explorerMenuOptions.map(([id]) => id);
   const menuVisibility = () => {
@@ -255,7 +268,7 @@ function activate(context) {
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
             maxSize: Math.max(...data.datasets.map(item => Math.max(item.width, item.height))),
             menuVisibility: menuVisibility(),
-            keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: config().get('mouseShortcuts', {}), defaultFps:config().get('defaultFps', 24), flipState:frames.get(id).flipState });
+            keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: mouseShortcuts(), defaultFps:config().get('defaultFps', 24), flipState:frames.get(id).flipState });
         } catch (error) { worker.dispose(); throw error; }
       }
     };
