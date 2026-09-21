@@ -1399,17 +1399,17 @@ if($('viewerSliceNumber'))$('viewerSliceNumber').onchange=()=>{setAxisSlice(Numb
 function stopSliceHold(){clearTimeout(sliceHoldTimer);clearInterval(sliceRepeatTimer);sliceHoldTimer=null;sliceRepeatTimer=null;}
 for(const [id,delta] of [['viewerSlicePrev',-1],['viewerSliceNext',1]]){
   const button=$(id);
-  let suppressClick=false;
+  let suppressClick=false,repeated=false,pressActive=false;
   button.onpointerdown=event=>{
     if(event.button!==0||button.disabled)return;
-    event.preventDefault();suppressClick=true;stopSliceHold();stopPlay();changeFrame(delta);
+    event.preventDefault();suppressClick=true;repeated=false;pressActive=true;stopSliceHold();stopPlay();
     button.setPointerCapture(event.pointerId);
     const interval=1000/Math.max(1,Math.min(60,Number($('fps').value)||defaultFps));
-    sliceHoldTimer=setTimeout(()=>{changeFrame(delta,true);sliceRepeatTimer=setInterval(()=>changeFrame(delta,true),interval);},interval);
+    sliceHoldTimer=setTimeout(()=>{repeated=true;changeFrame(delta,true);sliceRepeatTimer=setInterval(()=>changeFrame(delta,true),interval);},300);
   };
-  button.onpointerup=()=>{stopSliceHold();setTimeout(()=>{suppressClick=false;},0);};
-  button.onpointercancel=()=>{stopSliceHold();suppressClick=false;};
-  button.onlostpointercapture=stopSliceHold;
+  button.onpointerup=()=>{const shortPress=pressActive&&!repeated;pressActive=false;stopSliceHold();if(shortPress)changeFrame(delta);setTimeout(()=>{suppressClick=false;},0);};
+  button.onpointercancel=()=>{pressActive=false;stopSliceHold();suppressClick=false;};
+  button.onlostpointercapture=()=>{pressActive=false;stopSliceHold();};
   button.onclick=()=>{if(suppressClick){suppressClick=false;return;}stopPlay();changeFrame(delta);};
 }
 if($('viewerSlicePlay'))$('viewerSlicePlay').onclick=()=>{$('play').click();syncViewerToolbar();};

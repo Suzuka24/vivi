@@ -75,8 +75,8 @@ function renderSidebar(state){
 function stopHeldSlice(){if(!heldSlice)return;clearTimeout(heldSlice.timeout);clearInterval(heldSlice.interval);heldSlice=null;}
 for(const [id,delta] of [['slicePrev',-1],['sliceNext',1]]){
   const button=$(id);
-  button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();stopHeldSlice();sideAction('stepSlice',delta);const interval=1000/Math.max(1,Math.min(60,Number($('sliceFps').value)||24));heldSlice={id,suppress:true};heldSlice.timeout=setTimeout(()=>{sideAction('stepSlice',delta);heldSlice.interval=setInterval(()=>sideAction('stepSlice',delta),interval);},interval);button.setPointerCapture(e.pointerId);};
-  button.onpointerup=e=>{stopHeldSlice();if(button.hasPointerCapture(e.pointerId))button.releasePointerCapture(e.pointerId);};
+  button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();stopHeldSlice();const interval=1000/Math.max(1,Math.min(60,Number($('sliceFps').value)||24));heldSlice={id,repeated:false};heldSlice.timeout=setTimeout(()=>{if(!heldSlice||heldSlice.id!==id)return;heldSlice.repeated=true;sideAction('stepSlice',delta);heldSlice.interval=setInterval(()=>sideAction('stepSlice',delta),interval);},300);button.setPointerCapture(e.pointerId);};
+  button.onpointerup=e=>{const shortPress=heldSlice?.id===id&&!heldSlice.repeated;stopHeldSlice();if(button.hasPointerCapture(e.pointerId))button.releasePointerCapture(e.pointerId);if(shortPress)sideAction('stepSlice',delta);};
   button.onpointercancel=stopHeldSlice;
   button.onclick=e=>{if(e.detail===0)sideAction('stepSlice',delta);};
 }

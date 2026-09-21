@@ -81,3 +81,7 @@ body.view-explorer #files .file.recent:hover{
 }
 body.view-layout .frame-nav{display:inline-flex;align-items:center;justify-content:center;width:28px;height:27px;padding:3px}
 body.view-layout .frame-nav svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+body.view-layout .frame-heading{align-items:center}
+body.view-layout .frame-heading>#framePrevious,body.view-layout .frame-heading>#frameNext,body.view-layout .frame-heading>#frameTile,body.view-layout .frame-heading .grid-controls input{height:27px;min-height:27px;max-height:27px}
+body.view-layout .frame-heading>#frameTile{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}
+body.view-layout .frame-heading .grid-controls,body.view-layout .frame-heading .grid-controls label{height:27px;align-items:center}

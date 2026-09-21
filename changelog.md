@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.13 (development build; not published)
+
+- Align the LAYOUT Frame navigation, display mode, Columns, and Rows controls to the display mode control height.
+- Make a short press on either slice arrow move exactly one slice; continuous FPS-paced stepping now starts only after a 300 ms hold.
+
 ## 0.7.12 (development build; not published)
 
 - Replace per-slice request/response preloading with one continuous stack stream. Decode and construct slices without blocking navigation, then reveal the stack atomically after every slice is ready.
