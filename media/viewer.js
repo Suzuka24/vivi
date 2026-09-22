@@ -2,7 +2,7 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -37,6 +37,7 @@ function updateShortcutTips(){
 }
 let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
 let defaultFps=24,transformsRunning=0;
+let imageJAutoThreshold=0,imageJStackAutoThreshold=0;
 let spaceHeld=false;
 let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
 const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
@@ -63,7 +64,7 @@ function tilePictureRatio(state,d,picture,w,tw,th){
 function sidebarState(){
   if(!dataset)return null;
   const currentFrame=Number($('frame').value)-1,entry=currentRawEntry();
-  const [rangeMin,rangeMax]=entry?autoLimits(entry.raw,entry.channels,'minmax'):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,currentFrame,Number($('low').value),Number($('high').value));
+  const [rangeMin,rangeMax]=entry?imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry)):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,currentFrame,Number($('low').value),Number($('high').value));
   return {active:activeFileFrame,activeLabel:metadata.label||metadata.path.split(/[\\/]/).pop(),frames:[...fileFrames].map(([id,state])=>({id,label:state.metadata.label||state.metadata.path.split(/[\\/]/).pop(),visible:state.visible!==false,locked:!!state.lockMember,loading:!!state.loading})),
     datasets:metadata.datasets.map(d=>({id:d.id,name:d.name})),datasetId:dataset.id,slice:Number($('frame').value),total:dataset.frames,fps:Number($('fps').value)||defaultFps,playing,blinking,tile:tileMode,columns:layoutColumns,rows:layoutRows,locks:[...frameLocks],
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin,rangeMax,stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked,bcVisible:transferVisible};
@@ -565,7 +566,7 @@ function syncViewerToolbar(){
   drawTransferCurve();
   updateShortcutTips();
 }
-function changeFrame(delta, automatic=false){if(!dataset)return;const total=sliceAxes().length?dataset.shape[sliceAxes()[axisIndex()]]:dataset.frames;let position=slicePosition()-1+delta;if(automatic)position=(position+total)%total;else position=Math.max(0,Math.min(total-1,position));setAxisSlice(position+1);frameLabel();$('pixel').textContent='';commitFrameChange('slice');if(orthogonal)commitFrameChange('selection');scheduleRender(0);}
+function changeFrame(delta, automatic=false){if(!dataset)return;const previous=Number($('frame').value),total=sliceAxes().length?dataset.shape[sliceAxes()[axisIndex()]]:dataset.frames;let position=slicePosition()-1+delta;if(automatic)position=(position+total)%total;else position=Math.max(0,Math.min(total-1,position));setAxisSlice(position+1);if(Number($('frame').value)!==previous)resetAutoThresholds();frameLabel();$('pixel').textContent='';commitFrameChange('slice');if(orthogonal)commitFrameChange('selection');scheduleRender(0);}
 function loadTransferHistogram(){
   if(!dataset)return;
   const key=`${activeFileFrame}:${dataset.id}:${Number($('frame').value)-1}`;
@@ -600,15 +601,10 @@ function forEachSelectionPixel(entry,maxPixels,callback){
   const bounds=selectionBounds(selection.points,selection.type),left=Math.max(0,Math.floor((bounds[0]-box[0])/(box[2]-box[0])*width)),right=Math.min(width,Math.ceil((bounds[2]-box[0])/(box[2]-box[0])*width));
   const top=Math.max(0,Math.floor((bounds[1]-box[1])/(box[3]-box[1])*height)),bottom=Math.min(height,Math.ceil((bounds[3]-box[1])/(box[3]-box[1])*height));
   const area=Math.max(1,(right-left)*(bottom-top)),step=Number.isFinite(maxPixels)?Math.max(1,Math.floor(Math.sqrt(area/Math.max(1,maxPixels)))):1;
-  let count=0;
   for(let py=top;py<bottom;py+=step)for(let px=left;px<right;px+=step){
     const x=box[0]+(px+.5)*(box[2]-box[0])/width,y=box[1]+(py+.5)*(box[3]-box[1])/height;
     if(!insideSelection([x,y]))continue;
-    callback((py*width+px)*channels,channels);count++;
-  }
-  if(!count){
-    const fallbackStep=Number.isFinite(maxPixels)?Math.max(1,Math.floor(pixels/Math.max(1,maxPixels))):1;
-    for(let pixel=0;pixel<pixels;pixel+=fallbackStep)callback(pixel*channels,channels);
+    callback((py*width+px)*channels,channels);
   }
 }
 function selectionSamples(entry,maxPixels=262144){
@@ -617,6 +613,31 @@ function selectionSamples(entry,maxPixels=262144){
   forEachSelectionPixel(entry,maxPixels,(offset,channels)=>{for(let channel=0;channel<channels;channel++)values.push(entry.raw[offset+channel]);});
   return values;
 }
+function imageJDataKind(entry){
+  if((entry.channels||1)>1)return 'byte';
+  const dtype=String(dataset?.dtype||entry.result?.dtype||'').toLowerCase();
+  if(entry.raw instanceof Uint8Array||dtype==='l'||dtype==='1'||/^(?:[<>=|]?[ub]1|u?int8|bool)$/.test(dtype))return 'byte';
+  if(entry.raw instanceof Uint16Array||/^(?:[<>=|]?u2|uint16)$/.test(dtype))return 'short';
+  return 'float';
+}
+function resetLimitsForEntries(entries){
+  if(!entries.length)return [0,1];
+  const kind=imageJDataKind(entries[0]);
+  if(kind==='byte'||(entries[0].channels||1)>1)return [0,255];
+  let low=Infinity,high=-Infinity;
+  for(const entry of entries){const limits=imageJResetLimits(entry.raw,entry.channels,kind);low=Math.min(low,limits[0]);high=Math.max(high,limits[1]);}
+  return Number.isFinite(low)&&Number.isFinite(high)?[low,high]:[0,1];
+}
+function imageJSelectionLimits(entries,previousThreshold){
+  return imageJAutoLimitsFromPixels(consume=>{
+    for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,channels)=>{
+      const used=Math.min(3,channels);let value=0;
+      for(let channel=0;channel<used;channel++)value+=Number(entry.raw[offset+channel]);
+      value/=used;if(channels>1)value=Math.floor(value+0.5);consume(value);
+    });
+  },previousThreshold,imageJDataKind(entries[0]));
+}
+function resetAutoThresholds(){imageJAutoThreshold=0;imageJStackAutoThreshold=0;}
 function applyCutLimits(low,high,resetStretch=false){
   $('cuts').value='manual';$('low').value=low;$('high').value=high;if(resetStretch)$('stretch').value='linear';
   drawTransferCurve();commitFrameChange('bc');scheduleRender(0);publishSidebar();
@@ -624,7 +645,15 @@ function applyCutLimits(low,high,resetStretch=false){
 function applyAutoCuts(mode,resetStretch=false){
   const entry=currentRawEntry();
   if(!entry){$('cuts').value=mode;if(resetStretch)$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);return;}
-  const [low,high]=autoLimits(selectionSamples(entry,Infinity),entry.channels,mode);
+  let low,high;
+  if(mode==='minmax'){
+    imageJAutoThreshold=0;[low,high]=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));
+  }else if(mode==='percentile'){
+    const result=imageJSelectionLimits([entry],imageJAutoThreshold);
+    imageJAutoThreshold=result.autoThreshold;
+    if(result.limits)[low,high]=result.limits;
+    else{imageJAutoThreshold=0;[low,high]=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));}
+  }else [low,high]=autoLimits(selectionSamples(entry,Infinity),entry.channels,mode);
   applyCutLimits(low,high,resetStretch);
 }
 function selectedStackFrames(){
@@ -632,27 +661,29 @@ function selectedStackFrames(){
 }
 function applyStackAutoCuts(mode,resetStretch=false){
   const frames=new Set(selectedStackFrames());
-  if(frames.size===1){applyAutoCuts(mode,resetStretch);return;}
   const entries=[...frameCache.values()].filter(entry=>entry.raw&&entry.sourceDataset===dataset.id&&frames.has(entry.sourceFrame));
   if(!entries.length){applyAutoCuts(mode,resetStretch);return;}
   if(entries.length<frames.size){showError(new Error('Wait for the current stack to finish loading before using S-Auto or S-Reset.'));return;}
   if(mode==='minmax'){
-    let low=Infinity,high=-Infinity;
-    for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,channels)=>{
-      const used=Math.min(3,channels);let value=0;
-      for(let channel=0;channel<used;channel++)value+=Number(entry.raw[offset+channel]);
-      value/=used;if(Number.isFinite(value)){low=Math.min(low,value);high=Math.max(high,value);}
-    });
-    if(!Number.isFinite(low)||!Number.isFinite(high)){low=0;high=1;}
+    imageJStackAutoThreshold=0;const [low,high]=resetLimitsForEntries(entries);
     applyCutLimits(low,high,resetStretch);return;
   }
-  const channels=entries[0].channels||1,samples=[];
-  for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,entryChannels)=>{
-    for(let channel=0;channel<entryChannels;channel++)samples.push(Number(entry.raw[offset+channel]));
-  });
-  const [low,high]=autoLimits(samples,channels,mode);applyCutLimits(low,high,resetStretch);
+  let low,high;
+  if(mode==='percentile'){
+    const result=imageJSelectionLimits(entries,imageJStackAutoThreshold);
+    imageJStackAutoThreshold=result.autoThreshold;
+    if(result.limits)[low,high]=result.limits;
+    else{imageJStackAutoThreshold=0;[low,high]=resetLimitsForEntries(entries);}
+  }else{
+    const channels=entries[0].channels||1,samples=[];
+    for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,entryChannels)=>{
+      for(let channel=0;channel<entryChannels;channel++)samples.push(Number(entry.raw[offset+channel]));
+    });
+    [low,high]=autoLimits(samples,channels,mode);
+  }
+  applyCutLimits(low,high,resetStretch);
 }
-function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}
+function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));resetAutoThresholds();sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}
 function saveFileFrame() {
   if (!activeFileFrame || !fileFrames.has(activeFileFrame)) return;
   Object.assign(fileFrames.get(activeFileFrame), {metadata,datasetId:dataset?.id,plane:Number($('frame').value),sliceAxis,scale,cx,cy,preview,previewBox,activePng,frameCache,cacheSignature,cacheBytes,
@@ -812,6 +843,7 @@ function selectFileFrame(id) {
   const oldId=activeFileFrame;
   saveFileFrame();disableOrthogonal();stopPlay(); stopSliceHold(); clearTimeout(renderTimer); clearTimeout(preloadTimer); revision++; cacheGeneration++;
   activeFileFrame=id;
+  resetAutoThresholds();
   const state=fileFrames.get(id); metadata=state.metadata;
   syncFlipButtons(state);
   if($('editUndo'))$('editUndo').disabled=!metadata.canUndo;
@@ -1464,7 +1496,7 @@ if($('processEqualize'))$('processEqualize').onclick=()=>derive('equalizeHistogr
 if($('editUndo'))$('editUndo').onclick=()=>vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'undo',args:base()});
 if($('editRedo'))$('editRedo').onclick=()=>vscode.postMessage({type:'transformFrame',fileFrame:activeFileFrame,action:'redo',args:base()});
 if($('viewerDataset'))$('viewerDataset').onchange=()=>{$('dataset').value=$('viewerDataset').value;selectDataset();};
-$('viewerAxis').onchange=()=>{sliceAxis=Number($('viewerAxis').value);if(orthogonal){orthogonal.axis=sliceAxis;orthogonal.depth=dataset.shape[sliceAxis];orthogonal.sectionKey='';}frameLabel();saveFileFrame();};
+$('viewerAxis').onchange=()=>{sliceAxis=Number($('viewerAxis').value);resetAutoThresholds();if(orthogonal){orthogonal.axis=sliceAxis;orthogonal.depth=dataset.shape[sliceAxis];orthogonal.sectionKey='';}frameLabel();saveFileFrame();};
 $('stackOrthogonal').onclick=toggleOrthogonal;
 if($('viewerSliceRange'))$('viewerSliceRange').oninput=()=>{setAxisSlice(Number($('viewerSliceRange').value));$('frame').onchange();};
 if($('viewerSliceNumber'))$('viewerSliceNumber').onchange=()=>{setAxisSlice(Number($('viewerSliceNumber').value));$('frame').onchange();};

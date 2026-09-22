@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange}=require('../media/display');
+const {autoLimits,imageJAutoLimits,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -42,6 +42,19 @@ test('minmax scans every pixel in large slices and preserves constant ranges',()
   raw[599999]=-7;raw[599997]=91;
   assert.deepEqual(autoLimits(raw,1,'minmax'),[-7,91]);
   assert.deepEqual(autoLimits(new Uint16Array([42,42,42]),1,'minmax'),[42,42]);
+});
+
+test('ImageJ auto uses every histogram pixel and ignores dominant background bins',()=>{
+  const raw=new Uint8Array(9006);raw.fill(0,0,9000);raw.set([10,10,10,200,200,200],9000);
+  const first=imageJAutoLimits(raw,1,0,'byte');
+  assert.deepEqual(first,{limits:[10,200],autoThreshold:5000});
+  assert.deepEqual(imageJAutoLimits(raw,1,first.autoThreshold,'byte'),{limits:null,autoThreshold:2500});
+});
+
+test('ImageJ reset uses the type range for byte images and exact values for float images',()=>{
+  assert.deepEqual(imageJResetLimits(new Uint8Array([12,90]),1,'byte'),[0,255]);
+  assert.deepEqual(imageJResetLimits(new Float32Array([-2.5,8.25]),1,'float'),[-2.5,8.25]);
+  assert.deepEqual(imageJResetLimits(new Uint8Array([1,2,3,4,5,6]),3,'byte'),[0,255]);
 });
 
 test('frame reorder actions move the active entry without changing frame identity',()=>{

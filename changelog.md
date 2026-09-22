@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.18 (development build; not published)
+
+- Match ImageJ Brightness/Contrast Auto with a full-pixel 256-bin histogram, dominant-background rejection, and progressively stronger repeated Auto clicks.
+- Match ImageJ Reset ROI behavior: ignore area selections, restore 0–255 for 8-bit/RGB data, and use the full current frame range for 16/32-bit data.
+- Apply the same ImageJ algorithms to S-Auto and S-Reset across every slice in the current stack.
+
 ## 0.7.17 (development build; not published)
 
 - Calculate Auto and Reset from every pixel inside the current frame selection, falling back to the full current frame when no area is selected.

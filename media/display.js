@@ -116,12 +116,56 @@ async function decodeRawPayload(result) {
 }
 
 const sampleNumber = (raw, index) => Number(raw[index]);
+function displayPixelValue(raw,index,channels){
+  if(channels<=1)return sampleNumber(raw,index);
+  const used=Math.min(3,channels);let value=0;
+  for(let channel=0;channel<used;channel++)value+=sampleNumber(raw,index+channel);
+  return value/used;
+}
+
+function imageJAutoLimitsFromPixels(visit,previousThreshold=0,kind='float'){
+  const autoThreshold=previousThreshold<10?5000:previousThreshold/2;
+  let minimum=Infinity,maximum=-Infinity,pixelCount=0;
+  visit(value=>{
+    if(!Number.isFinite(value))return;
+    minimum=Math.min(minimum,value);maximum=Math.max(maximum,value);pixelCount++;
+  });
+  if(!pixelCount)return {limits:null,autoThreshold};
+  const histogram=new Uint32Array(256),histMin=kind==='byte'?0:minimum;
+  const binSize=kind==='byte'?1:kind==='short'?(maximum-minimum+1)/256:(maximum-minimum)/256;
+  if(!(binSize>0))return {limits:null,autoThreshold};
+  visit(value=>{
+    if(!Number.isFinite(value))return;
+    histogram[Math.max(0,Math.min(255,Math.floor((value-histMin)/binSize)))]++;
+  });
+  const limit=Math.floor(pixelCount/10),threshold=Math.floor(pixelCount/autoThreshold);
+  let hmin=0;while(hmin<255&&(histogram[hmin]>limit||histogram[hmin]<=threshold))hmin++;
+  let hmax=255;while(hmax>0&&(histogram[hmax]>limit||histogram[hmax]<=threshold))hmax--;
+  if(hmax<hmin)return {limits:null,autoThreshold};
+  let low=histMin+hmin*binSize,high=histMin+hmax*binSize;
+  if(low===high){low=minimum;high=maximum;}
+  return {limits:[low,high],autoThreshold};
+}
+
+function imageJAutoLimits(raw,channels,previousThreshold=0,kind='float'){
+  return imageJAutoLimitsFromPixels(consume=>{
+    for(let i=0;i<raw.length;i+=channels){
+      let value=displayPixelValue(raw,i,channels);
+      if(channels>1)value=Math.floor(value+0.5);
+      consume(value);
+    }
+  },previousThreshold,kind);
+}
+
+function imageJResetLimits(raw,channels,kind='float'){
+  return channels>1||kind==='byte'?[0,255]:autoLimits(raw,channels,'minmax');
+}
 
 function autoLimits(raw, channels, mode) {
   if(mode==='minmax'){
     let low=Infinity,high=-Infinity;
     for(let i=0;i<raw.length;i+=channels){
-      const value=channels>1?(sampleNumber(raw,i)+sampleNumber(raw,i+1)+sampleNumber(raw,i+2))/3:sampleNumber(raw,i);
+      const value=displayPixelValue(raw,i,channels);
       if(Number.isFinite(value)){low=Math.min(low,value);high=Math.max(high,value);}
     }
     return Number.isFinite(low)?[low,high]:[0,1];
@@ -129,7 +173,7 @@ function autoLimits(raw, channels, mode) {
   const values=[];
   const stride=Math.max(1,Math.floor(raw.length/channels/262144));
   for(let i=0;i<raw.length;i+=stride*channels){
-    const value=channels>1?(sampleNumber(raw,i)+sampleNumber(raw,i+1)+sampleNumber(raw,i+2))/3:sampleNumber(raw,i);
+    const value=displayPixelValue(raw,i,channels);
     if(Number.isFinite(value))values.push(value);
   }
   if(!values.length)return [0,1];
@@ -240,6 +284,6 @@ function sliceDisplayRange(histograms,bounds,frameId,datasetId,slice,low,high){
   return [histogram?.min??saved?.[0]??low,histogram?.max??saved?.[1]??high];
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
-if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
 })();
