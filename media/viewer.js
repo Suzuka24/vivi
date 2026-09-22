@@ -612,7 +612,7 @@ function forEachSelectionPixel(entry,maxPixels,callback){
   }
 }
 function selectionSamples(entry,maxPixels=262144){
-  if((!selection||!['roi','oval','polygon','freehand'].includes(selection.type))&&maxPixels===262144)return entry.raw;
+  if(!selection||!['roi','oval','polygon','freehand'].includes(selection.type))return entry.raw;
   const values=[];
   forEachSelectionPixel(entry,maxPixels,(offset,channels)=>{for(let channel=0;channel<channels;channel++)values.push(entry.raw[offset+channel]);});
   return values;
@@ -624,7 +624,7 @@ function applyCutLimits(low,high,resetStretch=false){
 function applyAutoCuts(mode,resetStretch=false){
   const entry=currentRawEntry();
   if(!entry){$('cuts').value=mode;if(resetStretch)$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);return;}
-  const [low,high]=autoLimits(mode==='minmax'?entry.raw:selectionSamples(entry),entry.channels,mode);
+  const [low,high]=autoLimits(selectionSamples(entry,Infinity),entry.channels,mode);
   applyCutLimits(low,high,resetStretch);
 }
 function selectedStackFrames(){
@@ -644,13 +644,12 @@ function applyStackAutoCuts(mode,resetStretch=false){
       value/=used;if(Number.isFinite(value)){low=Math.min(low,value);high=Math.max(high,value);}
     });
     if(!Number.isFinite(low)||!Number.isFinite(high)){low=0;high=1;}
-    else if(high<=low)high=low+Math.max(1,Math.abs(low)*1e-6);
     applyCutLimits(low,high,resetStretch);return;
   }
-  const channels=entries[0].channels||1,budget=Math.max(32,Math.floor(262144/entries.length)),samples=[];
-  for(const entry of entries){
-    for(const value of selectionSamples(entry,budget))samples.push(Number(value));
-  }
+  const channels=entries[0].channels||1,samples=[];
+  for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,entryChannels)=>{
+    for(let channel=0;channel<entryChannels;channel++)samples.push(Number(entry.raw[offset+channel]));
+  });
   const [low,high]=autoLimits(samples,channels,mode);applyCutLimits(low,high,resetStretch);
 }
 function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}

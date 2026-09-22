@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.17 (development build; not published)
+
+- Calculate Auto and Reset from every pixel inside the current frame selection, falling back to the full current frame when no area is selected.
+- Calculate S-Auto and S-Reset from every selected pixel across all slices in the current stack.
+
 ## 0.7.16 (development build; not published)
 
 - Make Reset and the Adjust Minimum/Maximum slider endpoints use the exact minimum and maximum across every pixel in the currently displayed slice.
