@@ -15,7 +15,7 @@
 - Layout 的第一列勾选控制显示，第二列勾选控制是否参与参数锁。刚加入锁定组的 Frame 从已勾选的 Frame 继承当前勾选的参数组。退出锁定组后保留自己的参数。
 - Duplicate 对 2D 图像提供标题；对 stack 提供 Duplicate stack 与切片范围；面积选区可裁切或忽略。多轴 hyperstack 暂时用线性切片序号表示范围。
 - Montage 按 Scale (%) 缩放每张切片，再按指定列数排布；灰度输出保持原始 dtype，比例为 100% 时保持原始数值。翻转与正交旋转替换当前 Frame 的显示内容并保留其 stack 切片，源文件不写回磁盘。最多记录十次撤销。
-- ImageJ 核心内置 LUT 之外，vivi 还提供 [ImageJ 官方 LUT 归档](https://imagej.net/ij/download/luts/luts.zip)的 68 个原始色表和先前的自定义色表。来源与转换方式见 [`backend/IMAGEJ_LUTS.md`](../backend/IMAGEJ_LUTS.md)。这覆盖该归档中的全部 `.lut` 文件，不包含第三方插件或用户自行安装的 LUT。
+- ImageJ 核心内置 LUT 之外，vivi 还合并了 [ImageJ 官方 LUT 归档](https://imagej.net/ij/download/luts/luts.zip)、ImageJ 1.54 发行包和 [Fiji LUT 目录](https://github.com/fiji/fiji/tree/main/luts)，按名称去重后包含 89 个原始色表，其中包括 Physics。来源与转换方式见 [`backend/IMAGEJ_LUTS.md`](../backend/IMAGEJ_LUTS.md)。归档中只用于排序的 `000-` 至 `005-` 前缀不会显示。
 - 图像处理操作默认修改当前 Frame 的工作副本，不写回源文件；stack 中尺寸兼容的操作保留其余 slice，几何操作处理整个 stack。Split Channels、Stack to Images 等多输出命令仍会创建 Frame。
 - Smooth、Sharpen、Find Edges 的核或算子按 ImageJ 1.x 实现选择；OpenCV/NumPy 的边界处理和浮点舍入可能造成边缘像素不逐位一致。Inverse FFT 仍标灰，因为 TIFF 工作副本无法携带 ImageJ `FHT` 的复数变换属性。
 - Threshold 在显示层将 Min 到 Max 之间的原始像素显示为白色，范围外为黑色。Process → Binary → Make Binary 则创建真实二值图像。

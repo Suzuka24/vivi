@@ -10,14 +10,7 @@ def imagej_tables():
         return {name: archive[name] for name in archive.files}
 
 PALETTES = {
-    "fire": [(0, 0, 0), (90, 0, 0), (220, 45, 0), (255, 180, 0), (255, 255, 255)],
-    "ice": [(0, 0, 0), (0, 40, 110), (0, 160, 210), (185, 235, 255), (255, 255, 255)],
-    "spectrum": [(0, 0, 0), (120, 0, 180), (0, 50, 255), (0, 210, 170), (255, 240, 0), (255, 0, 0)],
-    "redgreen": [(0, 0, 0), (220, 0, 0), (255, 240, 0), (0, 255, 0)],
     "heat": [(0, 0, 0), (255, 0, 0), (255, 255, 0), (255, 255, 255)],
-    "cool": [(0, 255, 255), (255, 0, 255)],
-    "sepia": [(0, 0, 0), (92, 52, 30), (190, 151, 105), (255, 242, 205)],
-    "viridis": [(68, 1, 84), (59, 82, 139), (33, 145, 140), (94, 201, 98), (253, 231, 37)],
     "plasma": [(13, 8, 135), (126, 3, 168), (204, 71, 120), (248, 149, 64), (240, 249, 33)],
     "magma": [(0, 0, 4), (82, 18, 123), (182, 55, 121), (251, 140, 60), (252, 253, 191)],
     "inferno": [(0, 0, 4), (87, 16, 110), (187, 55, 84), (249, 142, 9), (252, 255, 164)],
@@ -25,18 +18,57 @@ PALETTES = {
 }
 
 
+def _interpolated_table(points):
+    """Match ImageJ LutLoader.interpolate(), including its truncation behavior."""
+    points = np.asarray(points, dtype=np.float64)
+    scale = len(points) / 256.0
+    positions = np.arange(256) * scale
+    lower = positions.astype(int)
+    upper = np.minimum(lower + 1, len(points) - 1)
+    fraction = positions - lower
+    return ((1-fraction[:, None])*points[lower] + fraction[:, None]*points[upper]).astype(np.uint8)
+
+
+@lru_cache(maxsize=1)
+def imagej_builtin_tables():
+    fire = _interpolated_table(list(zip(
+        [0,0,1,25,49,73,98,122,146,162,173,184,195,207,217,229,240,252,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,14,35,57,79,101,117,133,147,161,175,190,205,219,234,248,255,255,255,255],
+        [0,61,96,130,165,192,220,227,210,181,151,122,93,64,35,5,0,0,0,0,0,0,0,0,0,0,0,35,98,160,223,255])))
+    ice = _interpolated_table(list(zip(
+        [0,0,0,0,0,0,19,29,50,48,79,112,134,158,186,201,217,229,242,250,250,250,250,251,250,250,250,250,251,251,243,230],
+        [156,165,176,184,190,196,193,184,171,162,146,125,107,93,81,87,92,97,95,93,93,90,85,69,64,54,47,35,19,0,4,0],
+        [140,147,158,166,170,176,209,220,234,225,236,246,250,251,250,250,245,230,230,222,202,180,163,142,123,114,106,94,84,64,26,27])))
+    hue = np.arange(256, dtype=np.float64) / 255
+    sector = np.floor(hue*6).astype(int)
+    fraction = hue*6-sector
+    q = np.rint((1-fraction)*255).astype(np.uint8)
+    t = np.rint(fraction*255).astype(np.uint8)
+    full = np.full(256, 255, dtype=np.uint8)
+    zero = np.zeros(256, dtype=np.uint8)
+    choices = ((full,t,zero),(q,full,zero),(zero,full,t),(zero,q,full),(t,zero,full),(full,zero,q))
+    spectrum = np.asarray([choices[sector[i] % 6][channel][i] for i in range(256) for channel in range(3)], dtype=np.uint8).reshape(256,3)
+    values = np.arange(256, dtype=np.uint8)
+    rgb332 = np.stack([values & 0xe0, (values << 3) & 0xe0, (values << 6) & 0xc0], axis=1)
+    redgreen = np.zeros((256,3), dtype=np.uint8)
+    redgreen[:128,0] = np.arange(128, dtype=np.uint8)*2
+    redgreen[128:,1] = np.arange(128,256, dtype=np.uint8)*2
+    return {"fire":fire,"ice":ice,"spectrum":spectrum,"rgb332":rgb332,"redgreen":redgreen}
+
+
 def apply_lut(scaled, name):
     """Map normalized luminance to RGB; preserve 2-D gray for the gray LUT."""
     if name == "gray":
         return scaled
+    name = {"cool":"ij-cool", "sepia":"ij-sepia", "viridis":"ij-viridis"}.get(name, name)
     if name.startswith("ij-"):
         table = imagej_tables().get(name)
         if table is None:
             raise ValueError(f"Unknown LUT: {name}")
         return table[np.clip(np.rint(np.asarray(scaled)*255), 0, 255).astype(np.uint8)] / 255
-    if name == "rgb332":
-        values = np.asarray(np.clip(scaled, 0, 1) * 255, dtype=np.uint8)
-        return np.stack([(values >> 5) / 7, ((values >> 2) & 7) / 7, (values & 3) / 3], axis=-1)
+    if name in imagej_builtin_tables():
+        table = imagej_builtin_tables()[name]
+        return table[np.clip(np.rint(np.asarray(scaled)*255), 0, 255).astype(np.uint8)] / 255
     single = {"red": 0, "green": 1, "blue": 2, "cyan": 0, "magenta": 1, "yellow": 2}
     if name in single:
         channels = [scaled, scaled, scaled]

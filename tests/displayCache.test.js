@@ -16,6 +16,8 @@ function cacheFunctions(overrides={}){
     renderPixels:()=>new Uint8ClampedArray(16),
     lutTable:async()=>null,
     autoLimits:()=>[0,1],
+    imageJDataKind:()=> 'float',
+    entryStretchContext:()=>({stretch:'linear'}),
     overviewCache:new Map(),fileFrames:new Map(),
     $:()=>({value:'1'}),draw(){},showError(error){throw error;},
     setTimeout,activeFileFrame:1,preview:null,previewBox:null,

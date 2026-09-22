@@ -20,7 +20,7 @@ Layout 中右键 Frame 可重命名、复制或关闭。复制品添加到列表
 
 ## 显示与测量
 
-**Adjust** 包含自动调整方法、Min/Max 输入与滑块、Brightness/Contrast 滑块、stretch、LUT、invert 和可开关的 Curve 显示曲线。这些显示参数属于当前 Frame，切换该 Frame 的 slice 时保持不变，也不会改写原始像素。Threshold 可从 Image → Adjust 菜单设置；它会把原始值位于 Min 与 Max 之间的像素显示为白色，其余显示为黑色。Layout 的 All lock/Unlock 只勾选或取消所有 Frame 的锁定参与状态，不修改 B&C、LUT、View、Zoom、Slice 的选择。
+**Adjust** 包含自动调整方法、Min/Max 输入与滑块、Brightness/Contrast 滑块、stretch、LUT、invert 和可开关的 Curve 显示曲线。Stretch 是非破坏性的虚拟像素变换：内存中的原始 linear 值保持不变，但显示、Adjust、Curve、Auto/Reset、Histogram、Measure、像素读数和剖面都使用变换后的灰度值。Process 中的像素运算仍会直接生成改变灰度值的新图像，并进入撤销/重做记录。Threshold 可从 Image → Adjust 菜单设置；它会把虚拟像素值位于 Min 与 Max 之间的像素显示为白色，其余显示为黑色。Layout 的 All lock/Unlock 只勾选或取消所有 Frame 的锁定参与状态，不修改 B&C、LUT、View、Zoom、Slice 的选择。
 
 查看器工具栏包含 ImageJ 风格的选区、画图、放大镜、pan 和 pointer，也提供 montage、正交视图、直方图、测量与常用翻转/旋转入口。鼠标画出的选区吸附到整数像素；数值选区对话框允许小数坐标。底部显示像素位置与数值。正交视图只在单 Frame stack 模式下启用；拖动任一十字线可同步三个截面，右键 XZ 或 YZ 可复制该截面为 2D Frame。通过 **Analyze → Histogram** 先设置 bins 与范围，再打开可拖动的结果窗口查看样本数和统计信息。部分 ImageJ 命令仍未开放或采用简化行为，详见[菜单覆盖情况](imagej-menu-coverage.md)。
 

@@ -1,127 +1,83 @@
 [
   [
-    "ij-isocontour",
-    "Isocontour"
+    "ij-5-ramps",
+    "5 Ramps"
   ],
   [
-    "ij-gem-16",
-    "Gem 16"
+    "ij-6-reserved-colors",
+    "6 Reserved Colors"
   ],
   [
-    "ij-cmy",
-    "Cmy"
+    "ij-6-shades",
+    "6 Shades"
   ],
   [
-    "ij-cells",
-    "Cells"
+    "ij-16-colors",
+    "16 Colors"
   ],
   [
-    "ij-neon-blue",
-    "Neon Blue"
+    "ij-16-equal",
+    "16 Equal"
   ],
   [
-    "ij-cti_ras",
-    "Cti Ras"
+    "ij-16-ramps",
+    "16 Ramps"
   ],
   [
-    "ij-hue_ramps_08",
-    "Hue Ramps 08"
+    "ij-20-colors",
+    "20 Colors"
   ],
   [
-    "ij-neon-red",
-    "Neon Red"
-  ],
-  [
-    "ij-hue_ramps_16",
-    "Hue Ramps 16"
+    "ij-32-colors",
+    "32 Colors"
   ],
   [
     "ij-amber",
     "Amber"
   ],
   [
-    "ij-split_blackwhite_warmmetal",
-    "Split Blackwhite Warmmetal"
-  ],
-  [
-    "ij-5_ramps",
-    "5 Ramps"
-  ],
-  [
-    "ij-split_bluered_warmmetal",
-    "Split Bluered Warmmetal"
-  ],
-  [
     "ij-auxctq",
     "Auxctq"
   ],
   [
-    "ij-003-ice",
-    "003 Ice"
+    "ij-blue-orange",
+    "Blue Orange"
   ],
   [
-    "ij-6_shades",
-    "6 Shades"
+    "ij-blue-orange-icb",
+    "Blue Orange Icb"
   ],
   [
-    "ij-002-spectrum",
-    "002 Spectrum"
+    "ij-brain",
+    "Brain"
   ],
   [
-    "ij-thal_16",
-    "Thal 16"
+    "ij-brgbcmyw",
+    "BRGBCMYW"
   ],
   [
-    "ij-split_blackwhite_ge",
-    "Split Blackwhite Ge"
+    "ij-cells",
+    "Cells"
   ],
   [
-    "ij-split_blackblue_redwhite",
-    "Split Blackblue Redwhite"
+    "ij-cequal",
+    "Cequal"
+  ],
+  [
+    "ij-cmy",
+    "CMY"
+  ],
+  [
+    "ij-cmy-cyan",
+    "CMY Cyan"
   ],
   [
     "ij-cmy-magneta",
-    "Cmy Magneta"
+    "CMY Magneta"
   ],
   [
-    "ij-rgb-blue",
-    "Rgb Blue"
-  ],
-  [
-    "ij-gem-256",
-    "Gem 256"
-  ],
-  [
-    "ij-heart",
-    "Heart"
-  ],
-  [
-    "ij-royal",
-    "Royal"
-  ],
-  [
-    "ij-16_colors",
-    "16 Colors"
-  ],
-  [
-    "ij-warhol",
-    "Warhol"
-  ],
-  [
-    "ij-001-fire",
-    "001 Fire"
-  ],
-  [
-    "ij-siemens",
-    "Siemens"
-  ],
-  [
-    "ij-topography",
-    "Topography"
-  ],
-  [
-    "ij-32_colors",
-    "32 Colors"
+    "ij-cmy-yellow",
+    "CMY Yellow"
   ],
   [
     "ij-cold",
@@ -132,143 +88,271 @@
     "Cool"
   ],
   [
-    "ij-smart",
-    "Smart"
+    "ij-cti-ras",
+    "CTI RAS"
   ],
   [
-    "ij-004-phase",
-    "004 Phase"
-  ],
-  [
-    "ij-blue_orange_icb",
-    "Blue Orange Icb"
-  ],
-  [
-    "ij-cmy-yellow",
-    "Cmy Yellow"
-  ],
-  [
-    "ij-blue_orange",
-    "Blue Orange"
-  ],
-  [
-    "ij-invert_gray",
-    "Invert Gray"
-  ],
-  [
-    "ij-iman",
-    "Iman"
-  ],
-  [
-    "ij-brgbcmyw",
-    "Brgbcmyw"
-  ],
-  [
-    "ij-rgb-red",
-    "Rgb Red"
-  ],
-  [
-    "ij-log_up",
-    "Log Up"
-  ],
-  [
-    "ij-cmy-cyan",
-    "Cmy Cyan"
-  ],
-  [
-    "ij-neon-magenta",
-    "Neon Magenta"
-  ],
-  [
-    "ij-brain",
-    "Brain"
-  ],
-  [
-    "ij-6_reserved_colors",
-    "6 Reserved Colors"
-  ],
-  [
-    "ij-log_down",
-    "Log Down"
-  ],
-  [
-    "ij-cequal",
-    "Cequal"
-  ],
-  [
-    "ij-vivid",
-    "Vivid"
-  ],
-  [
-    "ij-mixed",
-    "Mixed"
-  ],
-  [
-    "ij-sepia",
-    "Sepia"
+    "ij-cyan-hot",
+    "Cyan Hot"
   ],
   [
     "ij-edges",
     "Edges"
   ],
   [
-    "ij-thallium",
-    "Thallium"
+    "ij-gem",
+    "Gem"
   ],
   [
-    "ij-system_lut",
-    "System Lut"
+    "ij-gem-16",
+    "Gem 16"
   ],
   [
-    "ij-unionjack",
-    "Unionjack"
+    "ij-gem-256",
+    "Gem 256"
   ],
   [
-    "ij-16_ramps",
-    "16 Ramps"
+    "ij-glasbey",
+    "Glasbey"
+  ],
+  [
+    "ij-glasbey-inverted",
+    "Glasbey Inverted"
+  ],
+  [
+    "ij-glasbey-on-dark",
+    "Glasbey On Dark"
+  ],
+  [
+    "ij-glow",
+    "Glow"
   ],
   [
     "ij-gold",
     "Gold"
   ],
   [
+    "ij-green-fire-blue",
+    "Green Fire Blue"
+  ],
+  [
+    "ij-gyr-centre",
+    "GYR Centre"
+  ],
+  [
+    "ij-heart",
+    "Heart"
+  ],
+  [
+    "ij-hilo",
+    "HiLo"
+  ],
+  [
     "ij-hue",
     "Hue"
   ],
   [
-    "ij-pastel",
-    "Pastel"
+    "ij-hue-ramps-08",
+    "Hue Ramps 08"
   ],
   [
-    "ij-000-gray",
-    "000 Gray"
+    "ij-hue-ramps-16",
+    "Hue Ramps 16"
   ],
   [
-    "ij-rgb-green",
-    "Rgb Green"
+    "ij-ica",
+    "ICA"
+  ],
+  [
+    "ij-ica2",
+    "ICA2"
+  ],
+  [
+    "ij-ica3",
+    "ICA3"
+  ],
+  [
+    "ij-iman",
+    "Iman"
+  ],
+  [
+    "ij-invert-gray",
+    "Invert Gray"
+  ],
+  [
+    "ij-isocontour",
+    "Isocontour"
+  ],
+  [
+    "ij-jet",
+    "Jet"
+  ],
+  [
+    "ij-log-down",
+    "Log Down"
+  ],
+  [
+    "ij-log-up",
+    "Log Up"
+  ],
+  [
+    "ij-magenta-hot",
+    "Magenta Hot"
+  ],
+  [
+    "ij-mixed",
+    "Mixed"
+  ],
+  [
+    "ij-mpl-inferno",
+    "MPL Inferno"
+  ],
+  [
+    "ij-mpl-magma",
+    "MPL Magma"
+  ],
+  [
+    "ij-mpl-plasma",
+    "MPL Plasma"
+  ],
+  [
+    "ij-mpl-viridis",
+    "MPL Viridis"
+  ],
+  [
+    "ij-neon-blue",
+    "Neon Blue"
   ],
   [
     "ij-neon-green",
     "Neon Green"
   ],
   [
-    "ij-gyr_centre",
-    "Gyr Centre"
+    "ij-neon-magenta",
+    "Neon Magenta"
   ],
   [
-    "ij-16_equal",
-    "16 Equal"
+    "ij-neon-red",
+    "Neon Red"
   ],
   [
-    "ij-20_colors",
-    "20 Colors"
+    "ij-orange-hot",
+    "Orange Hot"
   ],
   [
-    "ij-005-random",
-    "005 Random"
+    "ij-pastel",
+    "Pastel"
   ],
   [
-    "ij-thal_256",
+    "ij-phase",
+    "Phase"
+  ],
+  [
+    "ij-physics",
+    "Physics"
+  ],
+  [
+    "ij-rainbow-rgb",
+    "Rainbow RGB"
+  ],
+  [
+    "ij-random",
+    "Random"
+  ],
+  [
+    "ij-red-hot",
+    "Red Hot"
+  ],
+  [
+    "ij-rgb-blue",
+    "RGB Blue"
+  ],
+  [
+    "ij-rgb-green",
+    "RGB Green"
+  ],
+  [
+    "ij-rgb-red",
+    "RGB Red"
+  ],
+  [
+    "ij-royal",
+    "Royal"
+  ],
+  [
+    "ij-sepia",
+    "Sepia"
+  ],
+  [
+    "ij-siemens",
+    "Siemens"
+  ],
+  [
+    "ij-smart",
+    "Smart"
+  ],
+  [
+    "ij-split-blackblue-redwhite",
+    "Split Blackblue Redwhite"
+  ],
+  [
+    "ij-split-blackwhite-ge",
+    "Split Blackwhite Ge"
+  ],
+  [
+    "ij-split-blackwhite-warmmetal",
+    "Split Blackwhite Warmmetal"
+  ],
+  [
+    "ij-split-bluered-warmmetal",
+    "Split Bluered Warmmetal"
+  ],
+  [
+    "ij-system-lut",
+    "System LUT"
+  ],
+  [
+    "ij-thal",
+    "Thal"
+  ],
+  [
+    "ij-thal-16",
+    "Thal 16"
+  ],
+  [
+    "ij-thal-256",
     "Thal 256"
+  ],
+  [
+    "ij-thallium",
+    "Thallium"
+  ],
+  [
+    "ij-thermal",
+    "Thermal"
+  ],
+  [
+    "ij-topography",
+    "Topography"
+  ],
+  [
+    "ij-unionjack",
+    "Unionjack"
+  ],
+  [
+    "ij-viridis",
+    "Viridis"
+  ],
+  [
+    "ij-vivid",
+    "Vivid"
+  ],
+  [
+    "ij-warhol",
+    "Warhol"
+  ],
+  [
+    "ij-yellow-hot",
+    "Yellow Hot"
   ]
 ]

@@ -123,6 +123,55 @@ function displayPixelValue(raw,index,channels){
   return value/used;
 }
 
+function stretchContext(raw,channels=1,stretch='linear',kind='float'){
+  if(stretch==='linear')return {stretch,minimum:0,maximum:1,cdf:null};
+  let minimum=Infinity,maximum=-Infinity;
+  if(kind==='byte'||channels>1){minimum=0;maximum=255;}
+  else for(let index=0;index<raw.length;index+=channels){const value=displayPixelValue(raw,index,channels);if(Number.isFinite(value)){minimum=Math.min(minimum,value);maximum=Math.max(maximum,value);}}
+  if(!Number.isFinite(minimum)||!Number.isFinite(maximum))return {stretch,minimum:0,maximum:1,cdf:null};
+  const range=maximum-minimum;
+  let cdf=null;
+  if(stretch==='histeq'&&range>0){
+    const histogram=new Uint32Array(256);
+    for(let index=0;index<raw.length;index++){
+      const value=sampleNumber(raw,index);if(!Number.isFinite(value))continue;
+      histogram[Math.max(0,Math.min(255,Math.floor((value-minimum)/range*255)))]++;
+    }
+    let sum=0;cdf=Float64Array.from(histogram,count=>{sum+=count;return sum;});
+    if(sum)for(let index=0;index<256;index++)cdf[index]/=sum;
+  }
+  return {stretch,minimum,maximum,cdf};
+}
+
+function stretchedValue(value,context){
+  if(!Number.isFinite(value)||!context||context.stretch==='linear')return value;
+  const {minimum,maximum,stretch,cdf}=context,range=maximum-minimum;
+  if(!(range>0))return value;
+  let normalized=Math.max(0,Math.min(1,(value-minimum)/range));
+  if(stretch==='log')normalized=Math.log1p(1000*normalized)/Math.log1p(1000);
+  else if(stretch==='sqrt'||stretch==='power')normalized=Math.sqrt(normalized);
+  else if(stretch==='asinh')normalized=Math.asinh(10*normalized)/Math.asinh(10);
+  else if(stretch==='squared')normalized*=normalized;
+  else if(stretch==='sinh')normalized=Math.sinh(3*normalized)/Math.sinh(3);
+  else if(stretch==='histeq'&&cdf)normalized=cdf[Math.round(normalized*255)];
+  return minimum+normalized*range;
+}
+
+function stretchedDisplayPixel(raw,index,channels,context){
+  if(channels<=1)return stretchedValue(sampleNumber(raw,index),context);
+  const used=Math.min(3,channels);let value=0;
+  for(let channel=0;channel<used;channel++)value+=stretchedValue(sampleNumber(raw,index+channel),context);
+  return value/used;
+}
+
+function stretchedResetLimits(raw,channels,stretch='linear',kind='float'){
+  if(stretch==='linear')return imageJResetLimits(raw,channels,kind);
+  if(channels>1||kind==='byte')return [0,255];
+  const context=stretchContext(raw,channels,stretch,kind);let low=Infinity,high=-Infinity;
+  for(let index=0;index<raw.length;index+=channels){const value=stretchedDisplayPixel(raw,index,channels,context);if(Number.isFinite(value)){low=Math.min(low,value);high=Math.max(high,value);}}
+  return Number.isFinite(low)?[low,high]:[0,1];
+}
+
 function imageJAutoLimitsFromPixels(visit,previousThreshold=0,kind='float'){
   const autoThreshold=previousThreshold<10?5000:previousThreshold/2;
   let minimum=Infinity,maximum=-Infinity,pixelCount=0;
@@ -194,33 +243,18 @@ function autoLimits(raw, channels, mode) {
 function renderPixels(raw,width,height,channels,settings,lut=null){
   const {low,high,stretch='linear',invert=false,threshold=false}=settings;
   const output=new Uint8ClampedArray(width*height*4),range=Math.max(Number.MIN_VALUE,high-low);
-  const stretchValue=value=>{
-    let x=Math.max(0,Math.min(1,(value-low)/range));
-    if(stretch==='log')x=Math.log1p(1000*x)/Math.log1p(1000);
-    else if(stretch==='sqrt'||stretch==='power')x=Math.sqrt(x);
-    else if(stretch==='asinh')x=Math.asinh(10*x)/Math.asinh(10);
-    else if(stretch==='squared')x*=x;
-    else if(stretch==='sinh')x=Math.sinh(3*x)/Math.sinh(3);
-    return invert?1-x:x;
-  };
-  let equalize=null;
-  if(stretch==='histeq'){
-    const histogram=new Uint32Array(256);
-    for(let i=0;i<raw.length;i+=channels){const value=sampleNumber(raw,i);if(Number.isFinite(value))histogram[Math.max(0,Math.min(255,Math.floor((value-low)/range*255)))]++;}
-    let sum=0;equalize=Float64Array.from(histogram,count=>{sum+=count;return sum;});
-    if(sum)for(let i=0;i<256;i++)equalize[i]/=sum;
-  }
+  const context=settings.stretchContext||stretchContext(raw,channels,stretch,settings.kind||'float');
+  const intensity=value=>{const x=Math.max(0,Math.min(1,(stretchedValue(value,context)-low)/range));return invert?1-x:x;};
   for(let pixel=0;pixel<width*height;pixel++){
     const source=pixel*channels,target=pixel*4;
     let valid=true;
     for(let channel=0;channel<Math.min(3,channels);channel++)valid&&=Number.isFinite(sampleNumber(raw,source+channel));
     if(!valid){output[target+3]=255;continue;}
-    if(threshold){const value=channels>1?(sampleNumber(raw,source)+sampleNumber(raw,source+1)+sampleNumber(raw,source+2))/3:sampleNumber(raw,source),index=value>=low&&value<=high?255:0;for(let channel=0;channel<3;channel++)output[target+channel]=lut?lut[index][channel]:index;}
-    else if(channels>1){for(let channel=0;channel<3;channel++)output[target+channel]=Math.floor(stretchValue(sampleNumber(raw,source+channel))*255);}
+    if(threshold){const value=stretchedDisplayPixel(raw,source,channels,context),index=value>=low&&value<=high?255:0;for(let channel=0;channel<3;channel++)output[target+channel]=lut?lut[index][channel]:index;}
+    else if(channels>1){for(let channel=0;channel<3;channel++)output[target+channel]=Math.floor(intensity(sampleNumber(raw,source+channel))*255);}
     else{
-      let intensity=stretchValue(sampleNumber(raw,source));
-      if(equalize)intensity=invert?1-equalize[Math.round(Math.max(0,Math.min(1,(sampleNumber(raw,source)-low)/range))*255)]:equalize[Math.round(Math.max(0,Math.min(1,(sampleNumber(raw,source)-low)/range))*255)];
-      const index=Math.max(0,Math.min(255,lut?Math.round(intensity*255):Math.floor(intensity*255)));
+      const mapped=intensity(sampleNumber(raw,source));
+      const index=Math.max(0,Math.min(255,lut?Math.round(mapped*255):Math.floor(mapped*255)));
       for(let channel=0;channel<3;channel++)output[target+channel]=lut?lut[index][channel]:index;
     }
     output[target+3]=255;
@@ -284,6 +318,6 @@ function sliceDisplayRange(histograms,bounds,frameId,datasetId,slice,low,high){
   return [histogram?.min??saved?.[0]??low,histogram?.max??saved?.[1]??high];
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
-if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchedValue,stretchedDisplayPixel,stretchedResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchedValue,stretchedDisplayPixel,stretchedResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
 })();

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.19 (development build; not published)
+
+- Combine every uniquely named LUT from ImageJ's built-ins, LUT archive, current distribution, and Fiji, including Physics; remove archive-only `000-` through `005-` ordering prefixes and sort the combined menu by name.
+- Treat stretch as a non-destructive virtual pixel transform used consistently by rendering, Adjust/Curve, Auto/Reset, Histogram, Measure, pixel readouts, and profiles, while keeping Process pixel operations on the original image values.
+- Keep the selected stretch active when Auto, Reset, S-Auto, or S-Reset is used.
+
 ## 0.7.18 (development build; not published)
 
 - Match ImageJ Brightness/Contrast Auto with a full-pixel 256-bin histogram, dominant-background rejection, and progressively stronger repeated Auto clicks.

@@ -3,6 +3,7 @@ import sys
 import unittest
 import base64
 import io
+import json
 import os
 from pathlib import Path
 from PIL import Image
@@ -54,13 +55,29 @@ class FixtureTests(unittest.TestCase):
                 with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
                     self.assertEqual(image.size, (32, 24))
                     self.assertEqual(image.mode, 'L' if lut == 'gray' else 'RGB')
-        self.assertEqual(len(imagej_tables()), 68)
+        self.assertEqual(len(imagej_tables()), 89)
+        self.assertIn('ij-physics', imagej_tables())
+        manifest=json.loads((Path(__file__).parents[1]/'backend'/'imagej_luts_manifest.json').read_text())
+        self.assertFalse(any(name[:3].isdigit() and name[3:4] in (' ', '-') for _,name in manifest))
         for lut in imagej_tables():
             with self.subTest(lut=lut):
                 result=self.session.handle({'op':'render','dataset':0,'frame':0,'size':128,'cmap':lut})
                 with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
                     self.assertEqual(image.mode,'RGB')
                     self.assertEqual(image.size,(32,24))
+
+    def test_virtual_stretch_updates_pixels_histograms_and_measurements(self):
+        self.open('plain.tif')
+        source=np.arange(32*24,dtype=float).reshape(24,32)
+        virtual=np.sqrt(source/source.max())*source.max()
+        pixel=self.session.handle({'op':'pixel','dataset':0,'frame':0,'x':3,'y':4,'stretch':'sqrt'})
+        self.assertAlmostEqual(pixel['value'],virtual[4,3])
+        measured=self.session.handle({'op':'measure','dataset':0,'frame':0,'stretch':'sqrt'})
+        self.assertAlmostEqual(measured['mean'],virtual.mean())
+        histogram=self.session.handle({'op':'histogram','dataset':0,'frame':0,'stretch':'sqrt','bins':32})
+        self.assertAlmostEqual(histogram['mean'],virtual.mean())
+        self.assertEqual(histogram['samples'],source.size)
+        self.assertEqual(self.pixel(),131)
 
     def test_process_filters_on_fixed_image(self):
         self.open('gray.png')

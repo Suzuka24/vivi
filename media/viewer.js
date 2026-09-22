@@ -2,11 +2,11 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,stretchContext,stretchedValue,stretchedDisplayPixel,stretchedResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
-const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['cool','Cool'],['sepia','Sepia'],['viridis','Viridis'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
-lutOptions.push(...[["ij-isocontour","Isocontour"],["ij-gem-16","Gem 16"],["ij-cmy","Cmy"],["ij-cells","Cells"],["ij-neon-blue","Neon Blue"],["ij-cti_ras","Cti Ras"],["ij-hue_ramps_08","Hue Ramps 08"],["ij-neon-red","Neon Red"],["ij-hue_ramps_16","Hue Ramps 16"],["ij-amber","Amber"],["ij-split_blackwhite_warmmetal","Split Blackwhite Warmmetal"],["ij-5_ramps","5 Ramps"],["ij-split_bluered_warmmetal","Split Bluered Warmmetal"],["ij-auxctq","Auxctq"],["ij-003-ice","003 Ice"],["ij-6_shades","6 Shades"],["ij-002-spectrum","002 Spectrum"],["ij-thal_16","Thal 16"],["ij-split_blackwhite_ge","Split Blackwhite Ge"],["ij-split_blackblue_redwhite","Split Blackblue Redwhite"],["ij-cmy-magneta","Cmy Magneta"],["ij-rgb-blue","Rgb Blue"],["ij-gem-256","Gem 256"],["ij-heart","Heart"],["ij-royal","Royal"],["ij-16_colors","16 Colors"],["ij-warhol","Warhol"],["ij-001-fire","001 Fire"],["ij-siemens","Siemens"],["ij-topography","Topography"],["ij-32_colors","32 Colors"],["ij-cold","Cold"],["ij-cool","Cool"],["ij-smart","Smart"],["ij-004-phase","004 Phase"],["ij-blue_orange_icb","Blue Orange Icb"],["ij-cmy-yellow","Cmy Yellow"],["ij-blue_orange","Blue Orange"],["ij-invert_gray","Invert Gray"],["ij-iman","Iman"],["ij-brgbcmyw","Brgbcmyw"],["ij-rgb-red","Rgb Red"],["ij-log_up","Log Up"],["ij-cmy-cyan","Cmy Cyan"],["ij-neon-magenta","Neon Magenta"],["ij-brain","Brain"],["ij-6_reserved_colors","6 Reserved Colors"],["ij-log_down","Log Down"],["ij-cequal","Cequal"],["ij-vivid","Vivid"],["ij-mixed","Mixed"],["ij-sepia","Sepia"],["ij-edges","Edges"],["ij-thallium","Thallium"],["ij-system_lut","System Lut"],["ij-unionjack","Unionjack"],["ij-16_ramps","16 Ramps"],["ij-gold","Gold"],["ij-hue","Hue"],["ij-pastel","Pastel"],["ij-000-gray","000 Gray"],["ij-rgb-green","Rgb Green"],["ij-neon-green","Neon Green"],["ij-gyr_centre","Gyr Centre"],["ij-16_equal","16 Equal"],["ij-20_colors","20 Colors"],["ij-005-random","005 Random"],["ij-thal_256","Thal 256"]]);
+const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
+lutOptions.push(...[["ij-5-ramps","5 Ramps"],["ij-6-reserved-colors","6 Reserved Colors"],["ij-6-shades","6 Shades"],["ij-16-colors","16 Colors"],["ij-16-equal","16 Equal"],["ij-16-ramps","16 Ramps"],["ij-20-colors","20 Colors"],["ij-32-colors","32 Colors"],["ij-amber","Amber"],["ij-auxctq","Auxctq"],["ij-blue-orange","Blue Orange"],["ij-blue-orange-icb","Blue Orange Icb"],["ij-brain","Brain"],["ij-brgbcmyw","BRGBCMYW"],["ij-cells","Cells"],["ij-cequal","Cequal"],["ij-cmy","CMY"],["ij-cmy-cyan","CMY Cyan"],["ij-cmy-magneta","CMY Magneta"],["ij-cmy-yellow","CMY Yellow"],["ij-cold","Cold"],["ij-cool","Cool"],["ij-cti-ras","CTI RAS"],["ij-cyan-hot","Cyan Hot"],["ij-edges","Edges"],["ij-gem","Gem"],["ij-gem-16","Gem 16"],["ij-gem-256","Gem 256"],["ij-glasbey","Glasbey"],["ij-glasbey-inverted","Glasbey Inverted"],["ij-glasbey-on-dark","Glasbey On Dark"],["ij-glow","Glow"],["ij-gold","Gold"],["ij-green-fire-blue","Green Fire Blue"],["ij-gyr-centre","GYR Centre"],["ij-heart","Heart"],["ij-hilo","HiLo"],["ij-hue","Hue"],["ij-hue-ramps-08","Hue Ramps 08"],["ij-hue-ramps-16","Hue Ramps 16"],["ij-ica","ICA"],["ij-ica2","ICA2"],["ij-ica3","ICA3"],["ij-iman","Iman"],["ij-invert-gray","Invert Gray"],["ij-isocontour","Isocontour"],["ij-jet","Jet"],["ij-log-down","Log Down"],["ij-log-up","Log Up"],["ij-magenta-hot","Magenta Hot"],["ij-mixed","Mixed"],["ij-mpl-inferno","MPL Inferno"],["ij-mpl-magma","MPL Magma"],["ij-mpl-plasma","MPL Plasma"],["ij-mpl-viridis","MPL Viridis"],["ij-neon-blue","Neon Blue"],["ij-neon-green","Neon Green"],["ij-neon-magenta","Neon Magenta"],["ij-neon-red","Neon Red"],["ij-orange-hot","Orange Hot"],["ij-pastel","Pastel"],["ij-phase","Phase"],["ij-physics","Physics"],["ij-rainbow-rgb","Rainbow RGB"],["ij-random","Random"],["ij-red-hot","Red Hot"],["ij-rgb-blue","RGB Blue"],["ij-rgb-green","RGB Green"],["ij-rgb-red","RGB Red"],["ij-royal","Royal"],["ij-sepia","Sepia"],["ij-siemens","Siemens"],["ij-smart","Smart"],["ij-split-blackblue-redwhite","Split Blackblue Redwhite"],["ij-split-blackwhite-ge","Split Blackwhite Ge"],["ij-split-blackwhite-warmmetal","Split Blackwhite Warmmetal"],["ij-split-bluered-warmmetal","Split Bluered Warmmetal"],["ij-system-lut","System LUT"],["ij-thal","Thal"],["ij-thal-16","Thal 16"],["ij-thal-256","Thal 256"],["ij-thallium","Thallium"],["ij-thermal","Thermal"],["ij-topography","Topography"],["ij-unionjack","Unionjack"],["ij-viridis","Viridis"],["ij-vivid","Vivid"],["ij-warhol","Warhol"],["ij-yellow-hot","Yellow Hot"]]);
 lutOptions.sort((a,b)=>a[1].localeCompare(b[1],undefined,{numeric:true,sensitivity:'base'}));
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
 let sliceAxis = null, errorUntil = 0, errorTimer, transferVisible = true;
@@ -64,7 +64,7 @@ function tilePictureRatio(state,d,picture,w,tw,th){
 function sidebarState(){
   if(!dataset)return null;
   const currentFrame=Number($('frame').value)-1,entry=currentRawEntry();
-  const [rangeMin,rangeMax]=entry?imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry)):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,currentFrame,Number($('low').value),Number($('high').value));
+  const [rangeMin,rangeMax]=entry?stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry)):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,`${currentFrame}:${$('stretch').value}`,Number($('low').value),Number($('high').value));
   return {active:activeFileFrame,activeLabel:metadata.label||metadata.path.split(/[\\/]/).pop(),frames:[...fileFrames].map(([id,state])=>({id,label:state.metadata.label||state.metadata.path.split(/[\\/]/).pop(),visible:state.visible!==false,locked:!!state.lockMember,loading:!!state.loading})),
     datasets:metadata.datasets.map(d=>({id:d.id,name:d.name})),datasetId:dataset.id,slice:Number($('frame').value),total:dataset.frames,fps:Number($('fps').value)||defaultFps,playing,blinking,tile:tileMode,columns:layoutColumns,rows:layoutRows,locks:[...frameLocks],
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin,rangeMax,stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked,bcVisible:transferVisible};
@@ -93,7 +93,7 @@ function setFrameLoading(id,loading,done=0,total=0,label='Loading image…'){
   if(id===activeFileFrame)updateLoadProgress(state);
   publishSidebar(loading&&done?40:0);
 }
-function base() { return {dataset:dataset.id,frame:Number($('frame').value)-1}; }
+function base() { return {dataset:dataset.id,frame:Number($('frame').value)-1,stretch:$('stretch').value}; }
 function size() { return {w:canvas.clientWidth,h:canvas.clientHeight}; }
 function tileViewport(){
   const {w,h}=size(),{ids,cols,tw,th}=tileGeometry(w,h),index=ids.indexOf(activeFileFrame);
@@ -359,7 +359,8 @@ async function recolorEntry(entry,args){
   const colorKey=JSON.stringify([low,high,args.stretch,args.cmap,args.invert,args.threshold]);
   if(entry.image&&entry.colorKey===colorKey)return;
   const lut=entry.channels>1&&!args.threshold?null:await lutTable(args.cmap);
-  const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high},lut);
+  const kind=imageJDataKind(entry),context=entryStretchContext(entry,args.stretch,kind);
+  const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high,kind,stretchContext:context},lut);
   const image=document.createElement('canvas');image.width=entry.result.width;image.height=entry.result.height;
   image.getContext('2d').putImageData(new ImageData(pixels,image.width,image.height),0,0);
   if(entry.paintVersion!==paintVersion)return;
@@ -569,16 +570,17 @@ function syncViewerToolbar(){
 function changeFrame(delta, automatic=false){if(!dataset)return;const previous=Number($('frame').value),total=sliceAxes().length?dataset.shape[sliceAxes()[axisIndex()]]:dataset.frames;let position=slicePosition()-1+delta;if(automatic)position=(position+total)%total;else position=Math.max(0,Math.min(total-1,position));setAxisSlice(position+1);if(Number($('frame').value)!==previous)resetAutoThresholds();frameLabel();$('pixel').textContent='';commitFrameChange('slice');if(orthogonal)commitFrameChange('selection');scheduleRender(0);}
 function loadTransferHistogram(){
   if(!dataset)return;
-  const key=`${activeFileFrame}:${dataset.id}:${Number($('frame').value)-1}`;
+  const key=transferHistogramKey();
   if(transferHistograms.has(key))return;
   transferHistograms.set(key,null);
   const boundKey=key;
-  request('histogram',{...base(),bins:128},true).then(result=>{transferHistograms.set(key,result);if(!displayBounds.has(boundKey)&&Number.isFinite(result.min)&&Number.isFinite(result.max)&&result.max>result.min)displayBounds.set(boundKey,[result.min,result.max]);if(key===`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`){drawTransferCurve();publishSidebar();}}).catch(()=>transferHistograms.delete(key));
+  request('histogram',{...base(),bins:128},true).then(result=>{transferHistograms.set(key,result);if(!displayBounds.has(boundKey)&&Number.isFinite(result.min)&&Number.isFinite(result.max)&&result.max>result.min)displayBounds.set(boundKey,[result.min,result.max]);if(key===transferHistogramKey()){drawTransferCurve();publishSidebar();}}).catch(()=>transferHistograms.delete(key));
 }
+function transferHistogramKey(){return `${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}:${$('stretch').value}`;}
 function drawTransferCurve(){
   const canvas=$('transferCurve'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,low=Number($('low').value),high=Number($('high').value);if(!Number.isFinite(low)||!Number.isFinite(high))return;
-  const histogram=transferHistograms.get(`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`);
-  const bounds=displayBounds.get(`${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`),span=Math.max(Number.MIN_VALUE,high-low),start=histogram?.min??bounds?.[0]??low,end=histogram?.max??bounds?.[1]??high,extent=Math.max(Number.MIN_VALUE,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
+  const histogram=transferHistograms.get(transferHistogramKey());
+  const bounds=displayBounds.get(transferHistogramKey()),span=Math.max(Number.MIN_VALUE,high-low),start=histogram?.min??bounds?.[0]??low,end=histogram?.max??bounds?.[1]??high,extent=Math.max(Number.MIN_VALUE,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
   g.fillStyle='#1a2028';g.fillRect(0,0,w,h);
   if(histogram){const peak=Math.max(1,...histogram.counts);g.fillStyle='#55626d';for(let i=0;i<histogram.counts.length;i++){const height=Math.min(h-4,histogram.counts[i]/peak*(h-4));g.fillRect(i*w/histogram.counts.length,h-height,Math.max(1,w/histogram.counts.length),height);}}
   const y=value=>h-Math.max(0,Math.min(1,(value-low)/span))*h;
@@ -620,53 +622,60 @@ function imageJDataKind(entry){
   if(entry.raw instanceof Uint16Array||/^(?:[<>=|]?u2|uint16)$/.test(dtype))return 'short';
   return 'float';
 }
+function entryStretchContext(entry,stretch=$('stretch').value,kind=imageJDataKind(entry)){
+  entry.stretchContexts??=new Map();
+  const key=`${stretch}:${kind}`;
+  if(!entry.stretchContexts.has(key))entry.stretchContexts.set(key,stretchContext(entry.raw,entry.channels||1,stretch,kind));
+  return entry.stretchContexts.get(key);
+}
 function resetLimitsForEntries(entries){
   if(!entries.length)return [0,1];
-  const kind=imageJDataKind(entries[0]);
-  if(kind==='byte'||(entries[0].channels||1)>1)return [0,255];
   let low=Infinity,high=-Infinity;
-  for(const entry of entries){const limits=imageJResetLimits(entry.raw,entry.channels,kind);low=Math.min(low,limits[0]);high=Math.max(high,limits[1]);}
+  for(const entry of entries){const limits=stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry));low=Math.min(low,limits[0]);high=Math.max(high,limits[1]);}
   return Number.isFinite(low)&&Number.isFinite(high)?[low,high]:[0,1];
 }
 function imageJSelectionLimits(entries,previousThreshold){
   return imageJAutoLimitsFromPixels(consume=>{
     for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,channels)=>{
-      const used=Math.min(3,channels);let value=0;
-      for(let channel=0;channel<used;channel++)value+=Number(entry.raw[offset+channel]);
-      value/=used;if(channels>1)value=Math.floor(value+0.5);consume(value);
+      let value=stretchedDisplayPixel(entry.raw,offset,channels,entryStretchContext(entry));
+      if(channels>1)value=Math.floor(value+0.5);consume(value);
     });
   },previousThreshold,imageJDataKind(entries[0]));
 }
 function resetAutoThresholds(){imageJAutoThreshold=0;imageJStackAutoThreshold=0;}
-function applyCutLimits(low,high,resetStretch=false){
-  $('cuts').value='manual';$('low').value=low;$('high').value=high;if(resetStretch)$('stretch').value='linear';
+function applyCutLimits(low,high){
+  $('cuts').value='manual';$('low').value=low;$('high').value=high;
   drawTransferCurve();commitFrameChange('bc');scheduleRender(0);publishSidebar();
 }
-function applyAutoCuts(mode,resetStretch=false){
+function applyAutoCuts(mode){
   const entry=currentRawEntry();
-  if(!entry){$('cuts').value=mode;if(resetStretch)$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);return;}
+  if(!entry){$('cuts').value=mode;commitFrameChange('bc');scheduleRender(0);return;}
   let low,high;
   if(mode==='minmax'){
-    imageJAutoThreshold=0;[low,high]=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));
+    imageJAutoThreshold=0;[low,high]=stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry));
   }else if(mode==='percentile'){
     const result=imageJSelectionLimits([entry],imageJAutoThreshold);
     imageJAutoThreshold=result.autoThreshold;
     if(result.limits)[low,high]=result.limits;
-    else{imageJAutoThreshold=0;[low,high]=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));}
-  }else [low,high]=autoLimits(selectionSamples(entry,Infinity),entry.channels,mode);
-  applyCutLimits(low,high,resetStretch);
+    else{imageJAutoThreshold=0;[low,high]=stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry));}
+  }else{
+    const context=entryStretchContext(entry),samples=[];
+    forEachSelectionPixel(entry,Infinity,(offset,channels)=>{for(let channel=0;channel<channels;channel++)samples.push(stretchedValue(Number(entry.raw[offset+channel]),context));});
+    [low,high]=autoLimits(samples,entry.channels,mode);
+  }
+  applyCutLimits(low,high);
 }
 function selectedStackFrames(){
   return selectedStackFrameIndices(sliceAxes(),dataset.shape,sliceAxes()[axisIndex()],Number($('frame').value)-1);
 }
-function applyStackAutoCuts(mode,resetStretch=false){
+function applyStackAutoCuts(mode){
   const frames=new Set(selectedStackFrames());
   const entries=[...frameCache.values()].filter(entry=>entry.raw&&entry.sourceDataset===dataset.id&&frames.has(entry.sourceFrame));
-  if(!entries.length){applyAutoCuts(mode,resetStretch);return;}
+  if(!entries.length){applyAutoCuts(mode);return;}
   if(entries.length<frames.size){showError(new Error('Wait for the current stack to finish loading before using S-Auto or S-Reset.'));return;}
   if(mode==='minmax'){
     imageJStackAutoThreshold=0;const [low,high]=resetLimitsForEntries(entries);
-    applyCutLimits(low,high,resetStretch);return;
+    applyCutLimits(low,high);return;
   }
   let low,high;
   if(mode==='percentile'){
@@ -677,11 +686,11 @@ function applyStackAutoCuts(mode,resetStretch=false){
   }else{
     const channels=entries[0].channels||1,samples=[];
     for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,entryChannels)=>{
-      for(let channel=0;channel<entryChannels;channel++)samples.push(Number(entry.raw[offset+channel]));
+      const context=entryStretchContext(entry);for(let channel=0;channel<entryChannels;channel++)samples.push(stretchedValue(Number(entry.raw[offset+channel]),context));
     });
     [low,high]=autoLimits(samples,channels,mode);
   }
-  applyCutLimits(low,high,resetStretch);
+  applyCutLimits(low,high);
 }
 function selectDataset(){disableOrthogonal();dataset=metadata.datasets.find(d=>d.id===Number($('dataset').value));resetAutoThresholds();sliceAxis=dataset.extra?.at(-1)??null;$('frame').value=1;$('frame').max=dataset.frames;frameLabel();$('play').disabled=dataset.frames<2;roi=null;line=null;selection=null;annotations=[];overlays=[];roiManager=[];vertices=[];preview=null;activePng='';stopPlay();$('metadata').textContent=`${dataset.width} × ${dataset.height}\n${dataset.dtype} · ${metadata.kind}\nShape: ${dataset.shape.join(' × ')}\nAxes: ${dataset.targetExpression||dataset.axes||'h w'}`;fit();}
 function saveFileFrame() {
@@ -1140,7 +1149,7 @@ const analysisHead=$('analysisPane').querySelector('.analysis-head');
 analysisHead.onpointerdown=event=>{if(event.target.closest('button'))return;const pane=$('analysisPane'),rect=pane.getBoundingClientRect(),stage=$('stage').getBoundingClientRect(),left=rect.left-stage.left,top=rect.top-stage.top,startX=event.clientX,startY=event.clientY;pane.style.left=left+'px';pane.style.top=top+'px';pane.style.right='auto';pane.style.bottom='auto';analysisHead.setPointerCapture(event.pointerId);analysisHead.onpointermove=move=>{if(!analysisHead.hasPointerCapture(event.pointerId))return;pane.style.left=Math.max(0,left+move.clientX-startX)+'px';pane.style.top=Math.max(0,top+move.clientY-startY)+'px';};};
 analysisHead.onpointerup=event=>{if(analysisHead.hasPointerCapture(event.pointerId))analysisHead.releasePointerCapture(event.pointerId);analysisHead.onpointermove=null;};
 $('dataset').onchange=selectDataset;
-for(const id of ['cuts','stretch'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
+for(const id of ['cuts','stretch'])$(id).onchange=()=>{if(id==='stretch')resetAutoThresholds();commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['cmap','invert','threshold'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['low','high'])$(id).onchange=()=>{$('cuts').value='manual';commitFrameChange('bc');scheduleRender(0);};
 $('clear').onclick=()=>{selection=null;vertices=[];refreshSelection();};
@@ -1236,10 +1245,12 @@ function applySidebarAction(action,value){
   else if(action==='lockAll'){for(const id of fileFrames.keys())setFrameLockMember(id,true);}
   else if(action==='unlockAll'){for(const state of fileFrames.values())state.lockMember=false;frameList();if(tileMode)scheduleTileRefresh(0);}
   else if(action==='toggleBC'){transferVisible=!transferVisible;$('transferPanel').hidden=!transferVisible;publishSidebar();}
-  else if(action==='autoCuts')applyAutoCuts(value?.mode||'percentile',!!value?.resetStretch);
-  else if(action==='stackAutoCuts')applyStackAutoCuts(value?.mode||'percentile',!!value?.resetStretch);
+  else if(action==='autoCuts')applyAutoCuts(value?.mode||'percentile');
+  else if(action==='stackAutoCuts')applyStackAutoCuts(value?.mode||'percentile');
   else if(action==='adjust'){
+    const previousStretch=$('stretch').value;
     for(const key of ['low','high','stretch','cmap'])$(key).value=value[key];
+    if($('stretch').value!==previousStretch)resetAutoThresholds();
     $('invert').checked=!!value.invert;if('threshold' in value)$('threshold').checked=!!value.threshold;
     if(value.cuts!=='manual'){applyAutoCuts(value.cuts);return;}
     $('cuts').value='manual';
@@ -1466,14 +1477,14 @@ function openMontageDialog(){
 }
 $('openBC').onclick=openBCDialog;
 $('autoCuts').onclick=()=>applyAutoCuts('percentile');
-$('resetCuts').onclick=()=>applyAutoCuts('minmax',true);
+$('resetCuts').onclick=()=>applyAutoCuts('minmax');
 $('montage').onclick=openMontageDialog;
 function stackRangeFields(){return `<label>First slice <input class="stack-first" type="number" min="1" max="${dataset.frames}" value="1"></label><label>Last slice <input class="stack-last" type="number" min="1" max="${dataset.frames}" value="${dataset.frames}"></label>`;}
 function stackRange(dialog){const start=Number(dialog.querySelector('.stack-first').value),end=Number(dialog.querySelector('.stack-last').value);if(!Number.isInteger(start)||!Number.isInteger(end)||start<1||end>dataset.frames||end<start)throw new Error(`Choose slices between 1 and ${dataset.frames}.`);return {start,end};}
 function runStackImage(action,args={}){vscode.postMessage({type:'stack',fileFrame:activeFileFrame,args:{action,dataset:dataset?.id,...args}});}
 async function runStackAnalysis(action,args,title){
   try{
-    const result=await request('stack',{action,dataset:dataset.id,...args});
+    const result=await request('stack',{action,dataset:dataset.id,stretch:$('stretch').value,...args});
     document.querySelector(`[data-dialog="stack-${action}"]`)?.remove();
     const dialog=openDialog(`stack-${action}`,title,`<canvas class="stack-plot interactive-plot" width="520" height="190" hidden></canvas><div class="plot-readout"></div><div class="stack-result stats-content"></div>`),plot=dialog.querySelector('.stack-plot'),content=dialog.querySelector('.stack-result');dialog.classList.add('statistics-dialog');if(action==='zAxisProfile')dialog.classList.add('plot-dialog');
     const table=(headers,rows)=>`<div class="stats-scroll"><table class="stats-table"><thead><tr>${headers.map(value=>`<th>${value}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(value=>`<td>${value}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -1600,9 +1611,9 @@ document.addEventListener('keydown',e=>{
   else if(action==='play')$('play').click();
   else if(action==='rename')$('imageRename').click();
   else if(action==='autoCuts')applyAutoCuts('percentile');
-  else if(action==='resetCuts')applyAutoCuts('minmax',true);
+  else if(action==='resetCuts')applyAutoCuts('minmax');
   else if(action==='stackAutoCuts')applyStackAutoCuts('percentile');
-  else if(action==='stackResetCuts')applyStackAutoCuts('minmax',true);
+  else if(action==='stackResetCuts')applyStackAutoCuts('minmax');
   else if(action==='clear'){$('clear').click();stopPlay();stopBlink();for(const menu of document.querySelectorAll('.menu'))menu.open=false;}
   else if(action==='zoomIn'||action==='zoomOut'||action==='actual')$(action).click();
   else $(action)?.click();
