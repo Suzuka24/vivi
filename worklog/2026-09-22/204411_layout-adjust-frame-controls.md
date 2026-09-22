@@ -17,7 +17,12 @@
 - 调整 Adjust 最后一行和 Layout 工具行样式，保持按钮/输入框高度一致，并增加工具行与 Frame 列表间距。
 - 版本更新到 `0.7.15`，同步中英文 README、usage 和 changelog。
 - 验证：JavaScript 语法检查通过；Node 26 项测试通过；Python 45 项测试通过；`vivi-0.7.15.vsix` 打包成功（50 files，303.21 KB）。
+- 源码提交 `6485f03` 已推送到 `origin/main`。
+- 同一份 `vivi-0.7.15.vsix` 已安装到本机 Cursor、`hyh-batchcom2` Cursor Server、`ssk-CAST` Cursor Server；三处均核对为 `suzuka24.vivi@0.7.15`。本机安装包中的 Python worker diagnostics 通过，依赖无缺失；远端临时 VSIX 已清理。
 
 ## 总结
 
-- 待完成 Git 推送和三台 Cursor 安装核对。
+- 已完成 Layout 排序控件与全局排序命令、Layout Frame 导航快捷键、锁组语义合并、Adjust 控件排版和 stack 当前 slice 范围修复。
+- 全部自动化验证通过，源码已推送，三台 Cursor 已更新到 `0.7.15`。
+- 未完成事项：按用户要求未操控 Cursor 做界面交互测试；实际 UI 外观与交互由用户打开 Cursor 后验收。
+- 剩余风险：窄侧栏下 Layout 第一行会横向滚动以保持所有控件同一行；全局 Frame 排序键仅在存在 vivi session 时接管 Shift/Ctrl + Up/Down。
