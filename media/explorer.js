@@ -70,8 +70,8 @@ function renderSidebar(state){
       const moveUp=moveButton('Move Up','up',frameIndex<=0),moveDown=moveButton('Move Down','down',frameIndex>=lastIndex),moveFirst=moveButton('Move to Top','first',frameIndex<=0),moveLast=moveButton('Move to Bottom','last',frameIndex>=lastIndex);
       const removeFrame=document.createElement('button');removeFrame.type='button';removeFrame.role='menuitem';removeFrame.textContent='Close Frame';removeFrame.onclick=()=>{closeMenu();sideAction('closeFrame',frame.id);};
       menu.append(rename,duplicate,moveUp,moveDown,moveFirst,moveLast,removeFrame);menu.hidden=false;
-      menu.style.left=Math.min(e.clientX,document.body.clientWidth-menu.offsetWidth-4)+'px';
-      menu.style.top=Math.min(e.clientY,document.body.clientHeight-menu.offsetHeight-4)+'px';
+      menu.style.left=Math.max(4,Math.min(e.clientX,window.innerWidth-menu.offsetWidth-4))+'px';
+      menu.style.top=Math.max(4,Math.min(e.clientY,window.innerHeight-menu.offsetHeight-4))+'px';
       rename.focus();
     };
     list.append(row);
@@ -185,9 +185,8 @@ function showMenu(event, item) {
     menu.append(button);
   }
   menu.hidden = false;
-  const rect = document.body.getBoundingClientRect();
-  menu.style.left = Math.min(event.clientX, rect.width - menu.offsetWidth - 4) + 'px';
-  menu.style.top = Math.min(event.clientY, rect.height - menu.offsetHeight - 4) + 'px';
+  menu.style.left = Math.max(4, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 4)) + 'px';
+  menu.style.top = Math.max(4, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 4)) + 'px';
   menu.querySelector('button').focus();
 }
 function render() {

@@ -55,10 +55,11 @@ class FixtureTests(unittest.TestCase):
                 with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
                     self.assertEqual(image.size, (32, 24))
                     self.assertEqual(image.mode, 'L' if lut == 'gray' else 'RGB')
-        self.assertEqual(len(imagej_tables()), 89)
+        self.assertEqual(len(imagej_tables()), 95)
         self.assertIn('ij-physics', imagej_tables())
         manifest=json.loads((Path(__file__).parents[1]/'backend'/'imagej_luts_manifest.json').read_text())
-        self.assertFalse(any(name[:3].isdigit() and name[3:4] in (' ', '-') for _,name in manifest))
+        for name in ('ij-000-gray','ij-001-fire','ij-002-spectrum','ij-003-ice','ij-004-phase','ij-005-random'):
+            self.assertIn(name,imagej_tables())
         for lut in imagej_tables():
             with self.subTest(lut=lut):
                 result=self.session.handle({'op':'render','dataset':0,'frame':0,'size':128,'cmap':lut})
@@ -66,23 +67,22 @@ class FixtureTests(unittest.TestCase):
                     self.assertEqual(image.mode,'RGB')
                     self.assertEqual(image.size,(32,24))
 
-    def test_virtual_stretch_updates_pixels_histograms_and_measurements(self):
+    def test_stretch_does_not_change_pixels_histograms_or_measurements(self):
         self.open('plain.tif')
         source=np.arange(32*24,dtype=float).reshape(24,32)
-        virtual=np.sqrt(source/source.max())*source.max()
         pixel=self.session.handle({'op':'pixel','dataset':0,'frame':0,'x':3,'y':4,'stretch':'sqrt'})
-        self.assertAlmostEqual(pixel['value'],virtual[4,3])
+        self.assertAlmostEqual(pixel['value'],source[4,3])
         measured=self.session.handle({'op':'measure','dataset':0,'frame':0,'stretch':'sqrt'})
-        self.assertAlmostEqual(measured['mean'],virtual.mean())
+        self.assertAlmostEqual(measured['mean'],source.mean())
         histogram=self.session.handle({'op':'histogram','dataset':0,'frame':0,'stretch':'sqrt','bins':32})
-        self.assertAlmostEqual(histogram['mean'],virtual.mean())
+        self.assertAlmostEqual(histogram['mean'],source.mean())
         self.assertEqual(histogram['samples'],source.size)
         self.assertEqual(self.pixel(),131)
 
     def test_process_filters_on_fixed_image(self):
         self.open('gray.png')
         for action in ('smooth', 'sharpen', 'findEdges', 'invertPixels', 'sqrt',
-                       'square', 'log', 'exp', 'abs', 'thresholdBinary',
+                       'square', 'log', 'exp', 'abs', 'power', 'asinh', 'sinh', 'histeq', 'thresholdBinary',
                        'binaryErode', 'binaryDilate', 'binaryOpen', 'binaryClose', 'fftPower',
                        'mean', 'minimum', 'maximum', 'variance', 'findMaxima',
                        'noiseGaussian', 'saltPepper', 'shadowNorth', 'shadowSouth',

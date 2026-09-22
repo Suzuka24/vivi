@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.20 (development build; not published)
+
+- Apply Stretch only to normalized display brightness after Minimum/Maximum; keep Auto/Reset, histograms, measurements, profiles, thresholds, and pixel readouts on real pixel values, and draw the selected nonlinear function in Curve.
+- Add Power, Asinh, Sinh, and Histogram Equalization to Process > Math; add Exp and Abs to Stretch; use consistent operation labels in both menus.
+- Keep Layout and Explorer context menus above scroll containers and make oversized menus scroll within the Webview viewport.
+- Restore the numbered `000` through `005` LUT entries alongside their equivalent clean names.
+
 ## 0.7.19 (development build; not published)
 
 - Combine every uniquely named LUT from ImageJ's built-ins, LUT archive, current distribution, and Fiji, including Physics; remove archive-only `000-` through `005-` ordering prefixes and sort the combined menu by name.

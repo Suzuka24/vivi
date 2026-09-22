@@ -2,11 +2,11 @@
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,stretchContext,stretchedValue,stretchedDisplayPixel,stretchedResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
-lutOptions.push(...[["ij-5-ramps","5 Ramps"],["ij-6-reserved-colors","6 Reserved Colors"],["ij-6-shades","6 Shades"],["ij-16-colors","16 Colors"],["ij-16-equal","16 Equal"],["ij-16-ramps","16 Ramps"],["ij-20-colors","20 Colors"],["ij-32-colors","32 Colors"],["ij-amber","Amber"],["ij-auxctq","Auxctq"],["ij-blue-orange","Blue Orange"],["ij-blue-orange-icb","Blue Orange Icb"],["ij-brain","Brain"],["ij-brgbcmyw","BRGBCMYW"],["ij-cells","Cells"],["ij-cequal","Cequal"],["ij-cmy","CMY"],["ij-cmy-cyan","CMY Cyan"],["ij-cmy-magneta","CMY Magneta"],["ij-cmy-yellow","CMY Yellow"],["ij-cold","Cold"],["ij-cool","Cool"],["ij-cti-ras","CTI RAS"],["ij-cyan-hot","Cyan Hot"],["ij-edges","Edges"],["ij-gem","Gem"],["ij-gem-16","Gem 16"],["ij-gem-256","Gem 256"],["ij-glasbey","Glasbey"],["ij-glasbey-inverted","Glasbey Inverted"],["ij-glasbey-on-dark","Glasbey On Dark"],["ij-glow","Glow"],["ij-gold","Gold"],["ij-green-fire-blue","Green Fire Blue"],["ij-gyr-centre","GYR Centre"],["ij-heart","Heart"],["ij-hilo","HiLo"],["ij-hue","Hue"],["ij-hue-ramps-08","Hue Ramps 08"],["ij-hue-ramps-16","Hue Ramps 16"],["ij-ica","ICA"],["ij-ica2","ICA2"],["ij-ica3","ICA3"],["ij-iman","Iman"],["ij-invert-gray","Invert Gray"],["ij-isocontour","Isocontour"],["ij-jet","Jet"],["ij-log-down","Log Down"],["ij-log-up","Log Up"],["ij-magenta-hot","Magenta Hot"],["ij-mixed","Mixed"],["ij-mpl-inferno","MPL Inferno"],["ij-mpl-magma","MPL Magma"],["ij-mpl-plasma","MPL Plasma"],["ij-mpl-viridis","MPL Viridis"],["ij-neon-blue","Neon Blue"],["ij-neon-green","Neon Green"],["ij-neon-magenta","Neon Magenta"],["ij-neon-red","Neon Red"],["ij-orange-hot","Orange Hot"],["ij-pastel","Pastel"],["ij-phase","Phase"],["ij-physics","Physics"],["ij-rainbow-rgb","Rainbow RGB"],["ij-random","Random"],["ij-red-hot","Red Hot"],["ij-rgb-blue","RGB Blue"],["ij-rgb-green","RGB Green"],["ij-rgb-red","RGB Red"],["ij-royal","Royal"],["ij-sepia","Sepia"],["ij-siemens","Siemens"],["ij-smart","Smart"],["ij-split-blackblue-redwhite","Split Blackblue Redwhite"],["ij-split-blackwhite-ge","Split Blackwhite Ge"],["ij-split-blackwhite-warmmetal","Split Blackwhite Warmmetal"],["ij-split-bluered-warmmetal","Split Bluered Warmmetal"],["ij-system-lut","System LUT"],["ij-thal","Thal"],["ij-thal-16","Thal 16"],["ij-thal-256","Thal 256"],["ij-thallium","Thallium"],["ij-thermal","Thermal"],["ij-topography","Topography"],["ij-unionjack","Unionjack"],["ij-viridis","Viridis"],["ij-vivid","Vivid"],["ij-warhol","Warhol"],["ij-yellow-hot","Yellow Hot"]]);
+lutOptions.push(...[["ij-000-gray","000 Gray"],["ij-001-fire","001 Fire"],["ij-002-spectrum","002 Spectrum"],["ij-003-ice","003 Ice"],["ij-004-phase","004 Phase"],["ij-005-random","005 Random"],["ij-16-colors","16 Colors"],["ij-16-equal","16 Equal"],["ij-16-ramps","16 Ramps"],["ij-20-colors","20 Colors"],["ij-32-colors","32 Colors"],["ij-5-ramps","5 Ramps"],["ij-6-reserved-colors","6 Reserved Colors"],["ij-6-shades","6 Shades"],["ij-amber","Amber"],["ij-auxctq","Auxctq"],["ij-blue-orange","Blue Orange"],["ij-blue-orange-icb","Blue Orange Icb"],["ij-brain","Brain"],["ij-brgbcmyw","BRGBCMYW"],["ij-cells","Cells"],["ij-cequal","Cequal"],["ij-cmy","CMY"],["ij-cmy-cyan","CMY Cyan"],["ij-cmy-magneta","CMY Magneta"],["ij-cmy-yellow","CMY Yellow"],["ij-cold","Cold"],["ij-cool","Cool"],["ij-cti-ras","CTI RAS"],["ij-cyan-hot","Cyan Hot"],["ij-edges","Edges"],["ij-gem","Gem"],["ij-gem-16","Gem 16"],["ij-gem-256","Gem 256"],["ij-glasbey","Glasbey"],["ij-glasbey-inverted","Glasbey Inverted"],["ij-glasbey-on-dark","Glasbey On Dark"],["ij-glow","Glow"],["ij-gold","Gold"],["ij-green-fire-blue","Green Fire Blue"],["ij-gyr-centre","GYR Centre"],["ij-heart","Heart"],["ij-hilo","HiLo"],["ij-hue","Hue"],["ij-hue-ramps-08","Hue Ramps 08"],["ij-hue-ramps-16","Hue Ramps 16"],["ij-ica","ICA"],["ij-ica2","ICA2"],["ij-ica3","ICA3"],["ij-iman","Iman"],["ij-invert-gray","Invert Gray"],["ij-isocontour","Isocontour"],["ij-jet","Jet"],["ij-log-down","Log Down"],["ij-log-up","Log Up"],["ij-magenta-hot","Magenta Hot"],["ij-mixed","Mixed"],["ij-mpl-inferno","MPL Inferno"],["ij-mpl-magma","MPL Magma"],["ij-mpl-plasma","MPL Plasma"],["ij-mpl-viridis","MPL Viridis"],["ij-neon-blue","Neon Blue"],["ij-neon-green","Neon Green"],["ij-neon-magenta","Neon Magenta"],["ij-neon-red","Neon Red"],["ij-orange-hot","Orange Hot"],["ij-pastel","Pastel"],["ij-phase","Phase"],["ij-physics","Physics"],["ij-rainbow-rgb","Rainbow RGB"],["ij-random","Random"],["ij-red-hot","Red Hot"],["ij-rgb-blue","RGB Blue"],["ij-rgb-green","RGB Green"],["ij-rgb-red","RGB Red"],["ij-royal","Royal"],["ij-sepia","Sepia"],["ij-siemens","Siemens"],["ij-smart","Smart"],["ij-split-blackblue-redwhite","Split Blackblue Redwhite"],["ij-split-blackwhite-ge","Split Blackwhite Ge"],["ij-split-blackwhite-warmmetal","Split Blackwhite Warmmetal"],["ij-split-bluered-warmmetal","Split Bluered Warmmetal"],["ij-system-lut","System LUT"],["ij-thal","Thal"],["ij-thal-16","Thal 16"],["ij-thal-256","Thal 256"],["ij-thallium","Thallium"],["ij-thermal","Thermal"],["ij-topography","Topography"],["ij-unionjack","Unionjack"],["ij-viridis","Viridis"],["ij-vivid","Vivid"],["ij-warhol","Warhol"],["ij-yellow-hot","Yellow Hot"]]);
 lutOptions.sort((a,b)=>a[1].localeCompare(b[1],undefined,{numeric:true,sensitivity:'base'}));
 const canvas = $('canvas'), ctx = canvas.getContext('2d');
 let sliceAxis = null, errorUntil = 0, errorTimer, transferVisible = true;
@@ -64,7 +64,7 @@ function tilePictureRatio(state,d,picture,w,tw,th){
 function sidebarState(){
   if(!dataset)return null;
   const currentFrame=Number($('frame').value)-1,entry=currentRawEntry();
-  const [rangeMin,rangeMax]=entry?stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry)):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,`${currentFrame}:${$('stretch').value}`,Number($('low').value),Number($('high').value));
+  const [rangeMin,rangeMax]=entry?imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry)):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,currentFrame,Number($('low').value),Number($('high').value));
   return {active:activeFileFrame,activeLabel:metadata.label||metadata.path.split(/[\\/]/).pop(),frames:[...fileFrames].map(([id,state])=>({id,label:state.metadata.label||state.metadata.path.split(/[\\/]/).pop(),visible:state.visible!==false,locked:!!state.lockMember,loading:!!state.loading})),
     datasets:metadata.datasets.map(d=>({id:d.id,name:d.name})),datasetId:dataset.id,slice:Number($('frame').value),total:dataset.frames,fps:Number($('fps').value)||defaultFps,playing,blinking,tile:tileMode,columns:layoutColumns,rows:layoutRows,locks:[...frameLocks],
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin,rangeMax,stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked,bcVisible:transferVisible};
@@ -359,8 +359,8 @@ async function recolorEntry(entry,args){
   const colorKey=JSON.stringify([low,high,args.stretch,args.cmap,args.invert,args.threshold]);
   if(entry.image&&entry.colorKey===colorKey)return;
   const lut=entry.channels>1&&!args.threshold?null:await lutTable(args.cmap);
-  const kind=imageJDataKind(entry),context=entryStretchContext(entry,args.stretch,kind);
-  const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high,kind,stretchContext:context},lut);
+  const context=entryStretchContext(entry,args.stretch,low,high);
+  const pixels=renderPixels(entry.raw,entry.result.width,entry.result.height,entry.channels,{...args,low,high,stretchContext:context},lut);
   const image=document.createElement('canvas');image.width=entry.result.width;image.height=entry.result.height;
   image.getContext('2d').putImageData(new ImageData(pixels,image.width,image.height),0,0);
   if(entry.paintVersion!==paintVersion)return;
@@ -574,17 +574,29 @@ function loadTransferHistogram(){
   if(transferHistograms.has(key))return;
   transferHistograms.set(key,null);
   const boundKey=key;
-  request('histogram',{...base(),bins:128},true).then(result=>{transferHistograms.set(key,result);if(!displayBounds.has(boundKey)&&Number.isFinite(result.min)&&Number.isFinite(result.max)&&result.max>result.min)displayBounds.set(boundKey,[result.min,result.max]);if(key===transferHistogramKey()){drawTransferCurve();publishSidebar();}}).catch(()=>transferHistograms.delete(key));
+  request('histogram',{...base(),bins:256},true).then(result=>{transferHistograms.set(key,result);if(!displayBounds.has(boundKey)&&Number.isFinite(result.min)&&Number.isFinite(result.max)&&result.max>result.min)displayBounds.set(boundKey,[result.min,result.max]);if(key===transferHistogramKey()){for(const entry of frameCache.values())entry.stretchContexts?.clear();drawTransferCurve();publishSidebar();if($('stretch').value==='histeq')scheduleRender(0);}}).catch(()=>transferHistograms.delete(key));
 }
-function transferHistogramKey(){return `${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}:${$('stretch').value}`;}
+function transferHistogramKey(){return `${activeFileFrame}:${dataset?.id}:${Number($('frame').value)-1}`;}
+function transferStretchContext(stretch,low,high){
+  const histogram=transferHistograms.get(transferHistogramKey());
+  const zero=high>low?(0-low)/(high-low):0;
+  if(stretch!=='histeq'||!histogram?.counts?.length||!(high>low))return stretchContextFromHistogram(null,stretch,zero);
+  const counts=new Uint32Array(256),edges=histogram.edges||[],range=high-low;
+  for(let index=0;index<histogram.counts.length;index++){
+    const value=(edges[index]+edges[index+1])/2;if(!Number.isFinite(value)||value<low||value>high)continue;
+    counts[Math.max(0,Math.min(255,Math.floor((value-low)/range*255)))]+=histogram.counts[index];
+  }
+  return stretchContextFromHistogram(counts,stretch,zero);
+}
 function drawTransferCurve(){
   const canvas=$('transferCurve'),g=canvas.getContext('2d'),w=canvas.width,h=canvas.height,low=Number($('low').value),high=Number($('high').value);if(!Number.isFinite(low)||!Number.isFinite(high))return;
   const histogram=transferHistograms.get(transferHistogramKey());
   const bounds=displayBounds.get(transferHistogramKey()),span=Math.max(Number.MIN_VALUE,high-low),start=histogram?.min??bounds?.[0]??low,end=histogram?.max??bounds?.[1]??high,extent=Math.max(Number.MIN_VALUE,end-start),x=value=>Math.max(0,Math.min(w,(value-start)/extent*w));
   g.fillStyle='#1a2028';g.fillRect(0,0,w,h);
   if(histogram){const peak=Math.max(1,...histogram.counts);g.fillStyle='#55626d';for(let i=0;i<histogram.counts.length;i++){const height=Math.min(h-4,histogram.counts[i]/peak*(h-4));g.fillRect(i*w/histogram.counts.length,h-height,Math.max(1,w/histogram.counts.length),height);}}
-  const y=value=>h-Math.max(0,Math.min(1,(value-low)/span))*h;
-  g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();g.moveTo(0,y(start));if(low>start&&low<end)g.lineTo(x(low),h);if(high>start&&high<end)g.lineTo(x(high),0);g.lineTo(w,y(end));g.stroke();
+  const context=transferStretchContext($('stretch').value,low,high),y=value=>h-stretchIntensity((value-low)/span,context)*h;
+  g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();
+  for(let point=0;point<=128;point++){const value=start+extent*point/128,px=point*w/128,py=y(value);if(point)g.lineTo(px,py);else g.moveTo(px,py);}g.stroke();
   g.fillStyle='#d5e4e7';for(const value of [low,high]){const px=x(value);g.fillRect(Math.max(0,Math.min(w-1,px)),h-5,1,5);}
   $('transferLow').textContent=formatValue(low);$('transferHigh').textContent=formatValue(high);
 }
@@ -622,22 +634,22 @@ function imageJDataKind(entry){
   if(entry.raw instanceof Uint16Array||/^(?:[<>=|]?u2|uint16)$/.test(dtype))return 'short';
   return 'float';
 }
-function entryStretchContext(entry,stretch=$('stretch').value,kind=imageJDataKind(entry)){
+function entryStretchContext(entry,stretch=$('stretch').value,low=Number($('low').value),high=Number($('high').value)){
   entry.stretchContexts??=new Map();
-  const key=`${stretch}:${kind}`;
-  if(!entry.stretchContexts.has(key))entry.stretchContexts.set(key,stretchContext(entry.raw,entry.channels||1,stretch,kind));
+  const key=`${stretch}:${low}:${high}`;
+  if(!entry.stretchContexts.has(key))entry.stretchContexts.set(key,stretchContext(entry.raw,entry.channels||1,stretch,low,high));
   return entry.stretchContexts.get(key);
 }
 function resetLimitsForEntries(entries){
   if(!entries.length)return [0,1];
   let low=Infinity,high=-Infinity;
-  for(const entry of entries){const limits=stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry));low=Math.min(low,limits[0]);high=Math.max(high,limits[1]);}
+  for(const entry of entries){const limits=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));low=Math.min(low,limits[0]);high=Math.max(high,limits[1]);}
   return Number.isFinite(low)&&Number.isFinite(high)?[low,high]:[0,1];
 }
 function imageJSelectionLimits(entries,previousThreshold){
   return imageJAutoLimitsFromPixels(consume=>{
     for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,channels)=>{
-      let value=stretchedDisplayPixel(entry.raw,offset,channels,entryStretchContext(entry));
+      let value=channels<=1?Number(entry.raw[offset]):Array.from({length:Math.min(3,channels)},(_,channel)=>Number(entry.raw[offset+channel])).reduce((sum,item)=>sum+item,0)/Math.min(3,channels);
       if(channels>1)value=Math.floor(value+0.5);consume(value);
     });
   },previousThreshold,imageJDataKind(entries[0]));
@@ -652,15 +664,15 @@ function applyAutoCuts(mode){
   if(!entry){$('cuts').value=mode;commitFrameChange('bc');scheduleRender(0);return;}
   let low,high;
   if(mode==='minmax'){
-    imageJAutoThreshold=0;[low,high]=stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry));
+    imageJAutoThreshold=0;[low,high]=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));
   }else if(mode==='percentile'){
     const result=imageJSelectionLimits([entry],imageJAutoThreshold);
     imageJAutoThreshold=result.autoThreshold;
     if(result.limits)[low,high]=result.limits;
-    else{imageJAutoThreshold=0;[low,high]=stretchedResetLimits(entry.raw,entry.channels,$('stretch').value,imageJDataKind(entry));}
+    else{imageJAutoThreshold=0;[low,high]=imageJResetLimits(entry.raw,entry.channels,imageJDataKind(entry));}
   }else{
-    const context=entryStretchContext(entry),samples=[];
-    forEachSelectionPixel(entry,Infinity,(offset,channels)=>{for(let channel=0;channel<channels;channel++)samples.push(stretchedValue(Number(entry.raw[offset+channel]),context));});
+    const samples=[];
+    forEachSelectionPixel(entry,Infinity,(offset,channels)=>{for(let channel=0;channel<channels;channel++)samples.push(Number(entry.raw[offset+channel]));});
     [low,high]=autoLimits(samples,entry.channels,mode);
   }
   applyCutLimits(low,high);
@@ -686,7 +698,7 @@ function applyStackAutoCuts(mode){
   }else{
     const channels=entries[0].channels||1,samples=[];
     for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,entryChannels)=>{
-      const context=entryStretchContext(entry);for(let channel=0;channel<entryChannels;channel++)samples.push(stretchedValue(Number(entry.raw[offset+channel]),context));
+      for(let channel=0;channel<entryChannels;channel++)samples.push(Number(entry.raw[offset+channel]));
     });
     [low,high]=autoLimits(samples,channels,mode);
   }
@@ -1149,7 +1161,7 @@ const analysisHead=$('analysisPane').querySelector('.analysis-head');
 analysisHead.onpointerdown=event=>{if(event.target.closest('button'))return;const pane=$('analysisPane'),rect=pane.getBoundingClientRect(),stage=$('stage').getBoundingClientRect(),left=rect.left-stage.left,top=rect.top-stage.top,startX=event.clientX,startY=event.clientY;pane.style.left=left+'px';pane.style.top=top+'px';pane.style.right='auto';pane.style.bottom='auto';analysisHead.setPointerCapture(event.pointerId);analysisHead.onpointermove=move=>{if(!analysisHead.hasPointerCapture(event.pointerId))return;pane.style.left=Math.max(0,left+move.clientX-startX)+'px';pane.style.top=Math.max(0,top+move.clientY-startY)+'px';};};
 analysisHead.onpointerup=event=>{if(analysisHead.hasPointerCapture(event.pointerId))analysisHead.releasePointerCapture(event.pointerId);analysisHead.onpointermove=null;};
 $('dataset').onchange=selectDataset;
-for(const id of ['cuts','stretch'])$(id).onchange=()=>{if(id==='stretch')resetAutoThresholds();commitFrameChange('bc');scheduleRender(0);};
+for(const id of ['cuts','stretch'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['cmap','invert','threshold'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['low','high'])$(id).onchange=()=>{$('cuts').value='manual';commitFrameChange('bc');scheduleRender(0);};
 $('clear').onclick=()=>{selection=null;vertices=[];refreshSelection();};
@@ -1248,9 +1260,7 @@ function applySidebarAction(action,value){
   else if(action==='autoCuts')applyAutoCuts(value?.mode||'percentile');
   else if(action==='stackAutoCuts')applyStackAutoCuts(value?.mode||'percentile');
   else if(action==='adjust'){
-    const previousStretch=$('stretch').value;
     for(const key of ['low','high','stretch','cmap'])$(key).value=value[key];
-    if($('stretch').value!==previousStretch)resetAutoThresholds();
     $('invert').checked=!!value.invert;if('threshold' in value)$('threshold').checked=!!value.threshold;
     if(value.cuts!=='manual'){applyAutoCuts(value.cuts);return;}
     $('cuts').value='manual';
@@ -1344,7 +1354,13 @@ function openRotateDialog(){
 }
 $('rotateArbitrary').onclick=openRotateDialog;
 for(const [target,source] of [['toolMontage','montage'],['toolOrthogonal','stackOrthogonal'],['toolHistogram','histogram'],['toolMeasure','measure'],['toolFlipHorizontal','flipHorizontal'],['toolFlipVertical','flipVertical'],['toolRotateLeft','rotateLeft'],['toolRotateRight','rotateRight']])$(target).onclick=()=>$(source).click();
-for(const [id,action,label] of [['imageCrop','crop','Crop'],['type8','to8','8-bit'],['type16','to16','16-bit'],['type32','to32','32-bit'],['typeRgb','toRgb','RGB Color'],['processNormalize','normalize','Normalize'],['processSmooth','smooth','Smooth'],['processSharpen','sharpen','Sharpen'],['processEdges','findEdges','Find Edges'],['processErode','binaryErode','Erode'],['processDilate','binaryDilate','Dilate'],['processOpen','binaryOpen','Open'],['processClose','binaryClose','Close'],['processFft','fftPower','FFT'],['mathInvert','invertPixels','Invert'],['mathSqrt','sqrt','Square Root'],['mathSquare','square','Square'],['mathLog','log','Log'],['mathExp','exp','Exp'],['mathAbs','abs','Abs']])$(id).onclick=()=>derive(action,label);
+for(const [id,action,label] of [['imageCrop','crop','Crop'],['type8','to8','8-bit'],['type16','to16','16-bit'],['type32','to32','32-bit'],['typeRgb','toRgb','RGB Color'],['processNormalize','normalize','Normalize'],['processSmooth','smooth','Smooth'],['processSharpen','sharpen','Sharpen'],['processEdges','findEdges','Find Edges'],['processErode','binaryErode','Erode'],['processDilate','binaryDilate','Dilate'],['processOpen','binaryOpen','Open'],['processClose','binaryClose','Close'],['processFft','fftPower','FFT'],['mathInvert','invertPixels','Invert'],['mathSqrt','sqrt','Square Root'],['mathSquare','square','Square'],['mathLog','log','Log'],['mathAsinh','asinh','Asinh'],['mathSinh','sinh','Sinh'],['mathExp','exp','Exp'],['mathAbs','abs','Abs'],['mathHisteq','histeq','Histogram Equalization']])$(id).onclick=()=>derive(action,label);
+$('mathPower').onclick=()=>{
+  document.querySelector('[data-dialog="math-power"]')?.remove();
+  const dialog=openDialog('math-power','Power',`<label>Exponent <input class="math-power-value" type="number" min="-100" max="100" step="any" value="2"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="math-power-cancel">Cancel</button><button class="math-power-run">Apply</button></div>`);
+  dialog.querySelector('.math-power-cancel').onclick=()=>dialog.remove();
+  dialog.querySelector('.math-power-run').onclick=()=>{const value=Number(dialog.querySelector('.math-power-value').value);if(!Number.isFinite(value)||value < -100||value > 100){dialog.querySelector('.roi-dialog-error').textContent='Exponent must be between -100 and 100.';return;}derive('power','Power',value);dialog.remove();};
+};
 $('imageInfo').onclick=()=>openDialog('info','Image Info',`<pre>${escapeHtml(metadata.path)}\n${dataset.width} × ${dataset.height} · ${escapeHtml(dataset.dtype)}\n${escapeHtml(dataset.shape.join(' × '))} · ${escapeHtml(dataset.targetExpression||dataset.axes||'h w')}\nDisplay: ${$('low').value} … ${$('high').value}</pre>`);
 $('imageScale').onclick=()=>{
   document.querySelector('[data-dialog="scale"]')?.remove();

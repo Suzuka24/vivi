@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,imageJAutoLimits,imageJResetLimits,stretchContext,stretchedValue,stretchedResetLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange}=require('../media/display');
+const {autoLimits,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -57,13 +57,24 @@ test('ImageJ reset uses the type range for byte images and exact values for floa
   assert.deepEqual(imageJResetLimits(new Uint8Array([1,2,3,4,5,6]),3,'byte'),[0,255]);
 });
 
-test('stretch creates a virtual pixel layer without changing linear source values',()=>{
-  const raw=new Float32Array([0,25,100]),context=stretchContext(raw,1,'sqrt','float');
+test('stretch changes display intensity after the raw minimum and maximum window',()=>{
+  const raw=new Float32Array([0,25,100]),context=stretchContext(raw,1,'sqrt',0,100);
   assert.deepEqual([...raw],[0,25,100]);
-  assert.deepEqual([0,25,100].map(value=>stretchedValue(value,context)),[0,50,100]);
-  assert.deepEqual(stretchedResetLimits(raw,1,'sqrt','float'),[0,100]);
-  const rendered=renderPixels(raw,3,1,1,{low:0,high:100,stretch:'sqrt',kind:'float'});
+  assert.deepEqual([0,.25,1].map(value=>stretchIntensity(value,context)),[0,.5,1]);
+  const rendered=renderPixels(raw,3,1,1,{low:0,high:100,stretch:'sqrt'});
   assert.deepEqual([...rendered.filter((_,index)=>index%4===0)],[0,127,255]);
+});
+
+test('stretch operations share normalized names and retain raw threshold values',()=>{
+  const raw=new Float32Array([-1,0,1,2]);
+  for(const stretch of ['linear','log','power','sqrt','square','asinh','sinh','exp','abs','histeq']){
+    const rendered=renderPixels(raw,4,1,1,{low:0,high:2,stretch});
+    assert.equal(rendered.length,16,stretch);
+  }
+  const threshold=renderPixels(raw,4,1,1,{low:0,high:1,stretch:'sqrt',threshold:true});
+  assert.deepEqual([...threshold.filter((_,index)=>index%4===0)],[0,255,255,0]);
+  const absolute=renderPixels(new Float32Array([-2,-1,0,1,2]),5,1,1,{low:-2,high:2,stretch:'abs'});
+  assert.deepEqual([...absolute.filter((_,index)=>index%4===0)],[255,127,0,127,255]);
 });
 
 test('frame reorder actions move the active entry without changing frame identity',()=>{

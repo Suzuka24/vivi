@@ -387,69 +387,6 @@ class Session:
     def __init__(self):
         self.source = None
         self.cuts = {}
-        self.stretch_contexts = {}
-
-    def stretch_context(self, d, frame, stretch):
-        if not stretch or stretch == "linear":
-            return None
-        key = (d["id"], frame, stretch)
-        if key in self.stretch_contexts:
-            return self.stretch_contexts[key]
-        minimum, maximum = math.inf, -math.inf
-        is_byte = False
-        for y in range(0, d["height"], 256):
-            for x in range(0, d["width"], 1024):
-                tile = [x, y, min(x+1024, d["width"]), min(y+256, d["height"])]
-                raw = np.asarray(self.source.read(d, frame, tile))
-                is_byte = is_byte or raw.dtype == np.uint8
-                values = np.asarray(raw, dtype=np.float64)
-                values = values[np.isfinite(values)]
-                if values.size:
-                    minimum = min(minimum, float(values.min()))
-                    maximum = max(maximum, float(values.max()))
-        if is_byte or self.source.source_channels(d) > 1:
-            minimum, maximum = 0., 255.
-        if not math.isfinite(minimum) or not math.isfinite(maximum):
-            minimum, maximum = 0., 1.
-        cdf = None
-        if stretch == "histeq" and maximum > minimum:
-            histogram = np.zeros(256, dtype=np.int64)
-            for y in range(0, d["height"], 256):
-                for x in range(0, d["width"], 1024):
-                    tile = [x, y, min(x+1024, d["width"]), min(y+256, d["height"])]
-                    values = np.asarray(self.source.read(d, frame, tile), dtype=np.float64)
-                    values = values[np.isfinite(values)]
-                    if values.size:
-                        histogram += np.histogram(values, bins=256, range=(minimum, maximum))[0]
-            if histogram.sum():
-                cdf = histogram.cumsum(dtype=np.float64) / histogram.sum()
-        context = (stretch, minimum, maximum, cdf)
-        self.stretch_contexts[key] = context
-        return context
-
-    @staticmethod
-    def stretched(data, context):
-        values = np.asarray(data, dtype=np.float64)
-        if context is None:
-            return values
-        stretch, minimum, maximum, cdf = context
-        span = maximum - minimum
-        if not span > 0:
-            return values
-        normalized = np.clip((values-minimum)/span, 0, 1)
-        if stretch == "log":
-            normalized = np.log1p(1000*normalized) / np.log1p(1000)
-        elif stretch in ("sqrt", "power"):
-            normalized = np.sqrt(normalized)
-        elif stretch == "asinh":
-            normalized = np.arcsinh(10*normalized) / np.arcsinh(10)
-        elif stretch == "squared":
-            normalized = np.square(normalized)
-        elif stretch == "sinh":
-            normalized = np.sinh(3*normalized) / np.sinh(3)
-        elif stretch == "histeq" and cdf is not None:
-            normalized = cdf[np.clip(np.rint(normalized*255), 0, 255).astype(np.uint8)]
-        return minimum + normalized*span
 
     @staticmethod
     def stack_range(d, req):
@@ -515,7 +452,6 @@ class Session:
                 self.source.close()
                 self.source = None
             self.cuts.clear()
-            self.stretch_contexts.clear()
             self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)),
                                  req.get("sequenceMode","2d"), req.get("sequenceSize"),
                                  req.get("axisLayouts"))
@@ -603,7 +539,7 @@ class Session:
         if op == "derive":
             import tifffile
             action = req.get("action")
-            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "rotate", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "binaryWatershed", "removeOutliers", "convolve", "fftBandpass", "stackToRgb", "mergeChannels"}
+            supported = {"crop", "flipHorizontal", "flipVertical", "add", "subtract", "multiply", "divide", "normalize", "equalizeHistogram", "histeq", "zMax", "zMean", "zMin", "gaussian", "median", "unsharp", "smooth", "sharpen", "findEdges", "invertPixels", "sqrt", "square", "log", "exp", "abs", "power", "asinh", "sinh", "thresholdBinary", "binaryErode", "binaryDilate", "binaryOpen", "binaryClose", "fftPower", "fftPowerImageJ", "channelRed", "channelGreen", "channelBlue", "to8", "to16", "to32", "toRgb", "resize", "rotateLeft", "rotateRight", "rotate180", "rotate", "mean", "minimum", "maximum", "variance", "findMaxima", "noiseGaussian", "saltPepper", "shadowNorth", "shadowSouth", "shadowEast", "shadowWest", "binaryFillHoles", "binarySkeleton", "binaryWatershed", "removeOutliers", "convolve", "fftBandpass", "stackToRgb", "mergeChannels"}
             if action not in supported:
                 raise ValueError("Unsupported image operation")
             area = (box[2]-box[0])*(box[3]-box[1])
@@ -699,7 +635,7 @@ class Session:
                     finite = result[np.isfinite(result)]
                     low, high = (float(finite.min()), float(finite.max())) if finite.size else (0., 1.)
                     result = np.clip((result.astype(np.float32)-low)/(high-low or 1.), 0, 1)
-                elif action == "equalizeHistogram":
+                elif action in ("equalizeHistogram", "histeq"):
                     data = result.astype(np.float64)
                     channels = [data[..., index] for index in range(data.shape[-1])] if data.ndim == 3 else [data]
                     output = []
@@ -807,7 +743,7 @@ class Session:
                         binary = np.uint8(np.any(data > 0, axis=-1) if data.ndim == 3 else data > 0) * 255
                         kernel = np.ones((3,3), dtype=np.uint8)
                         result = {"binaryErode":lambda:cv2.erode(binary,kernel),"binaryDilate":lambda:cv2.dilate(binary,kernel),"binaryOpen":lambda:cv2.morphologyEx(binary,cv2.MORPH_OPEN,kernel),"binaryClose":lambda:cv2.morphologyEx(binary,cv2.MORPH_CLOSE,kernel)}[action]()
-                elif action in ("invertPixels", "sqrt", "square", "log", "exp", "abs", "thresholdBinary", "fftPower", "fftPowerImageJ"):
+                elif action in ("invertPixels", "sqrt", "square", "log", "exp", "abs", "power", "asinh", "sinh", "thresholdBinary", "fftPower", "fftPowerImageJ"):
                     data = result.astype(np.float64)
                     if action == "invertPixels": result = np.nanmax(data) + np.nanmin(data) - data
                     elif action == "sqrt": result = np.sqrt(np.maximum(data, 0))
@@ -815,6 +751,14 @@ class Session:
                     elif action == "log": result = np.log1p(np.maximum(data, 0))
                     elif action == "exp": result = np.exp(np.clip(data, -50, 50))
                     elif action == "abs": result = np.abs(data)
+                    elif action == "power":
+                        exponent = finite_number(req.get("value"), 2)
+                        if not -100 <= exponent <= 100:
+                            raise ValueError("Power exponent must be between -100 and 100")
+                        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                            result = np.power(data, exponent)
+                    elif action == "asinh": result = np.arcsinh(data)
+                    elif action == "sinh": result = np.sinh(np.clip(data, -50, 50))
                     elif action == "thresholdBinary":
                         threshold = finite_number(req.get("value"), 0)
                         result = np.uint8(data >= threshold) * 255
@@ -1041,20 +985,18 @@ class Session:
             x, y = int(req["x"]), int(req["y"])
             if not (0 <= x < d["width"] and 0 <= y < d["height"]):
                 raise ValueError("Pixel out of bounds")
-            stretch = req.get("stretch", "linear")
-            values = [self.stretched(self.source.read(d, plane, [x, y, x+1, y+1])[0, 0],
-                                     self.stretch_context(d, plane, stretch))
+            values = [self.source.read(d, plane, [x, y, x+1, y+1])[0, 0]
                       for plane in range(start, end)]
             return {"frames": list(range(start + 1, end + 1)),
                     "values": [np.where(np.isfinite(v), v, None).tolist() for v in values],
                     "x": x, "y": y, "dataset": d["id"]}
         if op == "measureStack":
             start, end = self.stack_range(d, req)
-            return {"results": [self.measure(d, plane, box, req.get("selection"), req.get("stretch", "linear")) for plane in range(start, end)],
+            return {"results": [self.measure(d, plane, box, req.get("selection")) for plane in range(start, end)],
                     "dataset": d["id"], "box": box}
         if op == "stackStatistics":
             start, end = self.stack_range(d, req)
-            results = [self.measure(d, plane, box, req.get("selection"), req.get("stretch", "linear")) for plane in range(start, end)]
+            results = [self.measure(d, plane, box, req.get("selection")) for plane in range(start, end)]
             count = sum(item["count"] for item in results)
             total = sum(item["sum"] for item in results)
             mean = total / count if count else None
@@ -1069,15 +1011,13 @@ class Session:
             x, y = int(req["x"]), int(req["y"])
             if not (0 <= x < d["width"] and 0 <= y < d["height"]):
                 raise ValueError("Pixel out of bounds")
-            v = self.stretched(self.source.read(d, frame, [x, y, x + 1, y + 1])[0, 0],
-                               self.stretch_context(d, frame, req.get("stretch", "linear")))
+            v = self.source.read(d, frame, [x, y, x + 1, y + 1])[0, 0]
             return dict(x=x, y=y, value=np.where(np.isfinite(v), v, None).tolist())
         if op == "measure":
-            return self.measure(d, frame, box, req.get("selection"), req.get("stretch", "linear"))
+            return self.measure(d, frame, box, req.get("selection"))
         if op == "histogram":
             step = max(1, math.ceil(math.sqrt((box[2]-box[0]) * (box[3]-box[1]) / 262144)))
-            context = self.stretch_context(d, frame, req.get("stretch", "linear"))
-            image = scalar(self.stretched(self.source.read(d, frame, box, step), context))
+            image = scalar(self.source.read(d, frame, box, step))
             a = image[selection_mask(req.get("selection"), box, image.shape, step)].ravel()
             a = a[np.isfinite(a)]
             bins = int(req.get("bins", 256))
@@ -1128,8 +1068,7 @@ class Session:
             for i, (x, y) in enumerate(zip(xs, ys)):
                 groups.setdefault((int(x)//256, int(y)//256), []).append(i)
             for (tx, ty), ids in groups.items():
-                context = self.stretch_context(d, frame, req.get("stretch", "linear"))
-                a = scalar(self.stretched(self.source.read(d, frame, [tx*256, ty*256, min((tx+1)*256,d["width"]), min((ty+1)*256,d["height"])]), context))
+                a = scalar(self.source.read(d, frame, [tx*256, ty*256, min((tx+1)*256,d["width"]), min((ty+1)*256,d["height"])]))
                 values[ids] = a[ys[ids]-ty*256, xs[ids]-tx*256]
             return dict(distance=distances.tolist(), values=np.where(np.isfinite(values), values, None).tolist(), dataset=d["id"], frame=frame, points=path.ravel().tolist())
         raise ValueError(f"Unknown operation: {op}")
@@ -1145,8 +1084,8 @@ class Session:
         if blank is not None and raw.dtype.kind in 'iu':
             data[raw == blank] = np.nan
         stretch = req.get("stretch", "linear")
-        virtual_context = None if req.get('raw') else self.stretch_context(d, frame, stretch)
         mode = req.get("cuts", "percentile")
+        sample_for_stretch = None
         key = (d["id"], frame, mode)
         if mode == "manual":
             low, high = finite_number(req.get("low"), 0), finite_number(req.get("high"), 1)
@@ -1157,7 +1096,8 @@ class Session:
         else:
             sample_step = max(1, math.ceil(max(d["width"],d["height"]) / 512))
             sample_raw = self.source.read(d, frame, bounds(d), sample_step, pyramid=True)
-            sample = self.stretched(sample_raw, virtual_context)
+            sample = np.asarray(sample_raw, dtype=np.float64)
+            sample_for_stretch = sample
             if sample.ndim == 3:
                 sample = sample[..., :3]
             sample = sample[np.isfinite(sample)]
@@ -1195,8 +1135,39 @@ class Session:
                 result.update(raw=base64.b64encode(preview.tobytes()).decode('ascii'),
                               dtype=preview.dtype.str)
             return result
-        data = self.stretched(data, virtual_context)
+        if stretch == "histeq" and sample_for_stretch is None:
+            sample_step = max(1, math.ceil(max(d["width"], d["height"]) / 512))
+            sample_for_stretch = np.asarray(self.source.read(d, frame, bounds(d), sample_step, pyramid=True), dtype=np.float64)
         scaled = np.clip((np.nan_to_num(data, nan=low, posinf=high, neginf=low)-low)/(high-low), 0, 1)
+        if stretch == "log":
+            scaled = np.log1p(1000*scaled) / np.log1p(1000)
+        elif stretch == "power":
+            scaled = (np.power(1000., scaled)-1) / 999
+        elif stretch == "sqrt":
+            scaled = np.sqrt(scaled)
+        elif stretch == "asinh":
+            scaled = np.arcsinh(10*scaled) / np.arcsinh(10)
+        elif stretch in ("square", "squared"):
+            scaled = np.square(scaled)
+        elif stretch == "sinh":
+            scaled = np.sinh(3*scaled) / np.sinh(3)
+        elif stretch == "exp":
+            scaled = np.expm1(scaled) / np.expm1(1)
+        elif stretch == "abs":
+            zero = (0-low)/(high-low)
+            left, right = abs(zero), abs(1-zero)
+            minimum = 0 if 0 <= zero <= 1 else min(left, right)
+            maximum = max(left, right)
+            scaled = (np.abs(scaled-zero)-minimum)/(maximum-minimum) if maximum > minimum else np.zeros_like(scaled)
+        elif stretch == "histeq":
+            values = sample_for_stretch[(sample_for_stretch >= low) & (sample_for_stretch <= high) & np.isfinite(sample_for_stretch)]
+            if values.size:
+                bins = np.clip(np.floor((values-low)/(high-low)*255), 0, 255).astype(np.uint8)
+                counts = np.bincount(bins, minlength=256)
+                cumulative = counts.cumsum(dtype=np.float64)
+                first = cumulative[np.flatnonzero(counts)[0]]
+                cdf = (cumulative-first)/(cumulative[-1]-first) if cumulative[-1] > first else np.zeros(256)
+                scaled = cdf[np.clip(np.rint(scaled*255), 0, 255).astype(np.uint8)]
         if req.get("invert"):
             scaled = 1 - scaled
         if req.get("threshold"):
@@ -1217,15 +1188,14 @@ class Session:
         return dict(png=base64.b64encode(output.getvalue()).decode("ascii"), box=box,
                     width=image.width, height=image.height, low=low, high=high, step=step)
 
-    def measure(self, d, frame, box, selection=None, stretch="linear"):
+    def measure(self, d, frame, box, selection=None):
         # Stable batch-combined moments; never materialize the full ROI.
         n, mean, m2, total, selected_area = 0, 0., 0., 0., 0
         minimum, maximum = math.inf, -math.inf
-        context = self.stretch_context(d, frame, stretch)
         for y in range(box[1], box[3], 256):
             for x in range(box[0], box[2], 1024):
                 tile = [x, y, min(x+1024,box[2]), min(y+256,box[3])]
-                image = scalar(self.stretched(self.source.read(d, frame, tile), context))
+                image = scalar(self.source.read(d, frame, tile))
                 mask = selection_mask(selection, tile, image.shape)
                 selected_area += int(mask.sum())
                 a = image[mask].ravel()

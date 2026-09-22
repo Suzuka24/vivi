@@ -1,15 +1,27 @@
 [
   [
-    "ij-5-ramps",
-    "5 Ramps"
+    "ij-000-gray",
+    "000 Gray"
   ],
   [
-    "ij-6-reserved-colors",
-    "6 Reserved Colors"
+    "ij-001-fire",
+    "001 Fire"
   ],
   [
-    "ij-6-shades",
-    "6 Shades"
+    "ij-002-spectrum",
+    "002 Spectrum"
+  ],
+  [
+    "ij-003-ice",
+    "003 Ice"
+  ],
+  [
+    "ij-004-phase",
+    "004 Phase"
+  ],
+  [
+    "ij-005-random",
+    "005 Random"
   ],
   [
     "ij-16-colors",
@@ -30,6 +42,18 @@
   [
     "ij-32-colors",
     "32 Colors"
+  ],
+  [
+    "ij-5-ramps",
+    "5 Ramps"
+  ],
+  [
+    "ij-6-reserved-colors",
+    "6 Reserved Colors"
+  ],
+  [
+    "ij-6-shades",
+    "6 Shades"
   ],
   [
     "ij-amber",
