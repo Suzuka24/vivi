@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.15 (development build; not published)
+
+- Add Layout buttons and shortcuts for moving the current Frame up, down, to the top, or to the bottom. Frame navigation now works while Layout has focus, and extension-level commands keep the four reorder shortcuts available outside vivi webviews.
+- Combine B&C with LUT synchronization and View with Zoom synchronization in Layout locks.
+- Keep the final Adjust controls on one row and add spacing between the Layout toolbar and Frame list.
+- Fix Adjust Minimum and Maximum slider bounds so every stack slice uses its own pixel range.
+
 ## 0.7.14 (development build; not published)
 
 - Add S-Auto and S-Reset controls for calculating B&C limits from the current three-dimensional stack, including the selected stack axis in higher-dimensional data.

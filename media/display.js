@@ -220,6 +220,19 @@ function selectedStackFrameIndices(extra,shape,selectedAxis,flatFrame){
   return Array.from({length},(_,next)=>base+next*stride);
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices};
-if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices};
+function reorderedEntries(entries,activeId,action){
+  const output=[...entries],index=output.findIndex(([id])=>id===activeId);
+  if(index<0||output.length<2)return output;
+  const destination=action==='up'?Math.max(0,index-1):action==='down'?Math.min(output.length-1,index+1):action==='first'?0:action==='last'?output.length-1:index;
+  if(destination===index)return output;
+  const [entry]=output.splice(index,1);output.splice(destination,0,entry);return output;
+}
+
+function sliceDisplayRange(histograms,bounds,frameId,datasetId,slice,low,high){
+  const key=`${frameId}:${datasetId}:${slice}`,histogram=histograms.get(key),saved=bounds.get(key);
+  return [histogram?.min??saved?.[0]??low,histogram?.max??saved?.[1]??high];
+}
+
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
 })();

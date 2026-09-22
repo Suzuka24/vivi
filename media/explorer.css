@@ -61,7 +61,8 @@ body.view-adjust .adjust-ranges{gap:5px}
 body.view-adjust .adjust-ranges label{display:grid;grid-template-columns:76px 150px 82px;gap:6px;justify-content:start;font-size:11px}
 body.view-adjust .adjust-ranges input[type=range]{width:150px;min-width:150px;max-width:150px;justify-self:start}
 body.view-adjust .adjust-ranges input[type=text]{width:82px;min-width:82px;height:23px;padding:2px 4px;font-size:11px;background:var(--vscode-input-background,#292e38);color:var(--vscode-input-foreground,#ddd);border:1px solid var(--vscode-input-border,#434b59);border-radius:3px}
-body.view-adjust .adjust-options{flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:5px;font-size:11px}
+body.view-adjust .adjust-options{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;font-size:11px;white-space:nowrap}
+body.view-adjust .adjust-options>label{flex:none}
 body.view-adjust .adjust-options #adjustAuto{margin-left:0}
 body.view-adjust .adjust-buttons{display:flex;align-items:center;gap:4px;white-space:nowrap}
 body.view-adjust .adjust-buttons>button{height:25px;min-height:25px;margin:0;padding:2px 5px}
@@ -83,7 +84,9 @@ body.view-explorer #files .file.recent:hover{
 }
 body.view-layout .frame-nav{display:inline-flex;align-items:center;justify-content:center;width:28px;height:27px;padding:3px}
 body.view-layout .frame-nav svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-body.view-layout .frame-heading{align-items:center}
-body.view-layout .frame-heading>#framePrevious,body.view-layout .frame-heading>#frameNext,body.view-layout .frame-heading>#frameTile,body.view-layout .frame-heading .grid-controls input{height:27px;min-height:27px;max-height:27px}
+body.view-layout .frame-heading{align-items:center;margin-bottom:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+body.view-layout .frame-heading>#framePrevious,body.view-layout .frame-heading>#frameNext,body.view-layout .frame-heading>#frameTile,body.view-layout .frame-heading>.frame-nav,body.view-layout .frame-heading .grid-controls input{height:27px;min-height:27px;max-height:27px}
 body.view-layout .frame-heading>#frameTile{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}
-body.view-layout .frame-heading .grid-controls,body.view-layout .frame-heading .grid-controls label{height:27px;align-items:center}
+body.view-layout .frame-heading .frame-separator{display:block;flex:none;width:1px;height:18px;margin:0 3px;background:#8193a055}
+body.view-layout .frame-heading .grid-controls{flex:none;gap:6px;margin:0 0 0 3px;height:27px;align-items:center}
+body.view-layout .frame-heading .grid-controls label{flex:none;gap:1px;height:27px;align-items:center}

@@ -12,7 +12,7 @@
 
 ## Frame 与切片
 
-侧栏的 **Layout** 管理文件 Frame。新标签页默认显示单个 Frame。点击显示模式图标可切换平铺；拖动 Frame 行可排序，并可设置行数或列数。眼睛开关决定是否显示，旁边的锁开关决定是否参与参数同步。修改参数前先选中对应 Frame；平铺时方向键可在可见 Frame 间移动选中状态。只有参与锁定的 Frame 才同步 B&C、LUT、视野、缩放、切片或 Selection。新加入锁定组的 Frame 会继承已启用的同步设置；tile 模式下可见且锁定的 Frame 会成组提交同一次显示更新。
+侧栏的 **Layout** 管理文件 Frame。新标签页默认显示单个 Frame。点击显示模式图标可切换平铺；拖动 Frame 行或使用顶部的上移、下移、置顶、置底按钮可排序，并可设置行数或列数。眼睛开关决定是否显示，旁边的锁开关决定是否参与参数同步。修改参数前先选中对应 Frame；上下方向键可在可见 Frame 间移动选中状态。只有参与锁定的 Frame 才同步 B&C（同时同步 LUT）、View（同时同步 Zoom）、Slice 或 Selection。新加入锁定组的 Frame 会继承已启用的同步设置；tile 模式下可见且锁定的 Frame 会成组提交同一次显示更新。
 
 Layout 中右键 Frame 可重命名、复制或关闭。复制品添加到列表末尾，标题附加 `[copy N]`。Frame 列表支持滚轮滚动。
 
@@ -43,7 +43,7 @@ Image、Process 和 Analyze Skeleton 下的像素运算会替换当前 Frame 的
 | `vivi.lossyTolerance` | ZFP 绝对误差目标占当前预览帧最大值与最小值之差的比例，默认 0.0001；其他方法不使用该设置。 |
 | `vivi.defaultFps` | 新查看器默认 24 FPS，长按左右切片按钮及播放均使用当前 FPS；可设置为 1–60。 |
 | `vivi.mouseShortcuts` | 鼠标组合手势：默认 `wheel` 切片（上滚向左、下滚向右）、`shift+wheel` 以鼠标缩放、`mod+wheel` 以图像中心缩放、正交视图中 `space+click` 使用选中工具、`middle+drag` 拖动图像、`alt+right+drag` 调整亮度与对比度、`doubleclick` 适配窗口。`mod` 在 macOS 是 Command，在 Windows/Linux 是 Ctrl。可将动作改为如 `alt+wheel`，或留空禁用。 |
-| `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。默认 `=` / `-` 缩放、左右方向键切换切片、上下方向键切换 Frame、`d` 切换 Single/Tile、`p` 选 Pointer、`h` 选 Hand、`r` 选 Rectangle、`c` 选 Oval、`m` 执行 Measure。空字符串表示禁用。仅在图像视图获得焦点且没有输入框获得焦点时生效。 |
+| `vivi.keyboardShortcuts` | 按动作配置快捷键；组合键写成 `shift+p`、`ctrl+shift+h` 等，macOS Command 写成 `cmd`。默认 `=` / `-` 缩放、左右方向键切换切片、上下方向键切换 Frame、`d` 切换 Single/Tile、`p` 选 Pointer、`h` 选 Hand、`r` 选 Rectangle、`c` 选 Oval、`m` 执行 Measure。空字符串表示禁用。vivi webview 中没有输入框获得焦点时生效。Frame 上移、下移、置顶、置底是扩展级命令，默认 Shift+上下和 Ctrl+上下，可在 Cursor 的 Keyboard Shortcuts 中修改，并能从普通编辑区触发。 |
 
 后端配置见[安装指南](installation.md)，主机数据存储与传输见[隐私说明](../PRIVACY.md)。
 

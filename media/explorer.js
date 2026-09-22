@@ -8,7 +8,7 @@ const lastActivatedByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
-let keyboardShortcuts={rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
+let keyboardShortcuts={previousFrame:'arrowup',nextFrame:'arrowdown',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
 function frameIcon(symbol,title,pressed,action){
@@ -88,6 +88,7 @@ $('sliceFps').onchange=()=>sideAction('fps',Number($('sliceFps').value));
 $('layoutDataset').onchange=()=>sideAction('dataset',Number($('layoutDataset').value));
 $('framePrevious').onclick=()=>sideAction('previousFrame');$('frameNext').onclick=()=>sideAction('nextFrame');
 $('frameTile').onclick=()=>sideAction('tile');
+for(const action of ['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'])$(action.replace('moveFrame','frameMove')).onclick=()=>sideAction(action);
 for(const id of ['frameColumns','frameRows'])$(id).onchange=()=>sideAction(id==='frameColumns'?'columns':'rows',Number($(id).value)||0);
 $('lockAll').onclick=()=>sideAction('lockAll');$('unlockAllFrames').onclick=()=>sideAction('unlockAll');
 for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=()=>sideAction('lock',{group:input.dataset.sideLock,enabled:input.checked});
@@ -263,7 +264,8 @@ document.addEventListener('keydown',event=>{
     if(document.body.classList.contains('view-layout')&&layoutState?.active)sideAction('renameFrame',layoutState.active);
     else if(document.body.classList.contains('view-explorer')&&selectedPath)vscode.postMessage({type:'action',action:'rename',path:selectedPath,folder:current});
     else return;
-  }else if(action==='autoCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'percentile'});
+  }else if(['previousFrame','nextFrame'].includes(action)&&layoutState?.active)sideAction(action);
+  else if(action==='autoCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'percentile'});
   else if(action==='resetCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'minmax',resetStretch:true});
   else if(action==='stackAutoCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'percentile'});
   else if(action==='stackResetCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'minmax',resetStretch:true});

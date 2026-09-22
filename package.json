@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.14",
+  "version": "0.7.15",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -63,6 +63,46 @@
       {
         "command": "vivi.diagnostics",
         "title": "vivi: Check Python Backend"
+      },
+      {
+        "command": "vivi.moveFrameUp",
+        "title": "vivi: Move Current Frame Up"
+      },
+      {
+        "command": "vivi.moveFrameDown",
+        "title": "vivi: Move Current Frame Down"
+      },
+      {
+        "command": "vivi.moveFrameFirst",
+        "title": "vivi: Move Current Frame to Top"
+      },
+      {
+        "command": "vivi.moveFrameLast",
+        "title": "vivi: Move Current Frame to Bottom"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "vivi.moveFrameUp",
+        "key": "shift+up",
+        "when": "vivi.sessionActive"
+      },
+      {
+        "command": "vivi.moveFrameDown",
+        "key": "shift+down",
+        "when": "vivi.sessionActive"
+      },
+      {
+        "command": "vivi.moveFrameFirst",
+        "key": "ctrl+up",
+        "mac": "cmd+up",
+        "when": "vivi.sessionActive"
+      },
+      {
+        "command": "vivi.moveFrameLast",
+        "key": "ctrl+down",
+        "mac": "cmd+down",
+        "when": "vivi.sessionActive"
       }
     ],
     "viewsContainers": {
@@ -1113,7 +1153,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Viewer shortcuts work while the image view has focus. Write one key or modifiers joined with '+': shift+p, ctrl+shift+h, alt+m, or cmd+p on macOS. Supported modifiers: shift, ctrl, alt/option, cmd/meta. Leave an action empty to disable it. Modifiers must match exactly. 快捷键仅在图像视图获得焦点时生效。可填写单键，或用 '+' 连接修饰键，例如 shift+p、ctrl+shift+h、alt+m，macOS 可用 cmd+p。支持 shift、ctrl、alt/option、cmd/meta；动作留空表示禁用，修饰键必须完全匹配。"
+          "description": "vivi shortcuts work while a vivi view has focus. Write one key or modifiers joined with '+': shift+p, ctrl+shift+h, alt+m, or cmd+p on macOS. Supported modifiers: shift, ctrl, alt/option, cmd/meta. Leave an action empty to disable it. Modifiers must match exactly. vivi 视图获得焦点时可使用这些快捷键。可填写单键，或用 '+' 连接修饰键，例如 shift+p、ctrl+shift+h、alt+m，macOS 可用 cmd+p。支持 shift、ctrl、alt/option、cmd/meta；动作留空表示禁用，修饰键必须完全匹配。"
         }
       }
     }

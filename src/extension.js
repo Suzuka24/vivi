@@ -77,6 +77,11 @@ function activate(context) {
   let activeSession = null;
   const sidebarViews = [];
   const publishSidebar = session => { for (const provider of sidebarViews) provider.view?.webview.postMessage(session?.sidebarState ? {type:'sidebarState',state:session.sidebarState}:{type:'sidebarClear'}); };
+  const setSessionContext = () => vscode.commands.executeCommand('setContext', 'vivi.sessionActive', sessions.length > 0);
+  setSessionContext();
+  for (const action of ['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast']) context.subscriptions.push(
+    vscode.commands.registerCommand(`vivi.${action}`, () => activeSession?.panel.webview.postMessage({type:'sideAction',action}))
+  );
   const newBackend = () => {
     const c = config();
     // python3 is the portable Linux default; Windows installations commonly use python.exe.
@@ -275,6 +280,7 @@ function activate(context) {
     };
     sessions.push(session);
     activeSession=session;
+    setSessionContext();
     panel.onDidChangeViewState(()=>{if(panel.active){activeSession=session;publishSidebar(session);}});
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] };
     panel.onDidDispose(() => {
@@ -282,6 +288,7 @@ function activate(context) {
       for (const frame of frames.values()) frame.worker.dispose();
       for (const file of generatedPaths) fs.unlink(file).catch(error => output.appendLine(error.message));
       sessions.splice(sessions.indexOf(session), 1);
+      setSessionContext();
       if(activeSession===session){activeSession=sessions.at(-1)||null;publishSidebar(activeSession);}
     });
     panel.webview.onDidReceiveMessage(async msg => {

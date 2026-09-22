@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices}=require('../media/display');
+const {autoLimits,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -35,4 +35,22 @@ test('stack-wide B&C selects only the current stack along the chosen higher-dime
   assert.deepEqual(selectedStackFrameIndices([0],[5,90,90],0,2),[0,1,2,3,4]);
   assert.deepEqual(selectedStackFrameIndices([0,1],[2,3,90,90],1,4),[3,4,5]);
   assert.deepEqual(selectedStackFrameIndices([0,1],[2,3,90,90],0,4),[1,4]);
+});
+
+test('frame reorder actions move the active entry without changing frame identity',()=>{
+  const entries=[[1,'a'],[2,'b'],[3,'c']];
+  assert.deepEqual(reorderedEntries(entries,2,'up').map(([id])=>id),[2,1,3]);
+  assert.deepEqual(reorderedEntries(entries,2,'down').map(([id])=>id),[1,3,2]);
+  assert.deepEqual(reorderedEntries(entries,2,'first').map(([id])=>id),[2,1,3]);
+  assert.deepEqual(reorderedEntries(entries,2,'last').map(([id])=>id),[1,3,2]);
+  assert.deepEqual(entries.map(([id])=>id),[1,2,3]);
+});
+
+test('Adjust slider bounds follow the current stack slice',()=>{
+  const histograms=new Map([
+    ['7:0:0',{min:10,max:20}],
+    ['7:0:1',{min:100,max:250}]
+  ]);
+  assert.deepEqual(sliceDisplayRange(histograms,new Map(),7,0,0,0,1),[10,20]);
+  assert.deepEqual(sliceDisplayRange(histograms,new Map(),7,0,1,0,1),[100,250]);
 });
