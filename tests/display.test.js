@@ -37,6 +37,13 @@ test('stack-wide B&C selects only the current stack along the chosen higher-dime
   assert.deepEqual(selectedStackFrameIndices([0,1],[2,3,90,90],0,4),[1,4]);
 });
 
+test('minmax scans every pixel in large slices and preserves constant ranges',()=>{
+  const raw=new Float32Array(600001).fill(12);
+  raw[599999]=-7;raw[599997]=91;
+  assert.deepEqual(autoLimits(raw,1,'minmax'),[-7,91]);
+  assert.deepEqual(autoLimits(new Uint16Array([42,42,42]),1,'minmax'),[42,42]);
+});
+
 test('frame reorder actions move the active entry without changing frame identity',()=>{
   const entries=[[1,'a'],[2,'b'],[3,'c']];
   assert.deepEqual(reorderedEntries(entries,2,'up').map(([id])=>id),[2,1,3]);

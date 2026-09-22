@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.16 (development build; not published)
+
+- Make Reset and the Adjust Minimum/Maximum slider endpoints use the exact minimum and maximum across every pixel in the currently displayed slice.
+- Add Frame reorder actions to the Layout context menu and right-align the Columns/Rows controls.
+- Show current configurable keyboard shortcuts in button tooltips and refresh them immediately when settings change.
+- Keep work logs local by excluding `worklog/` from Git.
+
 ## 0.7.15 (development build; not published)
 
 - Add Layout buttons and shortcuts for moving the current Frame up, down, to the top, or to the bottom. Frame navigation now works while Layout has focus, and extension-level commands keep the four reorder shortcuts available outside vivi webviews.

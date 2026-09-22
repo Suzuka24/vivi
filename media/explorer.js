@@ -8,9 +8,20 @@ const lastActivatedByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
-let keyboardShortcuts={previousFrame:'arrowup',nextFrame:'arrowdown',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
+let keyboardShortcuts={previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',rename:'f2',toggleBC:'',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
+const shortcutNames={ctrl:'Ctrl',control:'Ctrl',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Cmd',meta:'Cmd',enter:'Enter',arrowup:'Up',arrowdown:'Down',arrowleft:'Left',arrowright:'Right',escape:'Esc',backspace:'Backspace',delete:'Delete',' ':'Space'};
+const shortcutLabel=binding=>String(binding||'').split('+').map(part=>shortcutNames[part.trim().toLowerCase()]||part.trim().toUpperCase()).filter(Boolean).join('+');
+const shortcutButtons={slicePrev:'previousSlice',sliceNext:'nextSlice',slicePlay:'play',framePrevious:'previousFrame',frameNext:'nextFrame',frameTile:'toggleFrameDisplay',frameMoveUp:'moveFrameUp',frameMoveDown:'moveFrameDown',frameMoveFirst:'moveFrameFirst',frameMoveLast:'moveFrameLast',adjustAuto:'autoCuts',adjustReset:'resetCuts',adjustStackAuto:'stackAutoCuts',adjustStackReset:'stackResetCuts',adjustToggleBC:'toggleBC'};
+function updateShortcutTips(){
+  for(const [id,action] of Object.entries(shortcutButtons)){
+    const button=$(id);if(!button)continue;
+    const base=button.dataset.shortcutBase||button.getAttribute('title')||button.getAttribute('aria-label')||button.textContent.trim();
+    button.dataset.shortcutBase=base;const shortcut=shortcutLabel(keyboardShortcuts[action]),tip=shortcut?`${base} (${shortcut})`:base;
+    button.dataset.tip=tip;button.title=tip;
+  }
+}
 function frameIcon(symbol,title,pressed,action){
   const button=document.createElement('button');button.type='button';button.className='frame-icon';button.title=title;button.setAttribute('aria-label',title);button.setAttribute('aria-pressed',String(pressed));
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('aria-hidden','true');
@@ -31,8 +42,8 @@ function renderSidebar(state){
   if(document.activeElement!==$('sliceFps'))$('sliceFps').value=state.fps;
   $('frameTile').classList.toggle('selected',state.tile);
   $('frameTile').querySelector('use').setAttribute('href',state.tile?'#i-tile':'#i-single');
-  $('frameTile').dataset.tip=state.tile?'Display: tiled frames; click for single frame':'Display: single frame; click to tile';
-  $('frameTile').setAttribute('aria-label',$('frameTile').dataset.tip);
+  $('frameTile').dataset.shortcutBase=state.tile?'Display: tiled frames; click for single frame':'Display: single frame; click to tile';
+  $('frameTile').setAttribute('aria-label',$('frameTile').dataset.shortcutBase);
   $('frameColumns').value=state.columns||'';$('frameRows').value=state.rows||'';
   const list=$('frameItems'),scroller=$('layoutModule').querySelector('.side-module-body'),scrollTop=scroller.scrollTop;list.replaceChildren();
   for(const frame of state.frames){
@@ -54,8 +65,11 @@ function renderSidebar(state){
       rename.type='button';rename.role='menuitem';rename.textContent='Rename…';
       rename.onclick=()=>{closeMenu();sideAction('renameFrame',frame.id);};
       const duplicate=document.createElement('button');duplicate.type='button';duplicate.role='menuitem';duplicate.textContent='Duplicate Frame';duplicate.onclick=()=>{closeMenu();sideAction('duplicateFrame',frame.id);};
+      const frameIndex=state.frames.findIndex(item=>item.id===frame.id),lastIndex=state.frames.length-1;
+      const moveButton=(label,position,disabled)=>{const item=document.createElement('button');item.type='button';item.role='menuitem';item.textContent=label;item.disabled=disabled;item.onclick=()=>{closeMenu();sideAction('moveFrameAt',{id:frame.id,position});};return item;};
+      const moveUp=moveButton('Move Up','up',frameIndex<=0),moveDown=moveButton('Move Down','down',frameIndex>=lastIndex),moveFirst=moveButton('Move to Top','first',frameIndex<=0),moveLast=moveButton('Move to Bottom','last',frameIndex>=lastIndex);
       const removeFrame=document.createElement('button');removeFrame.type='button';removeFrame.role='menuitem';removeFrame.textContent='Close Frame';removeFrame.onclick=()=>{closeMenu();sideAction('closeFrame',frame.id);};
-      menu.append(rename,duplicate,removeFrame);menu.hidden=false;
+      menu.append(rename,duplicate,moveUp,moveDown,moveFirst,moveLast,removeFrame);menu.hidden=false;
       menu.style.left=Math.min(e.clientX,document.body.clientWidth-menu.offsetWidth-4)+'px';
       menu.style.top=Math.min(e.clientY,document.body.clientHeight-menu.offsetHeight-4)+'px';
       rename.focus();
@@ -70,7 +84,9 @@ function renderSidebar(state){
   $('adjustInvert').checked=state.invert;
   $('adjustToggleBC').setAttribute('aria-pressed',String(state.bcVisible!==false));
   $('adjustToggleBC').title=state.bcVisible===false?'Show Curve':'Hide Curve';
+  $('adjustToggleBC').dataset.shortcutBase=$('adjustToggleBC').title;
   $('adjustToggleBC').setAttribute('aria-label',$('adjustToggleBC').title);
+  updateShortcutTips();
   syncAdjustRanges();
 }
 function stopHeldSlice(){if(!heldSlice)return;clearTimeout(heldSlice.timeout);clearInterval(heldSlice.interval);heldSlice=null;}
@@ -95,16 +111,18 @@ for(const input of document.querySelectorAll('[data-side-lock]'))input.onchange=
 function sendAdjust(){const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);if(!Number.isFinite(low)||!Number.isFinite(high)||high<=low)return;sideAction('adjust',{cuts:$('adjustCuts').value,low,high,stretch:$('adjustStretch').value,cmap:$('adjustLut').value,invert:$('adjustInvert').checked});}
 function syncAdjustRanges(){
   const low=Number($('adjustLow').value),high=Number($('adjustHigh').value);
-  if(!Number.isFinite(low)||!Number.isFinite(high)||!(high>low))return;
+  if(!Number.isFinite(low)||!Number.isFinite(high))return;
   const sourceMin=Number(layoutState?.rangeMin),sourceMax=Number(layoutState?.rangeMax);
+  if(!Number.isFinite(sourceMin)||!Number.isFinite(sourceMax))return;
   if(!adjustSource||adjustSource.frame!==layoutState?.active||adjustSource.dataset!==layoutState?.datasetId||sourceMin!==adjustSource.min||sourceMax!==adjustSource.max){
     adjustSource={frame:layoutState?.active,dataset:layoutState?.datasetId,min:sourceMin,max:sourceMax};
   }
-  const {min,max}=adjustSource,range=Math.max(Number.MIN_VALUE,max-min);
+  const {min,max}=adjustSource,constant=max===min,range=Math.max(Number.MIN_VALUE,max-min);
   const clamp=x=>Math.max(0,Math.min(1000,Math.round(x)));
-  const values={adjustMinRange:clamp((low-min)/range*1000),adjustMaxRange:clamp((high-min)/range*1000),
+  const values={adjustMinRange:constant?0:clamp((low-min)/range*1000),adjustMaxRange:constant?1000:clamp((high-min)/range*1000),
     adjustBrightnessRange:clamp((.5-(((low+high)/2)-((min+max)/2))/range)*1000),
-    adjustContrastRange:clamp(Math.atan(range/(high-low))*2000/Math.PI)};
+    adjustContrastRange:constant?500:clamp(Math.atan(range/Math.max(Number.MIN_VALUE,high-low))*2000/Math.PI)};
+  for(const id of ['adjustMinRange','adjustMaxRange','adjustBrightnessRange','adjustContrastRange'])$(id).disabled=constant;
   for(const [id,value] of Object.entries(values))if(document.activeElement!==$(id))$(id).value=value;
   if(document.activeElement!==$('adjustBrightnessValue'))$('adjustBrightnessValue').value=formatAdjust(values.adjustBrightnessRange/1000);
   if(document.activeElement!==$('adjustContrastValue'))$('adjustContrastValue').value=formatAdjust(values.adjustContrastRange/1000);
@@ -208,6 +226,7 @@ function hidePathTip(){clearTimeout(pathTipTimer);pathTip.hidden=true;}
 function showPathTip(element,value,delay=1000){hidePathTip();pathTipTimer=setTimeout(()=>{if(!value)return;pathTip.textContent=value;pathTip.hidden=false;const rect=element.getBoundingClientRect();pathTip.style.left=Math.max(4,Math.min(rect.left,window.innerWidth-pathTip.offsetWidth-4))+'px';pathTip.style.top=Math.min(window.innerHeight-pathTip.offsetHeight-4,rect.bottom+4)+'px';},delay);}
 $('path').addEventListener('pointerenter',()=>showPathTip($('path'),$('path').value));$('path').addEventListener('pointerleave',hidePathTip);
 $('frameTile').removeAttribute('title');$('frameTile').addEventListener('pointerenter',()=>showPathTip($('frameTile'),$('frameTile').dataset.tip,0));$('frameTile').addEventListener('pointerleave',hidePathTip);
+updateShortcutTips();
 $('historyMenu').addEventListener('pointerover',event=>{const button=event.target.closest('button');if(button)showPathTip(button,button.textContent);});
 $('historyMenu').addEventListener('pointerleave',hidePathTip);
 $('up').onclick = () => {rememberActivated(parent,current);list(parent);};
@@ -258,13 +277,18 @@ function shortcutMatches(binding,event){
   return event.key.toLowerCase()===key&&event.ctrlKey===(modifiers.has('ctrl')||modifiers.has('control'))&&event.metaKey===(modifiers.has('cmd')||modifiers.has('meta'))&&event.altKey===(modifiers.has('alt')||modifiers.has('option'))&&event.shiftKey===modifiers.has('shift');
 }
 document.addEventListener('keydown',event=>{
-  if(['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName))return;
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,event))?.[0];
+  const frameMove=['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action);
+  if(['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)&&!frameMove)return;
   if(action==='rename'){
     if(document.body.classList.contains('view-layout')&&layoutState?.active)sideAction('renameFrame',layoutState.active);
     else if(document.body.classList.contains('view-explorer')&&selectedPath)vscode.postMessage({type:'action',action:'rename',path:selectedPath,folder:current});
     else return;
-  }else if(['previousFrame','nextFrame'].includes(action)&&layoutState?.active)sideAction(action);
+  }else if(['previousFrame','nextFrame','moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action)&&layoutState?.active)sideAction(action);
+  else if(action==='toggleFrameDisplay'&&layoutState?.active)sideAction('tile');
+  else if(action==='nextSlice'&&layoutState?.active)sideAction('stepSlice',1);
+  else if(action==='previousSlice'&&layoutState?.active)sideAction('stepSlice',-1);
+  else if(action==='play'&&layoutState?.active)sideAction('play');
   else if(action==='autoCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'percentile'});
   else if(action==='resetCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'minmax',resetStretch:true});
   else if(action==='stackAutoCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'percentile'});
@@ -276,7 +300,7 @@ window.addEventListener('message', ({data:message}) => {
   if (message.type === 'error') { loading=false;if(!$('openAsDialog').hidden){$('openAsError').textContent=message.message;return;}$('error').textContent = message.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(()=>{if(Date.now()>=errorUntil)$('error').textContent='';},2600);return; }
   if(message.type==='openAsInfo'){showOpenAs(message.path,message.result);return;}
   if(message.type==='openAsAccepted'){closeOpenAs();return;}
-  if(message.type==='shortcutSettings'){keyboardShortcuts={...keyboardShortcuts,...message.keyboardShortcuts};return;}
+  if(message.type==='shortcutSettings'){keyboardShortcuts={...keyboardShortcuts,...message.keyboardShortcuts};updateShortcutTips();return;}
   if(message.type==='sidebarState'){renderSidebar(message.state);return;}
   if(message.type==='sidebarClear'){renderSidebar(null);return;}
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}

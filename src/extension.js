@@ -237,6 +237,11 @@ function activate(context) {
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (event.affectsConfiguration('vivi.explorerContextMenu')) for (const session of sessions)
       session.panel.webview.postMessage({type:'menuVisibility',items:menuVisibility()});
+    if (event.affectsConfiguration('vivi.keyboardShortcuts')) {
+      const keyboardShortcuts=config().get('keyboardShortcuts', {});
+      for (const session of sessions) session.panel.webview.postMessage({type:'shortcutSettings',keyboardShortcuts});
+      for (const provider of sidebarViews) provider.view?.webview.postMessage({type:'shortcutSettings',keyboardShortcuts});
+    }
   }));
   context.subscriptions.push(vscode.commands.registerCommand('vivi.open', async uri => {
     try {

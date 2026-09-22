@@ -88,5 +88,5 @@ body.view-layout .frame-heading{align-items:center;margin-bottom:5px;overflow-x:
 body.view-layout .frame-heading>#framePrevious,body.view-layout .frame-heading>#frameNext,body.view-layout .frame-heading>#frameTile,body.view-layout .frame-heading>.frame-nav,body.view-layout .frame-heading .grid-controls input{height:27px;min-height:27px;max-height:27px}
 body.view-layout .frame-heading>#frameTile{display:inline-flex;align-items:center;justify-content:center;padding:3px 5px}
 body.view-layout .frame-heading .frame-separator{display:block;flex:none;width:1px;height:18px;margin:0 3px;background:#8193a055}
-body.view-layout .frame-heading .grid-controls{flex:none;gap:6px;margin:0 0 0 3px;height:27px;align-items:center}
+body.view-layout .frame-heading .grid-controls{flex:1;justify-content:flex-end;gap:6px;margin:0 0 0 3px;height:27px;align-items:center}
 body.view-layout .frame-heading .grid-controls label{flex:none;gap:1px;height:27px;align-items:center}

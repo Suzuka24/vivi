@@ -118,6 +118,14 @@ async function decodeRawPayload(result) {
 const sampleNumber = (raw, index) => Number(raw[index]);
 
 function autoLimits(raw, channels, mode) {
+  if(mode==='minmax'){
+    let low=Infinity,high=-Infinity;
+    for(let i=0;i<raw.length;i+=channels){
+      const value=channels>1?(sampleNumber(raw,i)+sampleNumber(raw,i+1)+sampleNumber(raw,i+2))/3:sampleNumber(raw,i);
+      if(Number.isFinite(value)){low=Math.min(low,value);high=Math.max(high,value);}
+    }
+    return Number.isFinite(low)?[low,high]:[0,1];
+  }
   const values=[];
   const stride=Math.max(1,Math.floor(raw.length/channels/262144));
   for(let i=0;i<raw.length;i+=stride*channels){
@@ -129,8 +137,7 @@ function autoLimits(raw, channels, mode) {
   if(values.length===1)return [values[0],values[0]+Math.max(1,Math.abs(values[0])*1e-6)];
   const pick=p=>{const index=p*(values.length-1),lo=Math.floor(index),t=index-lo;return values[lo]*(1-t)+values[Math.min(values.length-1,lo+1)]*t;};
   let low,high;
-  if(mode==='minmax'){low=values[0];high=values.at(-1);}
-  else if(mode==='zscale'){
+  if(mode==='zscale'){
     const first=Math.floor(values.length*.25),last=Math.ceil(values.length*.75),slope=(values[last]-values[first])/Math.max(1,last-first),middle=pick(.5);
     low=Math.max(values[0],middle-slope*values.length/4);high=Math.min(values.at(-1),middle+slope*values.length/4);
   }else{

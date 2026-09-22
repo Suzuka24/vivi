@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.15",
+  "version": "0.7.16",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -79,30 +79,6 @@
       {
         "command": "vivi.moveFrameLast",
         "title": "vivi: Move Current Frame to Bottom"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "vivi.moveFrameUp",
-        "key": "shift+up",
-        "when": "vivi.sessionActive"
-      },
-      {
-        "command": "vivi.moveFrameDown",
-        "key": "shift+down",
-        "when": "vivi.sessionActive"
-      },
-      {
-        "command": "vivi.moveFrameFirst",
-        "key": "ctrl+up",
-        "mac": "cmd+up",
-        "when": "vivi.sessionActive"
-      },
-      {
-        "command": "vivi.moveFrameLast",
-        "key": "ctrl+down",
-        "mac": "cmd+down",
-        "when": "vivi.sessionActive"
       }
     ],
     "viewsContainers": {
@@ -407,6 +383,10 @@
             "previousSlice": "arrowleft",
             "nextFrame": "arrowdown",
             "previousFrame": "arrowup",
+            "moveFrameUp": "shift+arrowup",
+            "moveFrameDown": "shift+arrowdown",
+            "moveFrameFirst": "ctrl+arrowup",
+            "moveFrameLast": "ctrl+arrowdown",
             "toggleFrameDisplay": "d",
             "rename": "f2",
             "toggleBC": "",
@@ -623,6 +603,26 @@
               "type": "string",
               "default": "arrowup",
               "description": "Select the previous Frame; default ArrowUp. 选中上一个 Frame；默认按上方向键。"
+            },
+            "moveFrameUp": {
+              "type": "string",
+              "default": "shift+arrowup",
+              "description": "Move the current Frame up; default Shift+ArrowUp. 当前 Frame 上移；默认 Shift+上方向键。"
+            },
+            "moveFrameDown": {
+              "type": "string",
+              "default": "shift+arrowdown",
+              "description": "Move the current Frame down; default Shift+ArrowDown. 当前 Frame 下移；默认 Shift+下方向键。"
+            },
+            "moveFrameFirst": {
+              "type": "string",
+              "default": "ctrl+arrowup",
+              "description": "Move the current Frame to the top; default Ctrl+ArrowUp. 当前 Frame 置顶；默认 Ctrl+上方向键。"
+            },
+            "moveFrameLast": {
+              "type": "string",
+              "default": "ctrl+arrowdown",
+              "description": "Move the current Frame to the bottom; default Ctrl+ArrowDown. 当前 Frame 置底；默认 Ctrl+下方向键。"
             },
             "toggleFrameDisplay": {
               "type": "string",

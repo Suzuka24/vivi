@@ -17,7 +17,24 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch','cmap','invert','threshold'],view:['cx','cy','scale'],slice:['plane'],selection:['roi','line','selection','orthogonalState']};
 let tileRefreshTimer, tileRefreshRunning=false, tileRefreshWanted=false, sidebarTimer, layoutColumns=0, layoutRows=0;
-let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'o',line:'l',measure:'m',clear:'c',undoTransform:'z',redoTransform:'',zoomIn:'=',zoomOut:'-',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',toggleFrameDisplay:'d',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
+let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'o',line:'l',measure:'m',clear:'c',undoTransform:'z',redoTransform:'',zoomIn:'=',zoomOut:'-',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
+const shortcutNames={ctrl:'Ctrl',control:'Ctrl',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Cmd',meta:'Cmd',enter:'Enter',arrowup:'Up',arrowdown:'Down',arrowleft:'Left',arrowright:'Right',escape:'Esc',backspace:'Backspace',delete:'Delete',' ':'Space'};
+const shortcutLabel=binding=>String(binding||'').split('+').map(part=>shortcutNames[part.trim().toLowerCase()]||part.trim().toUpperCase()).filter(Boolean).join('+');
+const shortcutButtonIds={fit:['fit'],hand:['panTool'],pointer:['pointerTool'],roi:['roiTool'],oval:['ovalTool'],polygon:['polygonTool'],freehand:['freehandTool'],line:['lineTool'],angle:['angleTool'],text:['textTool'],zoomTool:['zoomTool'],measure:['toolMeasure','measure'],clear:['clear'],undoTransform:['editUndo'],redoTransform:['editRedo'],zoomIn:['zoomIn'],zoomOut:['zoomOut'],actual:['actual'],play:['viewerSlicePlay'],previousSlice:['viewerSlicePrev'],nextSlice:['viewerSliceNext'],previousFrame:['previousFileFrame'],nextFrame:['nextFileFrame'],toggleFrameDisplay:['tile'],rename:['imageRename'],autoCuts:['autoCuts','processAuto'],resetCuts:['resetCuts']};
+function updateShortcutTips(){
+  const mappedButtonIds=new Set(Object.values(shortcutButtonIds).flat());
+  for(const [action,ids] of Object.entries(shortcutButtonIds))for(const id of ids){
+    const button=$(id);if(!button)continue;
+    const base=button.dataset.shortcutBase||button.getAttribute('title')||button.getAttribute('aria-label')||button.textContent.trim();
+    button.dataset.shortcutBase=base;const shortcut=shortcutLabel(keyboardShortcuts[action]),tip=shortcut?`${base} (${shortcut})`:base;
+    button.dataset.tip=tip;button.title=tip;
+  }
+  for(const [action,binding] of Object.entries(keyboardShortcuts)){
+    const button=$(action);if(!button||button.tagName!=='BUTTON'||shortcutButtonIds[action]||mappedButtonIds.has(action))continue;
+    const base=button.dataset.shortcutBase||button.getAttribute('title')||button.textContent.trim();button.dataset.shortcutBase=base;
+    const shortcut=shortcutLabel(binding);button.dataset.tip=shortcut?`${base} (${shortcut})`:base;button.title=button.dataset.tip;
+  }
+}
 let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
 let defaultFps=24,transformsRunning=0;
 let spaceHeld=false;
@@ -45,7 +62,8 @@ function tilePictureRatio(state,d,picture,w,tw,th){
 }
 function sidebarState(){
   if(!dataset)return null;
-  const currentFrame=Number($('frame').value)-1,[rangeMin,rangeMax]=sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,currentFrame,Number($('low').value),Number($('high').value));
+  const currentFrame=Number($('frame').value)-1,entry=currentRawEntry();
+  const [rangeMin,rangeMax]=entry?autoLimits(entry.raw,entry.channels,'minmax'):sliceDisplayRange(transferHistograms,displayBounds,activeFileFrame,dataset.id,currentFrame,Number($('low').value),Number($('high').value));
   return {active:activeFileFrame,activeLabel:metadata.label||metadata.path.split(/[\\/]/).pop(),frames:[...fileFrames].map(([id,state])=>({id,label:state.metadata.label||state.metadata.path.split(/[\\/]/).pop(),visible:state.visible!==false,locked:!!state.lockMember,loading:!!state.loading})),
     datasets:metadata.datasets.map(d=>({id:d.id,name:d.name})),datasetId:dataset.id,slice:Number($('frame').value),total:dataset.frames,fps:Number($('fps').value)||defaultFps,playing,blinking,tile:tileMode,columns:layoutColumns,rows:layoutRows,locks:[...frameLocks],
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin,rangeMax,stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked,bcVisible:transferVisible};
@@ -538,12 +556,14 @@ function syncViewerToolbar(){
   $('viewerSliceCount').textContent=`/ ${length}`;
   for(const id of ['viewerSlicePrev','viewerSliceNext','viewerSlicePlay'])$(id).disabled=length<2;
   $('viewerSlicePlay').textContent=playing?'Ⅱ':'▶';
+  $('viewerSlicePlay').dataset.shortcutBase=playing?'Pause slices':'Play slices';
   if(document.activeElement!==$('viewerSliceFps'))$('viewerSliceFps').value=$('fps').value;
   const dtype=String(dataset.dtype||''),bits=Number(dtype.match(/\d+/)?.[0])||8,channels=dataset.channel==null?1:dataset.shape[dataset.channel];
   const bytes=dataset.width*dataset.height*channels*bits/8,sizeLabel=bytes<1048576?`${formatValue(bytes/1024)}KB`:`${formatValue(bytes/1048576)}MB`;
   const sourceName=metadata.sliceLabels?.[Number($('frame').value)-1];
   $('imageSummary').textContent=`${dataset.width}×${dataset.height} (${dataset.width}×${dataset.height}); ${channels===3?'RGB':bits+'-bit'}; ${sizeLabel}${sourceName?' · '+sourceName:''}`;
   drawTransferCurve();
+  updateShortcutTips();
 }
 function changeFrame(delta, automatic=false){if(!dataset)return;const total=sliceAxes().length?dataset.shape[sliceAxes()[axisIndex()]]:dataset.frames;let position=slicePosition()-1+delta;if(automatic)position=(position+total)%total;else position=Math.max(0,Math.min(total-1,position));setAxisSlice(position+1);frameLabel();$('pixel').textContent='';commitFrameChange('slice');if(orthogonal)commitFrameChange('selection');scheduleRender(0);}
 function loadTransferHistogram(){
@@ -604,7 +624,7 @@ function applyCutLimits(low,high,resetStretch=false){
 function applyAutoCuts(mode,resetStretch=false){
   const entry=currentRawEntry();
   if(!entry){$('cuts').value=mode;if(resetStretch)$('stretch').value='linear';commitFrameChange('bc');scheduleRender(0);return;}
-  const [low,high]=autoLimits(selectionSamples(entry),entry.channels,mode);
+  const [low,high]=autoLimits(mode==='minmax'?entry.raw:selectionSamples(entry),entry.channels,mode);
   applyCutLimits(low,high,resetStretch);
 }
 function selectedStackFrames(){
@@ -1027,7 +1047,7 @@ function setTool(tool){
 }
 for(const [id,value] of tools)$(id).onclick=()=>setTool(value);
 const variants={roi:[['Rectangle','roi'],['Rounded Rectangle','rounded']],oval:[['Oval','oval'],['Ellipse','ellipse']],line:[['Straight Line','line'],['Segmented Line','segmented'],['Freehand Line','freeline'],['Arrow','arrow']]};
-function showToolVariants(event,tool){setTool(tool);showPopup($('toolPopup'),event,variants[tool].map(([label,value])=>[label,()=>{toolVariant=value;toolVariants[tool]=value;const button=tools.find(([,kind])=>kind===tool);$(button[0]).title=label;$(button[0]).dataset.tip=label;} ]));}
+function showToolVariants(event,tool){setTool(tool);showPopup($('toolPopup'),event,variants[tool].map(([label,value])=>[label,()=>{toolVariant=value;toolVariants[tool]=value;const button=$(tools.find(([,kind])=>kind===tool)[0]);button.dataset.shortcutBase=label;updateShortcutTips();} ]));}
 for(const button of document.querySelectorAll('[data-variant-for]'))button.onclick=e=>showToolVariants(e,button.dataset.variantFor);
 for(const [id,tool] of tools)if(variants[tool])$(id).oncontextmenu=e=>showToolVariants(e,tool);
 $('cmap').replaceChildren();
@@ -1049,6 +1069,7 @@ for(const sub of document.querySelectorAll('.submenu')){
 document.addEventListener('click',event=>{if(event.target.closest('.menu-panel button'))event.target.closest('.menu').open=false;});
 const hoverTip=$('hoverTip');let hoveredTipTarget=null;
 for(const item of document.querySelectorAll('.menu-bar [title]'))item.removeAttribute('title');
+updateShortcutTips();
 function hideHoverTip(){hoverTip.hidden=true;hoveredTipTarget=null;}
 document.addEventListener('pointerover',event=>{
   const target=event.target.closest('.tool-bar button, .dialog-head button');
@@ -1142,6 +1163,11 @@ function reorderFileFrame(action) {
   saveFileFrame();const entries=reorderedEntries([...fileFrames.entries()],activeFileFrame,action);
   fileFrames.clear();for(const [id,state] of entries)fileFrames.set(id,state);frameList();draw();
 }
+function reorderFrameAt(id,action){
+  id=Number(id);if(!fileFrames.has(id))return;
+  if(id!==activeFileFrame)selectFileFrame(id);
+  reorderFileFrame(action);
+}
 function reorderFrame(from,to){
   if(from===to||!fileFrames.has(from)||!fileFrames.has(to))return;
   saveFileFrame();const entries=[...fileFrames.entries()],index=entries.findIndex(([id])=>id===from),[entry]=entries.splice(index,1),target=entries.findIndex(([id])=>id===to);
@@ -1168,6 +1194,7 @@ function applySidebarAction(action,value){
   else if(action==='previousFrame')moveFileFrame(-1);
   else if(action==='nextFrame')moveFileFrame(1);
   else if(['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action))reorderFileFrame(action.replace('moveFrame','').toLowerCase());
+  else if(action==='moveFrameAt')reorderFrameAt(value?.id,value?.position);
   else if(action==='tile')$('tile').click();
   else if(action==='blink')$('blink').click();
   else if(action==='columns'||action==='rows'){if(action==='columns')layoutColumns=Math.max(0,Math.min(16,Number(value)||0));else layoutRows=Math.max(0,Math.min(16,Number(value)||0));frameList();draw();}
@@ -1522,9 +1549,10 @@ function shortcutMatches(binding,event){
   return event.key.toLowerCase()===key&&event.ctrlKey===(modifiers.has('ctrl')||modifiers.has('control'))&&event.metaKey===(modifiers.has('cmd')||modifiers.has('meta'))&&event.altKey===(modifiers.has('alt')||modifiers.has('option'))&&event.shiftKey===modifiers.has('shift');
 }
 document.addEventListener('keydown',e=>{
-  if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
-  if(e.code==='Space'&&orthogonal){spaceHeld=true;e.preventDefault();return;}
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,e))?.[0];
+  const frameMove=['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action);
+  if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)&&!frameMove)return;
+  if(e.code==='Space'&&orthogonal){spaceHeld=true;e.preventDefault();return;}
   if(!action)return;
   e.preventDefault();
   if(action==='fit')fit();
@@ -1536,6 +1564,7 @@ document.addEventListener('keydown',e=>{
   else if(action==='previousSlice')changeFrame(-1);
   else if(action==='nextFrame')moveFileFrame(1);
   else if(action==='previousFrame')moveFileFrame(-1);
+  else if(['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action))reorderFileFrame(action.replace('moveFrame','').toLowerCase());
   else if(action==='toggleFrameDisplay')$('tile').click();
   else if(action==='play')$('play').click();
   else if(action==='rename')$('imageRename').click();
@@ -1578,6 +1607,8 @@ window.addEventListener('message',({data:m})=>{
     transformsRunning=Math.max(0,transformsRunning+(m.busy?1:-1));const notice=$('transformStatus');notice.hidden=transformsRunning===0;notice.textContent=transformsRunning?`Processing ${m.action.replace(/([A-Z])/g,' $1').toLowerCase()}…`:'';
   }else if(m.type==='menuVisibility'){
     applyMenuVisibility(m.items);
+  }else if(m.type==='shortcutSettings'){
+    keyboardShortcuts={...keyboardShortcuts,...m.keyboardShortcuts};updateShortcutTips();
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);
   }else if(m.type==='frameRenamed'){
