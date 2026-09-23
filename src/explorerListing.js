@@ -41,11 +41,9 @@ async function listDirectory(folder, offset = 0, mode = 'nameAsc', showHidden = 
     const entries = await Promise.all(batch.map(async item => {
       const full = path.join(folder,item.name);
       let stat;
-      if (item.isSymbolicLink() || mode.startsWith('size') || mode.startsWith('date')) {
-        try { stat = await fs.stat(full); } catch { /* broken link or removed file */ }
-      }
+      try { stat = await fs.stat(full); } catch { /* broken link or removed file */ }
       return {name:item.name,path:full,directory:stat?.isDirectory() ?? item.isDirectory(),
-        size:stat?.size ?? 0,mtimeMs:stat?.mtimeMs ?? 0};
+        size:stat?.isDirectory() ? null : (stat?.size ?? 0),mtimeMs:stat?.mtimeMs ?? 0};
     }));
     for(const entry of entries)keep(entry);
   }

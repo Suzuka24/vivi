@@ -57,7 +57,16 @@ def infer_layout(shape, axes=""):
 
 def parse_target(layout, expression=None):
     labels = layout["sourceAxes"]
-    expression = " ".join(labels) if expression is None else str(expression).strip().lower()
+    if expression is None:
+        # A viewer stack has one slice dimension. Fold every non-spatial,
+        # non-channel axis into it, while leaving RGB(A) channels last.
+        extras = [label for label in labels if label not in ("h", "w", "c")]
+        groups = (["".join(extras)] if extras else []) + ["h", "w"]
+        if "c" in labels:
+            groups.append("c")
+        expression = " ".join(groups)
+    else:
+        expression = str(expression).strip().lower()
     groups = [group for group in re.split(r"[\s,]+", expression) if group]
     if not groups or any(not re.fullmatch(r"[a-z]+", group) for group in groups):
         raise ValueError("Target shape must contain axis letters separated by spaces")

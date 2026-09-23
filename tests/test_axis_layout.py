@@ -12,6 +12,10 @@ from worker import Session
 
 
 class AxisLayoutTests(unittest.TestCase):
+    def test_default_layout_folds_extra_axes_into_one_stack(self):
+        self.assertEqual(make_layout((15, 15, 90, 90))["targetExpression"], "uv h w")
+        self.assertEqual(make_layout((15, 15, 90, 90, 3))["targetExpression"], "uv h w c")
+
     def test_four_dimensional_fold(self):
         layout = make_layout((15, 15, 90, 90), "", "uv h w")
         self.assertEqual(layout["sourceAxes"], ["u", "v", "h", "w"])

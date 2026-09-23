@@ -8,6 +8,9 @@ const lastActivatedByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
+const columnKeys=['name','size','date'];
+const columnMinimums={name:90,size:60,date:112};
+let columnWidths=vscode.getState()?.columnWidths||{};
 let keyboardShortcuts={previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',rename:'f2',toggleBC:'',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
@@ -193,13 +196,16 @@ function render() {
   const filter = $('filter').value.toLowerCase();
   $('files').replaceChildren();
   for (const item of entries.filter(entry => entry.name.toLowerCase().includes(filter))) {
-    const row = document.createElement('button');
-    row.type = 'button'; row.className = 'file ' + (item.directory ? 'folder' : item.supported ? 'supported' : 'unsupported');
+    const row = document.createElement('div');
+    row.tabIndex=0;row.className = 'file ' + (item.directory ? 'folder' : item.supported ? 'supported' : 'unsupported');
     if(item.path===lastActivatedByFolder.get(current)){row.classList.add('recent');row.setAttribute('aria-current','true');}
-    row.textContent = `${item.directory ? '▸' : item.supported ? '▧' : '·'}  ${item.name}`;
     row.title = item.path;
     row.dataset.path=item.path;
     row.setAttribute('role','listitem');
+    const name=document.createElement('span');name.className='file-cell file-name';name.textContent=`${item.directory ? '▸' : item.supported ? '▧' : '·'}  ${item.name}`;
+    const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatAdjust(item.size/1024);
+    const date=document.createElement('span');date.className='file-cell file-date';date.textContent=formatModified(item.mtimeMs);
+    row.append(name,size,date);
     row.onclick=()=>select(item);
     row.ondblclick = () => run('open', item);
     row.oncontextmenu = event => showMenu(event, item);
@@ -209,6 +215,32 @@ function render() {
   const selected=entries.find(item=>item.path===selectedPath&&item.name.toLowerCase().includes(filter));
   if(selected)select(selected);
   else {selectedPath='';$('delete').disabled=true;$('terminal').disabled=true;}
+}
+function formatModified(value){
+  const date=new Date(value);if(!Number.isFinite(date.getTime()))return '';
+  const pad=number=>String(number).padStart(2,'0');
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function updateColumnHeaders(){
+  for(const button of document.querySelectorAll('.file-column')){
+    const prefix=button.dataset.column,direction=sortMode===`${prefix}Asc`?'ascending':sortMode===`${prefix}Desc`?'descending':'none';
+    button.setAttribute('aria-sort',direction);
+  }
+}
+function selectColumnSort(column){sortMode=sortMode===`${column}Asc`?`${column}Desc`:`${column}Asc`;list(current);}
+function applyColumnWidths(){
+  const table=$('fileTable');for(const key of columnKeys)if(Number.isFinite(columnWidths[key]))table.style.setProperty(`--column-${key}`,`${columnWidths[key]}px`);
+}
+function setColumnWidth(key,width){
+  columnWidths={...columnWidths,[key]:Math.max(columnMinimums[key],Math.round(width))};
+  $('fileTable').style.setProperty(`--column-${key}`,`${columnWidths[key]}px`);
+  vscode.setState({...vscode.getState(),columnWidths});
+}
+function compactColumn(key){
+  const selector=key==='name'?'.file-name':key==='size'?'.file-size':'.file-date';
+  const header=$('fileColumns').querySelector(`[data-column="${key}"]`);
+  const width=Math.max(header.scrollWidth,...[...document.querySelectorAll(selector)].map(cell=>cell.scrollWidth))+10;
+  setColumnWidth(key,width);
 }
 $('navigate').onsubmit = event => { event.preventDefault(); list($('path').value); };
 $('pathHistory').onclick=event=>{
@@ -246,6 +278,15 @@ $('sort').onclick = event => {
 $('filter').oninput = render;
 $('filterToggle').onclick=()=>{const field=$('filter');field.hidden=!field.hidden;$('filterToggle').setAttribute('aria-expanded',String(!field.hidden));if(!field.hidden)field.focus();else{field.value='';render();}};
 for(const button of document.querySelectorAll('.icon-button')) button.dataset.tip = button.title;
+applyColumnWidths();
+for(const button of document.querySelectorAll('.file-column'))button.onclick=event=>{if(!event.target.closest('.column-resizer'))selectColumnSort(button.dataset.column);};
+for(const handle of document.querySelectorAll('.column-resizer')){
+  let resize=null;
+  handle.ondblclick=event=>{event.preventDefault();event.stopPropagation();compactColumn(handle.dataset.resize);};
+  handle.onpointerdown=event=>{event.preventDefault();event.stopPropagation();resize={key:handle.dataset.resize,start:event.clientX,width:handle.parentElement.getBoundingClientRect().width};handle.classList.add('resizing');};
+  window.addEventListener('pointermove',event=>{if(resize)setColumnWidth(resize.key,resize.width+event.clientX-resize.start);});
+  window.addEventListener('pointerup',()=>{if(resize){document.querySelector(`[data-resize="${resize.key}"]`)?.classList.remove('resizing');resize=null;}});
+}
 document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
 $('contextMenu').addEventListener('mouseleave', closeMenu);
 document.addEventListener('keydown', event => { if (event.key === 'Escape'){closeMenu();if(!$('filter').hidden)$('filterToggle').click();} });
@@ -312,6 +353,6 @@ window.addEventListener('message', ({data:message}) => {
   $('pathHistory').disabled=!history.length;
   $('hidden').classList.toggle('selected',showHidden);$('hidden').setAttribute('aria-pressed',String(showHidden));$('hidden').title=showHidden?'Hide hidden files':'Show hidden files';$('hidden').setAttribute('aria-label',$('hidden').title);$('hidden').dataset.tip=$('hidden').title;
   $('sort').title=`Sort: ${sorts.find(([mode])=>mode===sortMode)?.[1]||'Name A–Z'}`;$('sort').dataset.tip=$('sort').title;
-  render();requestAnimationFrame(fillViewport);
+  updateColumnHeaders();render();requestAnimationFrame(fillViewport);
 });
 vscode.postMessage({type:'ready'});
