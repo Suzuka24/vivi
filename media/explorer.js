@@ -34,14 +34,11 @@ function scrollbarHit(event){
   }
   return false;
 }
-function restoreShortcutFocus(event){
-  if(!scrollbarHit(event))return;
-  requestAnimationFrame(()=>{if(document.activeElement?.matches('input,select,textarea,[contenteditable="true"]'))return;document.body.tabIndex=-1;document.body.focus({preventScroll:true});window.focus();});
+function updateScrollbarShortcutFocus(event){
+  vscode.postMessage({type:'scrollbarShortcutFocus',active:scrollbarHit(event)});
 }
-window.addEventListener('pointerdown',restoreShortcutFocus,true);
-window.addEventListener('pointerup',restoreShortcutFocus,true);
-window.addEventListener('mousedown',restoreShortcutFocus,true);
-window.addEventListener('mouseup',restoreShortcutFocus,true);
+window.addEventListener('pointerdown',updateScrollbarShortcutFocus,true);
+window.addEventListener('mousedown',updateScrollbarShortcutFocus,true);
 function updateShortcutTips(){
   for(const [id,action] of Object.entries(shortcutButtons)){
     const button=$(id);if(!button)continue;

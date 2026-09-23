@@ -79,7 +79,39 @@
       {
         "command": "vivi.moveFrameLast",
         "title": "vivi: Move Current Frame to Bottom"
+      },
+      {
+        "command": "vivi.runShortcut",
+        "title": "vivi: Run Image Shortcut"
       }
+    ],
+    "keybindings": [
+      { "command": "vivi.runShortcut", "key": "f", "when": "vivi.scrollbarShortcutFocus", "args": "fit" },
+      { "command": "vivi.runShortcut", "key": "h", "when": "vivi.scrollbarShortcutFocus", "args": "hand" },
+      { "command": "vivi.runShortcut", "key": "p", "when": "vivi.scrollbarShortcutFocus", "args": "pointer" },
+      { "command": "vivi.runShortcut", "key": "r", "when": "vivi.scrollbarShortcutFocus", "args": "roi" },
+      { "command": "vivi.runShortcut", "key": "o", "when": "vivi.scrollbarShortcutFocus", "args": "oval" },
+      { "command": "vivi.runShortcut", "key": "l", "when": "vivi.scrollbarShortcutFocus", "args": "line" },
+      { "command": "vivi.runShortcut", "key": "m", "when": "vivi.scrollbarShortcutFocus", "args": "measure" },
+      { "command": "vivi.runShortcut", "key": "c", "when": "vivi.scrollbarShortcutFocus", "args": "clear" },
+      { "command": "vivi.runShortcut", "key": "z", "when": "vivi.scrollbarShortcutFocus", "args": "undoTransform" },
+      { "command": "vivi.runShortcut", "key": "=", "when": "vivi.scrollbarShortcutFocus", "args": "zoomIn" },
+      { "command": "vivi.runShortcut", "key": "-", "when": "vivi.scrollbarShortcutFocus", "args": "zoomOut" },
+      { "command": "vivi.runShortcut", "key": "enter", "when": "vivi.scrollbarShortcutFocus", "args": "play" },
+      { "command": "vivi.runShortcut", "key": "left", "when": "vivi.scrollbarShortcutFocus", "args": "previousSlice" },
+      { "command": "vivi.runShortcut", "key": "right", "when": "vivi.scrollbarShortcutFocus", "args": "nextSlice" },
+      { "command": "vivi.runShortcut", "key": "up", "when": "vivi.scrollbarShortcutFocus", "args": "previousFrame" },
+      { "command": "vivi.runShortcut", "key": "down", "when": "vivi.scrollbarShortcutFocus", "args": "nextFrame" },
+      { "command": "vivi.runShortcut", "key": "shift+up", "when": "vivi.scrollbarShortcutFocus", "args": "moveFrameUp" },
+      { "command": "vivi.runShortcut", "key": "shift+down", "when": "vivi.scrollbarShortcutFocus", "args": "moveFrameDown" },
+      { "command": "vivi.runShortcut", "key": "ctrl+up", "when": "vivi.scrollbarShortcutFocus", "args": "moveFrameFirst" },
+      { "command": "vivi.runShortcut", "key": "ctrl+down", "when": "vivi.scrollbarShortcutFocus", "args": "moveFrameLast" },
+      { "command": "vivi.runShortcut", "key": "d", "when": "vivi.scrollbarShortcutFocus", "args": "toggleFrameDisplay" },
+      { "command": "vivi.runShortcut", "key": "f2", "when": "vivi.scrollbarShortcutFocus", "args": "rename" },
+      { "command": "vivi.runShortcut", "key": "a", "when": "vivi.scrollbarShortcutFocus", "args": "autoCuts" },
+      { "command": "vivi.runShortcut", "key": "s", "when": "vivi.scrollbarShortcutFocus", "args": "resetCuts" },
+      { "command": "vivi.runShortcut", "key": "shift+a", "when": "vivi.scrollbarShortcutFocus", "args": "stackAutoCuts" },
+      { "command": "vivi.runShortcut", "key": "shift+s", "when": "vivi.scrollbarShortcutFocus", "args": "stackResetCuts" }
     ],
     "viewsContainers": {
       "activitybar": [

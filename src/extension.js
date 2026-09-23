@@ -102,8 +102,17 @@ function activate(context) {
   let activeSession = null;
   const sidebarViews = [];
   const publishSidebar = session => { for (const provider of sidebarViews) provider.view?.webview.postMessage(session?.sidebarState ? {type:'sidebarState',state:session.sidebarState}:{type:'sidebarClear'}); };
-  const setSessionContext = () => vscode.commands.executeCommand('setContext', 'vivi.sessionActive', sessions.length > 0);
+  const setSessionContext = () => {
+    vscode.commands.executeCommand('setContext', 'vivi.sessionActive', sessions.length > 0);
+    if (!sessions.length) vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', false);
+  };
   setSessionContext();
+  context.subscriptions.push(vscode.commands.registerCommand('vivi.runShortcut', action => {
+    activeSession?.panel.webview.postMessage({type:'sideAction',action:'shortcut',value:String(action || '')});
+  }));
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() =>
+    vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', false)
+  ));
   for (const action of ['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast']) context.subscriptions.push(
     vscode.commands.registerCommand(`vivi.${action}`, () => activeSession?.panel.webview.postMessage({type:'sideAction',action}))
   );
@@ -177,6 +186,7 @@ function activate(context) {
           }
           if (msg.type === 'action') await this.action(msg);
           if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
+          if (msg.type === 'scrollbarShortcutFocus') await vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', msg.active === true);
         } catch (error) { view.webview.postMessage({ type: 'error', message: error.message }); }
       }, undefined, context.subscriptions);
       view.webview.html = (await html(view.webview, context, 'explorer')).replace('{{viewKind}}', this.kind);
@@ -311,7 +321,10 @@ function activate(context) {
     sessions.push(session);
     activeSession=session;
     setSessionContext();
-    panel.onDidChangeViewState(()=>{if(panel.active){activeSession=session;publishSidebar(session);}});
+    panel.onDidChangeViewState(()=>{
+      if(panel.active){activeSession=session;publishSidebar(session);}
+      else vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', false);
+    });
     panel.webview.options = { enableScripts: true, localResourceRoots: webviewResourceRoots(context) };
     panel.onDidDispose(() => {
       disposed = true;
@@ -326,6 +339,8 @@ function activate(context) {
         if (msg.type === 'ready') {
           ready = true;
           for (const item of pendingPaths.splice(0)) await session.add(item.file,false,'',null,item.mode,item.options);
+        } else if (msg.type === 'scrollbarShortcutFocus') {
+          await vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', msg.active === true);
         } else if (msg.type === 'activeFrame') {
           if (frames.has(msg.frameId)) activeId = msg.frameId;
         } else if (msg.type === 'sidebarState') {

@@ -30,14 +30,11 @@ function scrollbarHit(event){
   }
   return false;
 }
-function restoreShortcutFocus(event){
-  if(!scrollbarHit(event))return;
-  requestAnimationFrame(()=>{if(document.activeElement?.matches('input,select,textarea,[contenteditable="true"]'))return;document.body.tabIndex=-1;document.body.focus({preventScroll:true});window.focus();});
+function updateScrollbarShortcutFocus(event){
+  vscode.postMessage({type:'scrollbarShortcutFocus',active:scrollbarHit(event)});
 }
-window.addEventListener('pointerdown',restoreShortcutFocus,true);
-window.addEventListener('pointerup',restoreShortcutFocus,true);
-window.addEventListener('mousedown',restoreShortcutFocus,true);
-window.addEventListener('mouseup',restoreShortcutFocus,true);
+window.addEventListener('pointerdown',updateScrollbarShortcutFocus,true);
+window.addEventListener('mousedown',updateScrollbarShortcutFocus,true);
 const shortcutButtonIds={fit:['fit'],hand:['panTool'],pointer:['pointerTool'],roi:['roiTool'],oval:['ovalTool'],polygon:['polygonTool'],freehand:['freehandTool'],line:['lineTool'],angle:['angleTool'],text:['textTool'],zoomTool:['zoomTool'],measure:['toolMeasure','measure'],clear:['clear'],undoTransform:['editUndo'],redoTransform:['editRedo'],zoomIn:['zoomIn'],zoomOut:['zoomOut'],actual:['actual'],play:['viewerSlicePlay'],previousSlice:['viewerSlicePrev'],nextSlice:['viewerSliceNext'],previousFrame:['previousFileFrame'],nextFrame:['nextFileFrame'],toggleFrameDisplay:['tile'],rename:['imageRename'],autoCuts:['autoCuts','processAuto'],resetCuts:['resetCuts']};
 function updateShortcutTips(){
   const mappedButtonIds=new Set(Object.values(shortcutButtonIds).flat());
