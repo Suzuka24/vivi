@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const labels = { open: 'Open', openAs:'Open As…', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
+const selectedChildByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
@@ -158,6 +159,7 @@ function fillViewport(){if(more&&!loading&&$('files').scrollHeight<=$('files').c
 $('files').onscroll=()=>{if($('files').scrollTop+$('files').clientHeight >= $('files').scrollHeight-200)loadMore();};
 function select(item) {
   selectedPath = item.path;
+  if(current)selectedChildByFolder.set(current,selectedPath);
   for(const row of $('files').children)row.classList.toggle('selected',row.dataset.path===selectedPath);
   $('delete').disabled=false;$('terminal').disabled=false;
 }
@@ -255,9 +257,6 @@ $('frameTile').removeAttribute('title');$('frameTile').addEventListener('pointer
 updateShortcutTips();
 $('historyMenu').addEventListener('pointerover',event=>{const button=event.target.closest('button');if(button)showPathTip(button,button.textContent);});
 $('historyMenu').addEventListener('pointerleave',hidePathTip);
-$('files').addEventListener('focusin',()=>$('files').classList.add('selection-active'));
-$('files').addEventListener('focusout',()=>setTimeout(()=>$('files').classList.toggle('selection-active',$('files').contains(document.activeElement))));
-window.addEventListener('blur',()=>$('files').classList.remove('selection-active'));
 $('up').onclick = () => list(parent);
 $('home').onclick = () => list('~');
 $('refresh').onclick = () => list(current);
@@ -346,7 +345,7 @@ window.addEventListener('message', ({data:message}) => {
   if(message.type==='menuItems'){menuItems=message.items;closeMenu();return;}
   if (message.type !== 'list') return;
   const append=message.path===current&&message.offset===entries.length&&message.offset>0;
-  current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
+  current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;if(!append)selectedPath=selectedChildByFolder.get(current)||'';more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
   $('path').value = current;
   $('pathHistory').disabled=!history.length;
   $('hidden').classList.toggle('selected',showHidden);$('hidden').setAttribute('aria-pressed',String(showHidden));$('hidden').title=showHidden?'Hide hidden files':'Show hidden files';$('hidden').setAttribute('aria-label',$('hidden').title);$('hidden').dataset.tip=$('hidden').title;

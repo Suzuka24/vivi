@@ -83,15 +83,12 @@ body.view-explorer #files .file{width:max-content;min-width:100%;display:grid;al
 body.view-explorer .file-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-name{padding-right:5px}.file-size,.file-date{padding-left:6px;color:var(--vscode-descriptionForeground,#aeb9c5);font-variant-numeric:tabular-nums}
 .open-as-backdrop{position:fixed;inset:0;z-index:50;background:#0008;display:flex;align-items:center;justify-content:center;padding:8px}.open-as-backdrop[hidden]{display:none}.open-as-dialog{width:min(560px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;border:1px solid var(--vscode-focusBorder,#65c9ae);border-radius:5px;background:var(--vscode-editorWidget-background,#242b35);box-shadow:0 12px 28px #000b}.open-as-head{display:flex;align-items:center;padding:6px 8px;background:var(--vscode-titleBar-activeBackground,#313945)}.open-as-head strong{flex:1}.open-as-head button{border:0;background:transparent;font-size:18px}.open-as-body{padding:9px}.open-as-body p{margin:0 0 8px;color:var(--vscode-descriptionForeground,#aab2bc);font-size:11px}.open-as-row{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:7px 0;border-top:1px solid #77889933}.open-as-row strong,.open-as-shape{overflow-wrap:anywhere}.open-as-row label{display:grid;grid-template-columns:86px minmax(0,1fr);align-items:center;gap:5px}.open-as-row input{min-width:0;width:100%}.open-as-target{font-family:var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,#aab2bc)}#openAsError{min-height:16px;color:var(--vscode-errorForeground,#ff8f91);font-size:11px}.open-as-actions{display:flex;justify-content:flex-end;gap:5px}
 
-/* Windows-style persistent selection: active only while the file list owns focus. */
+/* Windows-style list selection: hover is transient; one clicked item stays selected. */
 body.view-explorer #files .file.selected{
-  background:var(--vscode-list-inactiveSelectionBackground,#31404d);
-  color:var(--vscode-list-inactiveSelectionForeground,var(--vscode-foreground,#ddd));
-}
-body.view-explorer #files.selection-active .file.selected{
   background:var(--vscode-list-activeSelectionBackground,#355c75);
   color:var(--vscode-list-activeSelectionForeground,#eef7fa);
 }
+body.view-explorer #files .file:not(.selected):hover{background:var(--vscode-list-hoverBackground,#3a4350)}
 body.view-layout .frame-nav{display:inline-flex;align-items:center;justify-content:center;width:28px;height:27px;padding:3px}
 body.view-layout .frame-nav svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 body.view-layout .frame-heading{align-items:center;margin-bottom:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
