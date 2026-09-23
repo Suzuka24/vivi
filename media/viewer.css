@@ -30,7 +30,7 @@
 .viewer #transferCurve{display:block;width:180px;height:94px;margin-top:3px}
 .viewer .transfer-panel.minimized{width:80px}
 .viewer .transfer-panel.minimized canvas{display:none}
-.viewer #analysisPane{display:flex;flex-direction:column;width:520px;min-width:340px;max-width:calc(100% - 20px);max-height:calc(100% - 20px);z-index:7;overflow:hidden}
+.viewer #analysisPane{display:flex;flex-direction:column;width:520px;min-width:340px;max-width:calc(100% - 20px);max-height:calc(100% - 20px);z-index:7;overflow:hidden;resize:both;box-sizing:border-box}
 .viewer #analysis{white-space:pre;overflow:auto;font-variant-numeric:tabular-nums;font-size:11px;line-height:1.45}
 .viewer .floating-dialog[data-dialog="histogram-result"]{width:480px;max-width:calc(100vw - 24px)}
 .viewer .hist-plot{display:block;max-width:100%;height:auto}
@@ -38,7 +38,7 @@
 .viewer .hist-range{display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
 .viewer .hist-stats{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.5}
 .viewer .floating-dialog .dialog-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.viewer .floating-dialog{max-height:min(75vh,calc(100vh - 50px))}
+.viewer .floating-dialog{min-width:220px;min-height:48px;max-height:min(75vh,calc(100vh - 50px));resize:both;box-sizing:border-box}
 .viewer .menu-bar,.viewer .tool-bar{font-size:12px;line-height:1.3}
 .viewer .menu-bar details[hidden],.viewer .menu-panel > button[hidden]{display:none}
 .viewer .menu-bar{height:32px;min-height:32px}
@@ -50,8 +50,9 @@
 .viewer #transferTicks{display:flex;justify-content:space-between;gap:4px;font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
 .viewer .transfer-panel.minimized{width:180px;height:28px;padding:3px 6px}
 .viewer .transfer-panel.minimized #transferCurve,.viewer .transfer-panel.minimized #transferTicks{display:none}
-.viewer .floating-dialog[data-dialog="histogram-result"]{width:335px;max-width:calc(100vw - 24px)}
-.viewer .hist-plot{width:300px;max-width:100%;height:145px}
+.viewer .floating-dialog[data-dialog="histogram-result"]{width:335px;height:300px;max-width:calc(100vw - 24px);min-height:240px;display:flex;flex-direction:column;overflow:hidden}
+.viewer .floating-dialog[data-dialog="histogram-result"] .dialog-body{flex:1;min-height:0;overflow:auto}
+.viewer .hist-plot{width:100%;max-width:100%;height:145px;min-height:145px}
 .viewer .hist-stats{margin:2px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;line-height:1.35}
 .viewer .floating-dialog.minimized{width:180px!important;height:28px;min-height:28px;max-height:28px;overflow:hidden}
 .viewer .floating-dialog.minimized .dialog-head{height:27px;padding:2px 5px}
@@ -84,7 +85,7 @@
 .viewer .interactive-plot.has-data{display:block}
 .viewer #analysisPane .analysis-head{flex:none}
 .viewer #analysisPane #analysis{flex:none;max-height:min(40vh,420px);margin:3px 0 5px}
-.viewer #analysisPane #chart{flex:none;height:150px;min-height:140px;border:0}
+.viewer #analysisPane #chart{flex:1 1 150px;height:auto;min-height:140px;border:0}
 .viewer #analysisPane .plot-readout:empty{display:none}
 .viewer #analysisPane.minimized{resize:none}
 .viewer .plot-readout{height:17px;line-height:17px;font-size:10px;color:var(--vscode-descriptionForeground,#aeb7c3);font-variant-numeric:tabular-nums;white-space:nowrap}

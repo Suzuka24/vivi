@@ -1,6 +1,7 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
+const windowMemory={...(vscode.getState()?.windowMemory||{})};
 const formatValue = window.ViviNumberFormat.formatNumber;
 const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -925,10 +926,33 @@ function interactivePlot(canvas,values,xValues=null,readout=null){
   }draw();requestAnimationFrame(draw);
 }
 function chart(values,xValues=null){interactivePlot($('chart'),values,xValues,$('plotReadout'));}
+function persistWindowMemory(){vscode.setState({...vscode.getState(),windowMemory});}
+function rememberWindow(pane,key=pane.dataset.windowKey){
+  if(!key||pane.hidden||pane.classList.contains('minimized'))return;
+  const owner=pane.id==='analysisPane'?$('stage'):$('dialogLayer'),rect=pane.getBoundingClientRect(),ownerRect=owner.getBoundingClientRect();
+  windowMemory[key]={width:Math.round(rect.width),height:Math.round(rect.height),left:Math.round(rect.left-ownerRect.left),top:Math.round(rect.top-ownerRect.top)};persistWindowMemory();
+}
+function openWindows(except=null){return [...document.querySelectorAll('.floating-dialog, #analysisPane')].filter(pane=>pane!==except&&!pane.hidden&&!pane.classList.contains('minimized'));}
+function placeWindow(pane,key,defaults={}){
+  const saved=windowMemory[key],owner=pane.id==='analysisPane'?$('stage'):$('dialogLayer'),ownerRect=owner.getBoundingClientRect(),siblings=openWindows(pane),last=siblings.at(-1),reference=last?.getBoundingClientRect();
+  pane.dataset.windowKey=key;
+  pane.style.width=saved?.width?`${saved.width}px`:(defaults.width?`${defaults.width}px`:'');
+  if(saved?.height||defaults.height)pane.style.height=`${saved?.height||defaults.height}px`;else pane.style.removeProperty('height');
+  const left=reference?reference.left-ownerRect.left+24:(saved?.left??40),top=reference?reference.top-ownerRect.top+24:(saved?.top??40),width=pane.getBoundingClientRect().width||defaults.width||270,height=pane.getBoundingClientRect().height||defaults.height||120;
+  pane.style.left=`${Math.max(0,Math.min(Math.round(left),Math.max(0,ownerRect.width-width)))}px`;
+  pane.style.top=`${Math.max(0,Math.min(Math.round(top),Math.max(0,ownerRect.height-height)))}px`;
+  pane.style.right='auto';pane.style.bottom='auto';
+}
+function showAnalysis(key,defaults={}){
+  const pane=$('analysisPane');
+  if(pane.dataset.windowKey!==key||pane.hidden){if(!pane.hidden)rememberWindow(pane);placeWindow(pane,key,defaults);}
+  pane.hidden=false;
+}
+new ResizeObserver(()=>rememberWindow($('analysisPane'))).observe($('analysisPane'));
 const measurementHistory=[];
 let measurementFields=new Set(["Area","Mean","Std","Min","Max","Sum"]);
 let calibration={factor:1,unit:"px"};
-async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${formatValue(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI)}°`;chart([]);$('analysisPane').hidden=false;return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);clearExpiredError();if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${formatValue(r.area*calibration.factor*calibration.factor)} ${calibration.unit}²\nFinite pixels: ${formatValue(r.count)}\nMean: ${formatValue(r.mean)}\nStd (population): ${formatValue(r.std)}\nMin: ${formatValue(r.min)}\nMax: ${formatValue(r.max)}\nSum: ${formatValue(r.sum)}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${formatValue(r.samples)} samples\n${r.sampled?'Sampled; stride '+formatValue(r.step):'All pixels'}\nX: ${formatValue(r.edges[0])} … ${formatValue(r.edges.at(-1))}\nY: count per bin`;chart(r.counts,r.counts.map((_,index)=>(r.edges[index]+r.edges[index+1])/2));}else{$('analysis').textContent=`Profile · ${formatValue(r.values.length)} points\nLength: ${formatValue(r.distance.at(-1))} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values,r.distance);}$('analysisPane').hidden=false;$('busy').textContent='';}catch(error){showError(error);}finally{analysisRunning=false;}}
+async function analyze(op){if(!dataset||analysisRunning)return;if(op==='measure'&&selection?.type==='angle'&&selection.points.length===3){const [a,b,c]=selection.points,u=[a[0]-b[0],a[1]-b[1]],v=[c[0]-b[0],c[1]-b[1]],cos=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v));$('analysis').textContent=`Angle: ${formatValue(Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI)}°`;chart([]);showAnalysis('measure');return;}if(op==='profile'&&!line){showError(new Error('Choose Line [L] and draw a line first.'));return;}stopPlay();analysisRunning=true;$('busy').textContent='Analyzing…';const args={...base(),box:roi||undefined,points:line,selection};try{const r=await request(op,args);clearExpiredError();if(op==='measure'){measurementHistory.push({...r,label:metadata.label||metadata.path.split(/[\\/]/).pop(),slice:Number($('frame').value)});$('analysis').textContent=`Frame: ${r.frame+1} · Dataset: ${r.dataset}\nROI: ${r.box.join(', ')}\nArea: ${formatValue(r.area*calibration.factor*calibration.factor)} ${calibration.unit}²\nFinite pixels: ${formatValue(r.count)}\nMean: ${formatValue(r.mean)}\nStd (population): ${formatValue(r.std)}\nMin: ${formatValue(r.min)}\nMax: ${formatValue(r.max)}\nSum: ${formatValue(r.sum)}`.split('\n').filter(line=>!['Area','Mean','Std','Min','Max','Sum'].some(field=>line.startsWith(field+':')&&!measurementFields.has(field))).join('\n');chart([]);}else if(op==='histogram'){$('analysis').textContent=`Histogram · ${formatValue(r.samples)} samples\n${r.sampled?'Sampled; stride '+formatValue(r.step):'All pixels'}\nX: ${formatValue(r.edges[0])} … ${formatValue(r.edges.at(-1))}\nY: count per bin`;chart(r.counts,r.counts.map((_,index)=>(r.edges[index]+r.edges[index+1])/2));}else{$('analysis').textContent=`Profile · ${formatValue(r.values.length)} points\nLength: ${formatValue(r.distance.at(-1))} px\nX: distance · Y: raw value\nNearest-neighbor samples`;chart(r.values,r.distance);}$('busy').textContent='';showAnalysis(op,op==='profile'?{width:520,height:360}:{});}catch(error){showError(error);}finally{analysisRunning=false;}}
 function mouseMatches(binding,event,gesture,allowExtraShift=false){
   if(!binding)return false;
   const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),name=parts.pop(),mods=new Set(parts);
@@ -1138,7 +1162,7 @@ $('imageDuplicate').onclick=openDuplicateDialog;
 $('monitorMemory').onclick=()=>vscode.postMessage({type:'imageAction',action:'memory',frameId:activeFileFrame});
 $('focusLayout').onclick=()=>vscode.postMessage({type:'focusLayout'});
 $('aboutVivi').onclick=()=>openDialog('about','About vivi','<p>vivi image viewer</p>');
-$('closeAnalysis').onclick=()=>$('analysisPane').hidden=true;
+$('closeAnalysis').onclick=()=>{rememberWindow($('analysisPane'));$('analysisPane').hidden=true;};
 function arrangeMinimized(){
   const windows=[...document.querySelectorAll('.floating-dialog.minimized, #analysisPane.minimized')];
   windows.forEach((pane,index)=>{pane.style.position='fixed';pane.style.left=`${8+index*188}px`;pane.style.right='auto';pane.style.top='auto';pane.style.bottom='25px';});
@@ -1159,14 +1183,14 @@ $('minimizeAnalysis').onclick=()=>toggleMinimized($('analysisPane'));
 $('pinAnalysis').onclick=()=>$('analysisPane').classList.toggle('pinned');
 const analysisHead=$('analysisPane').querySelector('.analysis-head');
 analysisHead.onpointerdown=event=>{if(event.target.closest('button'))return;const pane=$('analysisPane'),rect=pane.getBoundingClientRect(),stage=$('stage').getBoundingClientRect(),left=rect.left-stage.left,top=rect.top-stage.top,startX=event.clientX,startY=event.clientY;pane.style.left=left+'px';pane.style.top=top+'px';pane.style.right='auto';pane.style.bottom='auto';analysisHead.setPointerCapture(event.pointerId);analysisHead.onpointermove=move=>{if(!analysisHead.hasPointerCapture(event.pointerId))return;pane.style.left=Math.max(0,left+move.clientX-startX)+'px';pane.style.top=Math.max(0,top+move.clientY-startY)+'px';};};
-analysisHead.onpointerup=event=>{if(analysisHead.hasPointerCapture(event.pointerId))analysisHead.releasePointerCapture(event.pointerId);analysisHead.onpointermove=null;};
+analysisHead.onpointerup=event=>{if(analysisHead.hasPointerCapture(event.pointerId))analysisHead.releasePointerCapture(event.pointerId);analysisHead.onpointermove=null;rememberWindow($('analysisPane'));};
 $('dataset').onchange=selectDataset;
 for(const id of ['cuts','stretch'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['cmap','invert','threshold'])$(id).onchange=()=>{commitFrameChange('bc');scheduleRender(0);};
 for(const id of ['low','high'])$(id).onchange=()=>{$('cuts').value='manual';commitFrameChange('bc');scheduleRender(0);};
 $('clear').onclick=()=>{selection=null;vertices=[];refreshSelection();};
 for(const op of ['measure','histogram','profile'])$(op).onclick=()=>analyze(op);
-$('clearResults').onclick=()=>{measurementHistory.length=0;$('analysis').textContent='Results cleared.';chart([]);$('analysisPane').hidden=false;};
+$('clearResults').onclick=()=>{measurementHistory.length=0;$('analysis').textContent='Results cleared.';chart([]);showAnalysis('measure');};
 $('summarize').onclick=()=>{
   if(!measurementHistory.length){showError(new Error('Measure at least one image or selection first.'));return;}
   const lines=[`Summary · ${measurementHistory.length} measurements`];
@@ -1177,13 +1201,13 @@ $('summarize').onclick=()=>{
     const standard=Math.sqrt(values.reduce((a,b)=>a+(b-mean)**2,0)/values.length);
     lines.push(`${key}: mean ${formatValue(mean)}, SD ${formatValue(standard)}, min ${formatValue(Math.min(...values))}, max ${formatValue(Math.max(...values))}`);
   }
-  $('analysis').textContent=lines.join('\n');chart([]);$('analysisPane').hidden=false;
+  $('analysis').textContent=lines.join('\n');chart([]);showAnalysis('summarize');
 };
 $('distribution').onclick=()=>{
   if(!measurementHistory.length){showError(new Error('Measure at least one image or selection first.'));return;}
   document.querySelector('[data-dialog="distribution"]')?.remove();
   const dialog=openDialog('distribution','Distribution',`<label>Column <select class="distribution-field"><option>area</option><option>mean</option><option>std</option><option>min</option><option>max</option><option>sum</option></select></label><div class="dialog-actions"><button class="distribution-run">Plot</button></div>`);
-  dialog.querySelector('.distribution-run').onclick=()=>{const field=dialog.querySelector('.distribution-field').value,values=measurementHistory.map(row=>Number(row[field])).filter(Number.isFinite);const low=Math.min(...values),high=Math.max(...values);const bins=Array(32).fill(0);for(const value of values)bins[Math.min(31,Math.floor((value-low)/(high-low||1)*32))]++;$('analysis').textContent=`Distribution · ${field}\n${formatValue(values.length)} measurements\nRange: ${formatValue(low)} … ${formatValue(high)}`;chart(bins);$('analysisPane').hidden=false;dialog.remove();};
+  dialog.querySelector('.distribution-run').onclick=()=>{const field=dialog.querySelector('.distribution-field').value,values=measurementHistory.map(row=>Number(row[field])).filter(Number.isFinite);const low=Math.min(...values),high=Math.max(...values);const bins=Array(32).fill(0);for(const value of values)bins[Math.min(31,Math.floor((value-low)/(high-low||1)*32))]++;$('analysis').textContent=`Distribution · ${field}\n${formatValue(values.length)} measurements\nRange: ${formatValue(low)} … ${formatValue(high)}`;chart(bins);showAnalysis('distribution',{width:520,height:360});dialog.remove();};
 };
 $('setMeasurements').onclick=()=>{
   document.querySelector('[data-dialog="measurements"]')?.remove();
@@ -1304,15 +1328,16 @@ let dialogTop=40, dialogZ=20;
 function openDialog(key,title,content){
   let dialog=document.querySelector(`[data-dialog="${key}"]`);
   if(dialog){dialog.hidden=false;dialog.style.zIndex=++dialogZ;return dialog;}
-  dialog=document.createElement('section');dialog.className='floating-dialog';dialog.dataset.dialog=key;dialog.style.top=dialogTop+'px';dialog.style.left=dialogTop+'px';dialog.style.zIndex=++dialogZ;dialogTop=dialogTop>110?40:dialogTop+25;
+  dialog=document.createElement('section');dialog.className='floating-dialog';dialog.dataset.dialog=key;dialog.style.zIndex=++dialogZ;
   dialog.innerHTML=`<div class="dialog-head"><strong>${title}</strong><button class="dialog-min" title="Minimize">−</button><button class="dialog-pin" title="Keep in front">◇</button><button class="dialog-close" title="Close">×</button></div><div class="dialog-body">${content}</div>`;
-  $('dialogLayer').append(dialog);
+  $('dialogLayer').append(dialog);placeWindow(dialog,`dialog:${key}`);dialogTop=dialogTop>110?40:dialogTop+25;
   dialog.onclick=()=>{if(!dialog.classList.contains('pinned'))dialog.style.zIndex=++dialogZ;};
-  dialog.querySelector('.dialog-close').onclick=()=>{dialog.remove();arrangeMinimized();};
+  dialog.querySelector('.dialog-close').onclick=()=>{rememberWindow(dialog);dialog.remove();arrangeMinimized();};
   dialog.querySelector('.dialog-min').onclick=()=>toggleMinimized(dialog);
   dialog.querySelector('.dialog-pin').onclick=()=>{dialog.classList.toggle('pinned');dialog.style.zIndex=dialog.classList.contains('pinned')?10000:++dialogZ;};
   const head=dialog.querySelector('.dialog-head');head.onpointerdown=e=>{if(e.target.tagName==='BUTTON')return;head.setPointerCapture(e.pointerId);const x=e.clientX,y=e.clientY,left=dialog.offsetLeft,top=dialog.offsetTop;head.onpointermove=move=>{if(!head.hasPointerCapture(e.pointerId))return;dialog.style.left=Math.max(0,left+move.clientX-x)+'px';dialog.style.top=Math.max(0,top+move.clientY-y)+'px';};};
-  head.onpointerup=e=>{if(head.hasPointerCapture(e.pointerId))head.releasePointerCapture(e.pointerId);head.onpointermove=null;};
+  head.onpointerup=e=>{if(head.hasPointerCapture(e.pointerId))head.releasePointerCapture(e.pointerId);head.onpointermove=null;rememberWindow(dialog);};
+  new ResizeObserver(()=>rememberWindow(dialog)).observe(dialog);
   return dialog;
 }
 function openDuplicateDialog(){
@@ -1586,9 +1611,9 @@ function showHistogram(result,args){
   document.querySelector('[data-dialog="histogram-result"]')?.remove();
   const title=metadata.label||metadata.path.split(/[\\/]/).pop();
   const dialog=openDialog('histogram-result',`Histogram of ${title}`,`<canvas class="hist-plot" width="300" height="145"></canvas><div class="hist-range"></div><pre class="hist-stats"></pre><div class="dialog-actions"><button class="hist-list">List</button><button class="hist-copy">Copy</button><button class="hist-log">Log</button><button class="hist-live">Live</button></div>`);
-  const canvas=dialog.querySelector('.hist-plot'),context=canvas.getContext('2d'),counts=result.counts||[],edges=result.edges||[],peak=Math.max(1,...counts),ceiling=args.yMax||peak,w=canvas.width,h=canvas.height;
-  context.fillStyle='#151a20';context.fillRect(0,0,w,h);context.fillStyle='#76d9ba';
-  for(let i=0;i<counts.length;i++){const left=i*w/counts.length,width=Math.max(1,w/counts.length),height=Math.max(0,Math.min(h,counts[i]/ceiling*h));context.fillRect(left,h-height,width,height);}
+  const canvas=dialog.querySelector('.hist-plot'),context=canvas.getContext('2d'),counts=result.counts||[],edges=result.edges||[],peak=Math.max(1,...counts),ceiling=args.yMax||peak;
+  let histogramLog=false;const drawHistogram=()=>{const rect=canvas.getBoundingClientRect(),ratio=Math.max(1,window.devicePixelRatio||1),w=Math.max(1,Math.round(rect.width*ratio)),h=Math.max(1,Math.round(rect.height*ratio));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}context.clearRect(0,0,w,h);context.fillStyle='#151a20';context.fillRect(0,0,w,h);context.fillStyle='#76d9ba';const top=histogramLog?Math.log1p(ceiling):ceiling;for(let i=0;i<counts.length;i++){const value=histogramLog?Math.log1p(counts[i]):counts[i],height=Math.max(0,Math.min(h,value/top*h));context.fillRect(i*w/counts.length,h-height,Math.max(1,w/counts.length),height);}};
+  new ResizeObserver(drawHistogram).observe(canvas);drawHistogram();
   const range=dialog.querySelector('.hist-range');range.replaceChildren();for(const endpoint of [edges[0],edges.at(-1)]){const label=document.createElement('span');label.textContent=formatValue(endpoint);range.append(label);}
   const values=counts.map((count,index)=>(edges[index]+edges[index+1])/2),count=counts.reduce((a,b)=>a+b,0),mean=result.mean??values.reduce((sum,value,index)=>sum+value*counts[index],0)/(count||1),variance=values.reduce((sum,value,index)=>sum+(value-mean)**2*counts[index],0)/(count||1),modeAt=counts.indexOf(peak);
   const summary=[`${dataset.width}×${dataset.height} pixels; ${dataset.dtype}`,`N: ${formatValue(result.samples??count)}     Min: ${formatValue(result.min??edges[0])}`,`Mean: ${formatValue(mean)}     Max: ${formatValue(result.max??edges.at(-1))}`,`StdDev: ${formatValue(result.std??Math.sqrt(variance))}     Mode: ${formatValue(result.mode??values[modeAt])} (${formatValue(result.modeCount??peak)})`,`Bins: ${formatValue(counts.length)}     Bin Width: ${formatValue(result.binWidth??(edges[1]-edges[0]))}`,`Value: ---     Count: ---`];
@@ -1597,7 +1622,7 @@ function showHistogram(result,args){
   canvas.onpointerleave=()=>{summary[5]='Value: ---     Count: ---';stats.textContent=summary.join('\n');};
   dialog.querySelector('.hist-list').onclick=()=>{const list=openDialog('histogram-list','Histogram bins','<pre class="hist-list-data"></pre>');list.querySelector('.hist-list-data').textContent=counts.map((n,i)=>`${formatValue(edges[i])}\t${formatValue(edges[i+1])}\t${formatValue(n)}`).join('\n');};
   dialog.querySelector('.hist-copy').onclick=()=>navigator.clipboard?.writeText(counts.map((n,i)=>`${edges[i]}\t${n}`).join('\n')).catch(showError);
-  dialog.querySelector('.hist-log').onclick=()=>{context.fillStyle='#151a20';context.fillRect(0,0,w,h);context.fillStyle='#76d9ba';const top=Math.log1p(ceiling);for(let i=0;i<counts.length;i++){const height=Math.max(0,Math.min(h,Math.log1p(counts[i])/top*h));context.fillRect(i*w/counts.length,h-height,Math.max(1,w/counts.length),height);}};
+  dialog.querySelector('.hist-log').onclick=()=>{histogramLog=true;drawHistogram();};
   dialog.querySelector('.hist-live').onclick=()=>{dialog.remove();histogramOptions();};
 }
 if($('histogram'))$('histogram').onclick=histogramOptions;
