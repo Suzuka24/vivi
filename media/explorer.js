@@ -313,7 +313,7 @@ function shortcutMatches(binding,event){
   const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),key=parts.pop(),modifiers=new Set(parts);
   return event.key.toLowerCase()===key&&event.ctrlKey===(modifiers.has('ctrl')||modifiers.has('control'))&&event.metaKey===(modifiers.has('cmd')||modifiers.has('meta'))&&event.altKey===(modifiers.has('alt')||modifiers.has('option'))&&event.shiftKey===modifiers.has('shift');
 }
-document.addEventListener('keydown',event=>{
+window.addEventListener('keydown',event=>{
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,event))?.[0];
   if(event.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;
   if(action==='rename'){
@@ -323,7 +323,7 @@ document.addEventListener('keydown',event=>{
   }else if(action)sideAction('shortcut',action);
   else return;
   event.preventDefault();
-});
+},true);
 window.addEventListener('message', ({data:message}) => {
   if (message.type === 'error') { loading=false;if(!$('openAsDialog').hidden){$('openAsError').textContent=message.message;return;}$('error').textContent = message.message;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(()=>{if(Date.now()>=errorUntil)$('error').textContent='';},2600);return; }
   if(message.type==='openAsInfo'){showOpenAs(message.path,message.result);return;}
