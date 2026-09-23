@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.22 (development build; not published)
+
+- Show a dedicated image icon for files that vivi can open while preserving the existing icons for folders and all other file types.
+
 ## 0.7.21 (development build; not published)
 
 - Keep configurable shortcuts active after HTML range sliders or native scrollbars receive focus, while continuing to suppress shortcuts during text and select editing.
