@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.24",
+  "version": "0.7.25",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -38,7 +38,7 @@
     "onView:vivi.adjust"
   ],
   "scripts": {
-    "check": "node --check src/extension.js && node --check src/compressionPolicy.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
+    "check": "node --check src/extension.js && node --check src/compressionPolicy.js && node --check src/fileOperations.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
     "test": "node --test tests/*.test.js",
     "test:python": "python -m unittest discover -s tests -p test_*.py -v",
     "package": "vsce package --no-dependencies --allow-missing-repository"

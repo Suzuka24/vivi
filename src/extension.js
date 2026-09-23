@@ -10,6 +10,7 @@ const { listDirectory } = require('./explorerListing');
 const { uniqueFrameLabel } = require('./frameLabels');
 const { menuPaths } = require('./menuVisibility');
 const { previewCompressionOptions } = require('./compressionPolicy');
+const { compactPaths, transferEntries } = require('./fileOperations');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -94,6 +95,7 @@ function activate(context) {
   };
   const explorerMenuOptions = [
     ['open', 'Open'], ['openAs', 'Open As…'], ['openNewTab', 'Open in New Tab'], ['openStack', 'Open Folder as Stack…'],
+    ['copyItems', 'Copy'], ['cutItems', 'Cut'], ['pasteItems', 'Paste Into Folder'],
     ['copyPath', 'Copy Path'], ['copyToTerminal', 'Insert Path into Terminal'], ['copyName', 'Copy Name'],
     ['rename', 'Rename…'], ['delete', 'Remove Permanently…'], ['newFile', 'New File…'],
     ['newFolder', 'New Folder…'], ['refresh', 'Refresh']
@@ -153,7 +155,7 @@ function activate(context) {
   const report = error => vscode.window.showErrorMessage(`vivi: ${error.message}`);
 
   class Explorer {
-    constructor(kind = 'explorer') { this.kind = kind; this.listSerial = 0; }
+    constructor(kind = 'explorer') { this.kind = kind; this.listSerial = 0; this.fileClipboard = null; }
     async resolveWebviewView(view) {
       this.view = view;
       view.webview.options = { enableScripts: true, localResourceRoots: webviewResourceRoots(context) };
@@ -161,7 +163,11 @@ function activate(context) {
         try {
           if (msg.type === 'ready' && this.kind === 'explorer') await this.list(context.workspaceState.get('explorerPath', config().get('defaultPath', '~')),
             0, context.workspaceState.get('explorerSort', 'nameAsc'), context.workspaceState.get('explorerShowHidden', true));
-          if (msg.type === 'ready') { view.webview.postMessage({type:'shortcutSettings',keyboardShortcuts:config().get('keyboardShortcuts', {})});publishSidebar(activeSession); }
+          if (msg.type === 'ready') {
+            view.webview.postMessage({type:'shortcutSettings',keyboardShortcuts:config().get('keyboardShortcuts', {})});
+            if(this.kind==='explorer'&&this.fileClipboard)view.webview.postMessage({type:'fileClipboard',paths:this.fileClipboard.paths,move:this.fileClipboard.move});
+            publishSidebar(activeSession);
+          }
           if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
           if (msg.type === 'inspectOpenAs') {
@@ -193,15 +199,17 @@ function activate(context) {
     }
     async action(msg) {
       const action = msg.action;
-      if (!menuItems().includes(action) && !['newFile', 'newFolder', 'refresh', 'copyToTerminal'].includes(action)) throw new Error('Explorer action is disabled.');
+      if (!menuItems().includes(action) && !['newFile', 'newFolder', 'refresh', 'copyToTerminal', 'moveItems'].includes(action)) throw new Error('Explorer action is disabled.');
       const target = nativePath(msg.path);
+      const targets = compactPaths((Array.isArray(msg.paths) ? msg.paths : [msg.path]).map(nativePath));
+      if (['copyToTerminal','copyItems','cutItems','moveItems','delete'].includes(action) && !targets.length) return;
       if (action === 'refresh') return this.list(msg.folder || target);
       if (action === 'copyPath') return vscode.env.clipboard.writeText(target);
       if (action === 'copyName') return vscode.env.clipboard.writeText(path.basename(target));
       if (action === 'copyToTerminal') {
         const existing = vscode.window.activeTerminal;
         const terminal = existing || vscode.window.createTerminal('vivi');
-        const quoted = `'${target.replaceAll("'", process.platform === 'win32' ? "''" : "'\\''")}'`;
+        const quoted = targets.map(value=>`'${value.replaceAll("'", process.platform === 'win32' ? "''" : "'\\''")}'`).join(' ');
         terminal.show();
         if (!existing) {
           await terminal.processId;
@@ -210,6 +218,23 @@ function activate(context) {
         }
         terminal.sendText(quoted, false);
         return;
+      }
+      if (action === 'copyItems' || action === 'cutItems') {
+        await Promise.all(targets.map(value=>fs.stat(value)));
+        this.fileClipboard={paths:targets,move:action==='cutItems'};
+        this.view?.webview.postMessage({type:'fileClipboard',paths:targets,move:this.fileClipboard.move});
+        return;
+      }
+      if (action === 'pasteItems') {
+        if (!this.fileClipboard?.paths.length) return;
+        const folder=(await fs.stat(target)).isDirectory()?target:path.dirname(target);
+        await transferEntries(this.fileClipboard.paths,folder,this.fileClipboard.move);
+        if(this.fileClipboard.move){this.fileClipboard=null;this.view?.webview.postMessage({type:'fileClipboard',paths:[],move:false});}
+        return this.list(folder);
+      }
+      if (action === 'moveItems') {
+        await transferEntries(targets,target,true);
+        return this.list(msg.folder||path.dirname(target));
       }
       if (action === 'newFile' || action === 'newFolder') {
         const name = await vscode.window.showInputBox({ prompt: action === 'newFolder' ? 'New folder name' : 'New file name' });
@@ -228,10 +253,11 @@ function activate(context) {
         return this.list(path.dirname(target));
       }
       if (action === 'delete') {
-        const choice = await vscode.window.showWarningMessage(`Permanently remove ${target} and its contents?`, { modal: true }, 'Remove Permanently');
+        const description=targets.length===1?targets[0]:`${targets.length} selected items`;
+        const choice = await vscode.window.showWarningMessage(`Permanently remove ${description} and all selected folder contents?`, { modal: true }, 'Remove Permanently');
         if (choice !== 'Remove Permanently') return;
-        await fs.rm(target, { recursive: true, force: true });
-        return this.list(path.dirname(target));
+        await Promise.all(targets.map(value=>fs.rm(value,{recursive:true,force:true})));
+        return this.list(msg.folder||path.dirname(targets[0]));
       }
       throw new Error('Unknown Explorer action.');
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.25 (development build; not published)
+
+- Add Explorer range and toggle multiselect, copy/cut/paste and batch Delete shortcuts, drag-to-move for selected files and folders, and middle-click insertion of selected paths into the terminal.
+
 ## 0.7.24 (development build; not published)
 
 - Remove the responsive loading protection, transfer pacing, worker priority adjustment, and related setting introduced in 0.7.23 while retaining the redesigned vivi image icon.

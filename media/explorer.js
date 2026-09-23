@@ -1,9 +1,10 @@
 'use strict';
 const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
-const labels = { open: 'Open', openAs:'Open As…', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
+const labels = { open: 'Open', openAs:'Open As…', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyItems:'Copy', cutItems:'Cut', pasteItems:'Paste Into Folder', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
+let selectedPaths=new Set(),selectionAnchor='',cutPaths=new Set(),draggedPaths=[];
 const selectedChildByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
@@ -196,11 +197,30 @@ function list(path, start = 0) {
 function loadMore(){if(more&&!loading)list(current,entries.length);}
 function fillViewport(){if(more&&!loading&&$('files').scrollHeight<=$('files').clientHeight+80)loadMore();}
 $('files').onscroll=()=>{if($('files').scrollTop+$('files').clientHeight >= $('files').scrollHeight-200)loadMore();};
-function select(item) {
-  selectedPath = item.path;
-  if(current)selectedChildByFolder.set(current,selectedPath);
-  for(const row of $('files').children)row.classList.toggle('selected',row.dataset.path===selectedPath);
-  $('delete').disabled=false;$('terminal').disabled=false;
+function filteredEntries(){const filter=$('filter').value.toLowerCase();return entries.filter(entry=>entry.name.toLowerCase().includes(filter));}
+function selectedItems(){return entries.filter(item=>selectedPaths.has(item.path));}
+function updateSelectionUi(){
+  for(const row of $('files').children){const selected=selectedPaths.has(row.dataset.path);row.classList.toggle('selected',selected);row.setAttribute('aria-selected',String(selected));row.classList.toggle('cut',cutPaths.has(row.dataset.path));}
+  if(!selectedPaths.has(selectedPath))selectedPath=selectedItems().at(-1)?.path||'';
+  $('delete').disabled=!selectedPaths.size;$('terminal').disabled=!selectedPaths.size;
+}
+function select(item,{toggle=false,range=false,additive=false}={}) {
+  if(range&&selectionAnchor){
+    const visible=filteredEntries(),anchor=visible.findIndex(entry=>entry.path===selectionAnchor),target=visible.findIndex(entry=>entry.path===item.path);
+    if(anchor>=0&&target>=0){if(!additive)selectedPaths.clear();for(let index=Math.min(anchor,target);index<=Math.max(anchor,target);index++)selectedPaths.add(visible[index].path);}
+    else{selectedPaths.clear();selectedPaths.add(item.path);selectionAnchor=item.path;}
+  }else if(toggle){
+    if(selectedPaths.has(item.path))selectedPaths.delete(item.path);else selectedPaths.add(item.path);
+    selectionAnchor=item.path;
+  }else{selectedPaths=new Set([item.path]);selectionAnchor=item.path;}
+  selectedPath=selectedPaths.has(item.path)?item.path:(selectedItems().at(-1)?.path||'');
+  if(current&&selectedPath)selectedChildByFolder.set(current,selectedPath);
+  updateSelectionUi();
+}
+function clearSelection(){selectedPaths.clear();selectedPath='';selectionAnchor='';updateSelectionUi();}
+function sendFileAction(action,path=current){
+  const paths=selectedItems().map(item=>item.path);
+  vscode.postMessage({type:'action',action,path,paths,folder:current});
 }
 function run(action, item) {
   closeMenu();
@@ -209,12 +229,15 @@ function run(action, item) {
     else vscode.postMessage({ type: 'open', path: item.path, newTab: action === 'openNewTab' });
   } else if(action==='openAs'){vscode.postMessage({type:'inspectOpenAs',path:item.path});}
   else if(action==='openStack'){vscode.postMessage({type:'openSequence',path:item.path});}
-  else vscode.postMessage({ type: 'action', action, path: item.path, folder: current });
+  else {
+    const paths=selectedPaths.has(item.path)?selectedItems().map(entry=>entry.path):[item.path];
+    vscode.postMessage({type:'action',action,path:item.path,paths,folder:current});
+  }
 }
 function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false');$('historyMenu').hidden=true;$('pathHistory').setAttribute('aria-expanded','false'); }
 function showMenu(event, item) {
-  event.preventDefault(); closeMenu();select(item);
-  const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder','openStack'].includes(action)) && (!item.directory || !['openAs','openNewTab'].includes(action)));
+  event.preventDefault(); closeMenu();if(!selectedPaths.has(item.path))select(item);
+  const allowed = menuItems.filter(action => labels[action] && (item.directory || !['newFile','newFolder','openStack','pasteItems'].includes(action)) && (!item.directory || !['openAs','openNewTab'].includes(action)));
   if (!allowed.length) return;
   const menu = $('contextMenu');
   for (const action of allowed) {
@@ -236,20 +259,27 @@ function render() {
     row.tabIndex=0;row.className = 'file ' + (item.directory ? 'folder' : item.supported ? 'supported' : 'unsupported');
     row.title = item.path;
     row.dataset.path=item.path;
-    row.setAttribute('role','listitem');
+    row.setAttribute('role','listitem');row.setAttribute('aria-selected',String(selectedPaths.has(item.path)));row.draggable=true;
     const name=document.createElement('span');name.className='file-cell file-name';const iconElement=fileIconElement(item),label=document.createElement('span');label.className='file-label';label.textContent=item.name;name.append(iconElement,label);
     const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatSizeKiB(item.size);
     const date=document.createElement('span');date.className='file-cell file-date';date.textContent=formatModified(item.mtimeMs);
     row.append(name,size,date);
-    row.onclick=()=>{select(item);row.focus({preventScroll:true});};
+    row.onclick=event=>{select(item,{toggle:event.ctrlKey||event.metaKey,range:event.shiftKey,additive:(event.ctrlKey||event.metaKey)&&event.shiftKey});row.focus({preventScroll:true});};
+    row.onauxclick=event=>{if(event.button!==1)return;event.preventDefault();select(item);sendFileAction('copyToTerminal',item.path);};
     row.ondblclick = () => run('open', item);
     row.oncontextmenu = event => showMenu(event, item);
     row.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); run('open', item); } };
+    row.ondragstart=event=>{if(!selectedPaths.has(item.path))select(item);draggedPaths=selectedItems().map(entry=>entry.path);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',draggedPaths.join('\n'));for(const selected of $('files').querySelectorAll('.selected'))selected.classList.add('dragging');};
+    row.ondragend=()=>{draggedPaths=[];for(const selected of $('files').querySelectorAll('.dragging'))selected.classList.remove('dragging');for(const target of $('files').querySelectorAll('.drag-target'))target.classList.remove('drag-target');};
+    if(item.directory){
+      row.ondragover=event=>{if(selectedPaths.has(item.path))return;event.preventDefault();event.dataTransfer.dropEffect='move';row.classList.add('drag-target');};
+      row.ondragleave=()=>row.classList.remove('drag-target');
+      row.ondrop=event=>{event.preventDefault();row.classList.remove('drag-target');const paths=[...draggedPaths];if(paths.length)vscode.postMessage({type:'action',action:'moveItems',path:item.path,paths,folder:current});};
+    }
     $('files').append(row);
   }
-  const selected=entries.find(item=>item.path===selectedPath&&item.name.toLowerCase().includes(filter));
-  if(selected)select(selected);
-  else {selectedPath='';$('delete').disabled=true;$('terminal').disabled=true;}
+  for(const path of [...selectedPaths])if(!entries.some(item=>item.path===path))selectedPaths.delete(path);
+  updateSelectionUi();
 }
 function formatModified(value){
   const date=new Date(value);if(!Number.isFinite(date.getTime()))return '';
@@ -301,8 +331,8 @@ $('home').onclick = () => list('~');
 $('refresh').onclick = () => list(current);
 $('newFolder').onclick = () => vscode.postMessage({ type: 'action', action: 'newFolder', path: current });
 $('newFile').onclick = () => vscode.postMessage({ type: 'action', action: 'newFile', path: current });
-$('delete').onclick = () => {if(selectedPath)vscode.postMessage({type:'action',action:'delete',path:selectedPath,folder:current});};
-$('terminal').onclick = () => {if(selectedPath)vscode.postMessage({type:'action',action:'copyToTerminal',path:selectedPath});};
+$('delete').onclick = () => {if(selectedPaths.size)sendFileAction('delete');};
+$('terminal').onclick = () => {if(selectedPaths.size)sendFileAction('copyToTerminal');};
 $('hidden').onclick = () => {showHidden=!showHidden;list(current);};
 $('sort').onclick = event => {
   event.stopPropagation();const menu=$('sortMenu');
@@ -324,6 +354,7 @@ for(const handle of document.querySelectorAll('.column-resizer')){
   window.addEventListener('pointerup',()=>{if(resize){document.querySelector(`[data-resize="${resize.key}"]`)?.classList.remove('resizing');resize=null;}});
 }
 document.addEventListener('click', event => { if (!$('contextMenu').contains(event.target)&&!$('sortMenu').contains(event.target)&&!$('sort').contains(event.target)&&!$('historyMenu').contains(event.target)&&!$('pathHistory').contains(event.target)) closeMenu(); });
+$('files').addEventListener('pointerdown',event=>{if(event.target===$('files')&&event.button===0)clearSelection();});
 $('contextMenu').addEventListener('mouseleave', closeMenu);
 document.addEventListener('keydown', event => { if (event.key === 'Escape'){closeMenu();if(!$('filter').hidden)$('filterToggle').click();} });
 function targetShape(dataset,expression){
@@ -357,6 +388,14 @@ function shortcutEditingTarget(event){
   return !!target&&!(target.tagName==='INPUT'&&['range','checkbox','radio'].includes(target.type));
 }
 window.addEventListener('keydown',event=>{
+  if(document.body.classList.contains('view-explorer')&&!shortcutEditingTarget(event)){
+    const modifier=event.ctrlKey||event.metaKey,key=event.key.toLowerCase();
+    if(modifier&&key==='a'){selectedPaths=new Set(filteredEntries().map(item=>item.path));selectedPath=selectedItems().at(-1)?.path||'';selectionAnchor=selectedPath;updateSelectionUi();event.preventDefault();return;}
+    if(modifier&&key==='c'&&selectedPaths.size){sendFileAction('copyItems');event.preventDefault();return;}
+    if(modifier&&key==='x'&&selectedPaths.size){sendFileAction('cutItems');event.preventDefault();return;}
+    if(modifier&&key==='v'){vscode.postMessage({type:'action',action:'pasteItems',path:current,folder:current});event.preventDefault();return;}
+    if((event.key==='Delete'||event.key==='Backspace')&&selectedPaths.size){sendFileAction('delete');event.preventDefault();return;}
+  }
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,event))?.[0];
   if(shortcutEditingTarget(event))return;
   if(action==='rename'){
@@ -377,9 +416,10 @@ window.addEventListener('message', ({data:message}) => {
   if(message.type==='focusAdjust'){$('adjustModule').open=true;$('adjustCuts').focus();return;}
   if(message.type==='focusLayout'){$('layoutModule').open=true;$('frameItems').scrollIntoView({block:'nearest'});return;}
   if(message.type==='menuItems'){menuItems=message.items;closeMenu();return;}
+  if(message.type==='fileClipboard'){cutPaths=new Set(message.move?message.paths||[]:[]);updateSelectionUi();return;}
   if (message.type !== 'list') return;
   const append=message.path===current&&message.offset===entries.length&&message.offset>0;
-  current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;if(!append)selectedPath=selectedChildByFolder.get(current)||'';more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
+  const sameFolder=message.path===current;current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;if(!append&&!sameFolder){selectedPath=selectedChildByFolder.get(current)||'';selectedPaths=new Set(selectedPath?[selectedPath]:[]);selectionAnchor=selectedPath;}more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
   $('path').value = current;
   $('pathHistory').disabled=!history.length;
   $('hidden').classList.toggle('selected',showHidden);$('hidden').setAttribute('aria-pressed',String(showHidden));$('hidden').title=showHidden?'Hide hidden files':'Show hidden files';$('hidden').setAttribute('aria-label',$('hidden').title);$('hidden').dataset.tip=$('hidden').title;
