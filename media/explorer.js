@@ -4,7 +4,6 @@ const $ = id => document.getElementById(id);
 const labels = { open: 'Open', openAs:'Open As…', openNewTab: 'Open in New Tab', openStack: 'Open Folder as Stack…', copyPath: 'Copy Path', copyToTerminal: 'Insert Path into Terminal', copyName: 'Copy Name', rename: 'Rename…', delete: 'Remove Permanently…', newFile: 'New File…', newFolder: 'New Folder…', refresh: 'Refresh' };
 const sorts = [['nameAsc','Name A–Z'],['nameDesc','Name Z–A'],['sizeAsc','Size: small first'],['sizeDesc','Size: large first'],['dateDesc','Modified: newest first'],['dateAsc','Modified: oldest first']];
 let current = '', parent = '', offset = 0, entries = [], menuItems = [], history = [], selectedPath = '', sortMode = 'nameAsc', showHidden = true, more = false, loading = false;
-const lastActivatedByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
@@ -162,17 +161,13 @@ function select(item) {
   for(const row of $('files').children)row.classList.toggle('selected',row.dataset.path===selectedPath);
   $('delete').disabled=false;$('terminal').disabled=false;
 }
-function rememberActivated(folder,path){
-  if(folder&&path)lastActivatedByFolder.set(folder,path);
-}
 function run(action, item) {
   closeMenu();
   if (action === 'open' || action === 'openNewTab') {
-    rememberActivated(current,item.path);render();
     if (item.directory) list(item.path);
     else vscode.postMessage({ type: 'open', path: item.path, newTab: action === 'openNewTab' });
-  } else if(action==='openAs'){rememberActivated(current,item.path);render();vscode.postMessage({type:'inspectOpenAs',path:item.path});}
-  else if(action==='openStack'){rememberActivated(current,item.path);render();vscode.postMessage({type:'openSequence',path:item.path});}
+  } else if(action==='openAs'){vscode.postMessage({type:'inspectOpenAs',path:item.path});}
+  else if(action==='openStack'){vscode.postMessage({type:'openSequence',path:item.path});}
   else vscode.postMessage({ type: 'action', action, path: item.path, folder: current });
 }
 function closeMenu() { $('contextMenu').hidden = true; $('contextMenu').replaceChildren(); $('sortMenu').hidden=true;$('sortMenu').replaceChildren();$('sort').setAttribute('aria-expanded','false');$('historyMenu').hidden=true;$('pathHistory').setAttribute('aria-expanded','false'); }
@@ -198,7 +193,6 @@ function render() {
   for (const item of entries.filter(entry => entry.name.toLowerCase().includes(filter))) {
     const row = document.createElement('div');
     row.tabIndex=0;row.className = 'file ' + (item.directory ? 'folder' : item.supported ? 'supported' : 'unsupported');
-    if(item.path===lastActivatedByFolder.get(current)){row.classList.add('recent');row.setAttribute('aria-current','true');}
     row.title = item.path;
     row.dataset.path=item.path;
     row.setAttribute('role','listitem');
@@ -206,7 +200,7 @@ function render() {
     const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatSizeKiB(item.size);
     const date=document.createElement('span');date.className='file-cell file-date';date.textContent=formatModified(item.mtimeMs);
     row.append(name,size,date);
-    row.onclick=()=>select(item);
+    row.onclick=()=>{select(item);row.focus({preventScroll:true});};
     row.ondblclick = () => run('open', item);
     row.oncontextmenu = event => showMenu(event, item);
     row.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); run('open', item); } };
@@ -261,7 +255,10 @@ $('frameTile').removeAttribute('title');$('frameTile').addEventListener('pointer
 updateShortcutTips();
 $('historyMenu').addEventListener('pointerover',event=>{const button=event.target.closest('button');if(button)showPathTip(button,button.textContent);});
 $('historyMenu').addEventListener('pointerleave',hidePathTip);
-$('up').onclick = () => {rememberActivated(parent,current);list(parent);};
+$('files').addEventListener('focusin',()=>$('files').classList.add('selection-active'));
+$('files').addEventListener('focusout',()=>setTimeout(()=>$('files').classList.toggle('selection-active',$('files').contains(document.activeElement))));
+window.addEventListener('blur',()=>$('files').classList.remove('selection-active'));
+$('up').onclick = () => list(parent);
 $('home').onclick = () => list('~');
 $('refresh').onclick = () => list(current);
 $('newFolder').onclick = () => vscode.postMessage({ type: 'action', action: 'newFolder', path: current });
