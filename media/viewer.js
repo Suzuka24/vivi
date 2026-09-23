@@ -547,7 +547,7 @@ function slicePosition(){const index=axisIndex(),axis=sliceAxes()[index];return 
 function setAxisSlice(value){const index=axisIndex(),axis=sliceAxes()[index];if(axis===undefined){$('frame').value=value;return;}const stride=axisStride(index),length=dataset.shape[axis],flat=Number($('frame').value)-1,current=Math.floor(flat/stride)%length,next=Math.max(0,Math.min(length-1,Math.round(value)-1));$('frame').value=flat+(next-current)*stride+1;}
 function syncViewerToolbar(){
   if(!dataset)return;
-  $('tool-slices').hidden=dataset.frames<2;
+  $('tool-slices').hidden=false;
   const select=$('viewerDataset');
   if(select){if(select.options.length!==metadata.datasets.length||[...select.options].some((option,index)=>Number(option.value)!==metadata.datasets[index].id)){select.replaceChildren();for(const item of metadata.datasets){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;select.append(option);}}select.value=String(dataset.id);}
   const axis=$('viewerAxis'),axes=sliceAxes();axis.hidden=axes.length<2;
