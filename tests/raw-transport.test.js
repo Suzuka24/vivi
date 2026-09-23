@@ -105,3 +105,16 @@ test('backend stream keeps one request open across frame packets',async()=>{
   backend.dispatch({id:7,streamEvent:'end',result:{total:2}});
   assert.deepEqual(await done,{total:2});assert.deepEqual(events,[undefined,0,1,undefined]);assert.equal(backend.pending.has(7),false);
 });
+
+test('backend pauses worker output until an asynchronous stream consumer finishes',async()=>{
+  const backend=Object.create(Backend.prototype);backend.pending=new Map();backend.timeout=1000;backend.dead=false;backend.outputPaused=false;backend.queuedChunks=[];
+  let paused=0,resumed=0,release;
+  backend.child={stdout:{pause:()=>paused++,resume:()=>resumed++}};
+  const gate=new Promise(resolve=>{release=resolve;});
+  backend.pending.set(8,{resolve:()=>{},reject:assert.fail,onEvent:()=>gate,timer:setTimeout(()=>{},1000)});
+  assert.equal(backend.dispatch({id:8,streamEvent:'frame',frame:0,result:{}}),true);
+  assert.equal(backend.outputPaused,true);assert.equal(paused,1);assert.equal(resumed,0);
+  release();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(backend.outputPaused,false);assert.equal(resumed,1);
+  clearTimeout(backend.pending.get(8).timer);
+});

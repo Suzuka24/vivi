@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.22",
+  "version": "0.7.23",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -38,7 +38,7 @@
     "onView:vivi.adjust"
   ],
   "scripts": {
-    "check": "node --check src/extension.js && node --check src/compressionPolicy.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
+    "check": "node --check src/extension.js && node --check src/compressionPolicy.js && node --check src/transferScheduler.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/viewer.js && node --check media/explorer.js",
     "test": "node --test tests/*.test.js",
     "test:python": "python -m unittest discover -s tests -p test_*.py -v",
     "package": "vsce package --no-dependencies --allow-missing-repository"
@@ -180,6 +180,12 @@
           "minimum": 10,
           "maximum": 1800,
           "description": "Backend timeout. A timeout stops the worker; reopen the image to restart. 后端请求的超时时间（秒）；超时会停止工作进程，重新打开图像即可重启。"
+        },
+        "vivi.responsiveLoadingProtection": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine-overridable",
+          "description": "Keep vivi responsive during large local or Remote SSH loads by lowering decoder priority and cooperatively pacing preview transfer. Concurrent files still load in parallel and share the transfer budget. Disable for maximum throughput. 在加载本地或 Remote SSH 大文件时降低解码进程优先级，并以协作方式调度预览传输，以保持 vivi 响应；多个文件仍会并行加载并共享传输预算。关闭后优先获得最大吞吐量。"
         },
         "vivi.managedExtensions": {
           "type": "array",

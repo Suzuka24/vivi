@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.23 (development build; not published)
+
+- Match the dedicated vivi image icon to the existing simple monochrome outline style.
+- Add default-on responsive loading protection: decoder workers run at lower priority and large preview payloads share a paced, fair transfer queue while separate files continue loading in parallel.
+
 ## 0.7.22 (development build; not published)
 
 - Show a dedicated image icon for files that vivi can open while preserving the existing icons for folders and all other file types.
