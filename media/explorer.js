@@ -26,9 +26,10 @@ function fileIcon(item){
   return {glyph:Number.isFinite(code)?String.fromCodePoint(code):'·',color:definition?.fontColor||''};
 }
 function scrollbarHit(event){
-  for(let element=event.target instanceof Element?event.target:null;element;element=element.parentElement){
-    const vertical=element.scrollHeight>element.clientHeight&&event.clientX>=element.getBoundingClientRect().right-(element.offsetWidth-element.clientWidth);
-    const horizontal=element.scrollWidth>element.clientWidth&&event.clientY>=element.getBoundingClientRect().bottom-(element.offsetHeight-element.clientHeight);
+  for(const element of document.querySelectorAll('*')){
+    const rect=element.getBoundingClientRect(),verticalWidth=Math.max(12,element.offsetWidth-element.clientWidth),horizontalHeight=Math.max(12,element.offsetHeight-element.clientHeight);
+    const vertical=element.scrollHeight>element.clientHeight&&event.clientX>=rect.right-verticalWidth&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+    const horizontal=element.scrollWidth>element.clientWidth&&event.clientY>=rect.bottom-horizontalHeight&&event.clientY<=rect.bottom&&event.clientX>=rect.left&&event.clientX<=rect.right;
     if(vertical||horizontal)return true;
   }
   return false;
@@ -39,6 +40,8 @@ function restoreShortcutFocus(event){
 }
 window.addEventListener('pointerdown',restoreShortcutFocus,true);
 window.addEventListener('pointerup',restoreShortcutFocus,true);
+window.addEventListener('mousedown',restoreShortcutFocus,true);
+window.addEventListener('mouseup',restoreShortcutFocus,true);
 function updateShortcutTips(){
   for(const [id,action] of Object.entries(shortcutButtons)){
     const button=$(id);if(!button)continue;

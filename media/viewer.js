@@ -22,9 +22,10 @@ let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'o',line:'l',me
 const shortcutNames={ctrl:'Ctrl',control:'Ctrl',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Cmd',meta:'Cmd',enter:'Enter',arrowup:'Up',arrowdown:'Down',arrowleft:'Left',arrowright:'Right',escape:'Esc',backspace:'Backspace',delete:'Delete',' ':'Space'};
 const shortcutLabel=binding=>String(binding||'').split('+').map(part=>shortcutNames[part.trim().toLowerCase()]||part.trim().toUpperCase()).filter(Boolean).join('+');
 function scrollbarHit(event){
-  for(let element=event.target instanceof Element?event.target:null;element;element=element.parentElement){
-    const vertical=element.scrollHeight>element.clientHeight&&event.clientX>=element.getBoundingClientRect().right-(element.offsetWidth-element.clientWidth);
-    const horizontal=element.scrollWidth>element.clientWidth&&event.clientY>=element.getBoundingClientRect().bottom-(element.offsetHeight-element.clientHeight);
+  for(const element of document.querySelectorAll('*')){
+    const rect=element.getBoundingClientRect(),verticalWidth=Math.max(12,element.offsetWidth-element.clientWidth),horizontalHeight=Math.max(12,element.offsetHeight-element.clientHeight);
+    const vertical=element.scrollHeight>element.clientHeight&&event.clientX>=rect.right-verticalWidth&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+    const horizontal=element.scrollWidth>element.clientWidth&&event.clientY>=rect.bottom-horizontalHeight&&event.clientY<=rect.bottom&&event.clientX>=rect.left&&event.clientX<=rect.right;
     if(vertical||horizontal)return true;
   }
   return false;
@@ -35,6 +36,8 @@ function restoreShortcutFocus(event){
 }
 window.addEventListener('pointerdown',restoreShortcutFocus,true);
 window.addEventListener('pointerup',restoreShortcutFocus,true);
+window.addEventListener('mousedown',restoreShortcutFocus,true);
+window.addEventListener('mouseup',restoreShortcutFocus,true);
 const shortcutButtonIds={fit:['fit'],hand:['panTool'],pointer:['pointerTool'],roi:['roiTool'],oval:['ovalTool'],polygon:['polygonTool'],freehand:['freehandTool'],line:['lineTool'],angle:['angleTool'],text:['textTool'],zoomTool:['zoomTool'],measure:['toolMeasure','measure'],clear:['clear'],undoTransform:['editUndo'],redoTransform:['editRedo'],zoomIn:['zoomIn'],zoomOut:['zoomOut'],actual:['actual'],play:['viewerSlicePlay'],previousSlice:['viewerSlicePrev'],nextSlice:['viewerSliceNext'],previousFrame:['previousFileFrame'],nextFrame:['nextFileFrame'],toggleFrameDisplay:['tile'],rename:['imageRename'],autoCuts:['autoCuts','processAuto'],resetCuts:['resetCuts']};
 function updateShortcutTips(){
   const mappedButtonIds=new Set(Object.values(shortcutButtonIds).flat());
