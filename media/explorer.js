@@ -315,21 +315,12 @@ function shortcutMatches(binding,event){
 }
 document.addEventListener('keydown',event=>{
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,event))?.[0];
-  const frameMove=['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action);
-  if(['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)&&!frameMove)return;
+  if(event.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;
   if(action==='rename'){
     if(document.body.classList.contains('view-layout')&&layoutState?.active)sideAction('renameFrame',layoutState.active);
     else if(document.body.classList.contains('view-explorer')&&selectedPath)vscode.postMessage({type:'action',action:'rename',path:selectedPath,folder:current});
-    else return;
-  }else if(['previousFrame','nextFrame','moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action)&&layoutState?.active)sideAction(action);
-  else if(action==='toggleFrameDisplay'&&layoutState?.active)sideAction('tile');
-  else if(action==='nextSlice'&&layoutState?.active)sideAction('stepSlice',1);
-  else if(action==='previousSlice'&&layoutState?.active)sideAction('stepSlice',-1);
-  else if(action==='play'&&layoutState?.active)sideAction('play');
-  else if(action==='autoCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'percentile'});
-  else if(action==='resetCuts'&&document.body.classList.contains('view-adjust'))sideAction('autoCuts',{mode:'minmax',resetStretch:true});
-  else if(action==='stackAutoCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'percentile'});
-  else if(action==='stackResetCuts'&&document.body.classList.contains('view-adjust'))sideAction('stackAutoCuts',{mode:'minmax',resetStretch:true});
+    else sideAction('shortcut',action);
+  }else if(action)sideAction('shortcut',action);
   else return;
   event.preventDefault();
 });

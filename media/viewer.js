@@ -1232,7 +1232,31 @@ function setFrameVisible(id,visible){
   if(!visible&&activeFileFrame===id)selectFileFrame(visibleFrameIds()[0]);
   frameList();draw();if(visible)scheduleTileRefresh(0);
 }
+function runShortcut(action){
+  if(!dataset||!action)return;
+  if(action==='fit')fit();
+  else if(['hand','pan','pointer','roi','oval','polygon','freehand','line','angle','text','zoomTool'].includes(action))setTool(action==='zoomTool'?'zoom':action==='hand'?'pan':action);
+  else if(action==='undoTransform')$('editUndo').click();
+  else if(action==='redoTransform')$('editRedo').click();
+  else if(action==='toggleBC')applySidebarAction('toggleBC');
+  else if(action==='nextSlice')changeFrame(1);
+  else if(action==='previousSlice')changeFrame(-1);
+  else if(action==='nextFrame')moveFileFrame(1);
+  else if(action==='previousFrame')moveFileFrame(-1);
+  else if(['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action))reorderFileFrame(action.replace('moveFrame','').toLowerCase());
+  else if(action==='toggleFrameDisplay')$('tile').click();
+  else if(action==='play')$('play').click();
+  else if(action==='rename')$('imageRename').click();
+  else if(action==='autoCuts')applyAutoCuts('percentile');
+  else if(action==='resetCuts')applyAutoCuts('minmax');
+  else if(action==='stackAutoCuts')applyStackAutoCuts('percentile');
+  else if(action==='stackResetCuts')applyStackAutoCuts('minmax');
+  else if(action==='clear'){$('clear').click();stopPlay();stopBlink();for(const menu of document.querySelectorAll('.menu'))menu.open=false;}
+  else if(action==='zoomIn'||action==='zoomOut'||action==='actual')$(action).click();
+  else $(action)?.click();
+}
 function applySidebarAction(action,value){
+  if(action==='shortcut'){runShortcut(String(value||''));return;}
   if(!dataset)return;
   if(action==='stepSlice'){stopPlay();changeFrame(Number(value));}
   else if(action==='setSlice'){$('frame').value=Math.max(1,Math.min(dataset.frames,Math.trunc(Number(value)||1)));$('frame').onchange();}
@@ -1608,31 +1632,11 @@ function shortcutMatches(binding,event){
 }
 document.addEventListener('keydown',e=>{
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,e))?.[0];
-  const frameMove=['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action);
-  if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)&&!frameMove)return;
+  if(e.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;
   if(e.code==='Space'&&orthogonal){spaceHeld=true;e.preventDefault();return;}
   if(!action)return;
   e.preventDefault();
-  if(action==='fit')fit();
-  else if(['hand','pan','pointer','roi','oval','polygon','freehand','line','angle','text','zoomTool'].includes(action))setTool(action==='zoomTool'?'zoom':action==='hand'?'pan':action);
-  else if(action==='undoTransform')$('editUndo').click();
-  else if(action==='redoTransform')$('editRedo').click();
-  else if(action==='toggleBC')applySidebarAction('toggleBC');
-  else if(action==='nextSlice')changeFrame(1);
-  else if(action==='previousSlice')changeFrame(-1);
-  else if(action==='nextFrame')moveFileFrame(1);
-  else if(action==='previousFrame')moveFileFrame(-1);
-  else if(['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action))reorderFileFrame(action.replace('moveFrame','').toLowerCase());
-  else if(action==='toggleFrameDisplay')$('tile').click();
-  else if(action==='play')$('play').click();
-  else if(action==='rename')$('imageRename').click();
-  else if(action==='autoCuts')applyAutoCuts('percentile');
-  else if(action==='resetCuts')applyAutoCuts('minmax');
-  else if(action==='stackAutoCuts')applyStackAutoCuts('percentile');
-  else if(action==='stackResetCuts')applyStackAutoCuts('minmax');
-  else if(action==='clear'){$('clear').click();stopPlay();stopBlink();for(const menu of document.querySelectorAll('.menu'))menu.open=false;}
-  else if(action==='zoomIn'||action==='zoomOut'||action==='actual')$(action).click();
-  else $(action)?.click();
+  runShortcut(action);
 });
 document.addEventListener('keyup',e=>{if(e.code==='Space')spaceHeld=false;});
 new ResizeObserver(()=>{if(dataset)scheduleRender(80);}).observe($('stage'));
