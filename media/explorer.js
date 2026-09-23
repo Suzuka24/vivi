@@ -203,7 +203,7 @@ function render() {
     row.dataset.path=item.path;
     row.setAttribute('role','listitem');
     const name=document.createElement('span');name.className='file-cell file-name';name.textContent=`${item.directory ? '▸' : item.supported ? '▧' : '·'}  ${item.name}`;
-    const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatAdjust(item.size/1024);
+    const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatSizeKiB(item.size);
     const date=document.createElement('span');date.className='file-cell file-date';date.textContent=formatModified(item.mtimeMs);
     row.append(name,size,date);
     row.onclick=()=>select(item);
@@ -221,6 +221,7 @@ function formatModified(value){
   const pad=number=>String(number).padStart(2,'0');
   return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+function formatSizeKiB(bytes){return String(Math.round(bytes/1024)).replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
 function updateColumnHeaders(){
   for(const button of document.querySelectorAll('.file-column')){
     const prefix=button.dataset.column,direction=sortMode===`${prefix}Asc`?'ascending':sortMode===`${prefix}Desc`?'descending':'none';
