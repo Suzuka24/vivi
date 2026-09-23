@@ -19,10 +19,34 @@ function nativePath(input) {
   return path.resolve(input);
 }
 
-function html(webview, context, name) {
+function setiThemeExtension() {
+  return vscode.extensions.getExtension('vscode.theme-seti');
+}
+
+function webviewResourceRoots(context) {
+  const roots = [vscode.Uri.joinPath(context.extensionUri, 'media')], seti = setiThemeExtension();
+  if (seti) roots.push(seti.extensionUri);
+  return roots;
+}
+
+async function html(webview, context, name) {
   const nonce = crypto.randomBytes(20).toString('hex');
   const uri = file => webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', file)).toString();
-  return fs.readFile(path.join(context.extensionPath, 'media', `${name}.html`), 'utf8').then(text => text
+  let setiFont = '', setiTheme = '{}';
+  if (name === 'explorer') {
+    const seti = setiThemeExtension();
+    if (seti) {
+      const icons = vscode.Uri.joinPath(seti.extensionUri, 'icons');
+      try {
+        const source = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(icons, 'vs-seti-icon-theme.json'));
+        const theme = JSON.parse(Buffer.from(source).toString('utf8'));
+        setiTheme = JSON.stringify({ iconDefinitions: theme.iconDefinitions, file: theme.file, fileExtensions: theme.fileExtensions, fileNames: theme.fileNames }).replaceAll('<', '\\u003c');
+        setiFont = webview.asWebviewUri(vscode.Uri.joinPath(icons, 'seti.woff')).toString();
+      } catch {}
+    }
+  }
+  const text = await fs.readFile(path.join(context.extensionPath, 'media', `${name}.html`), 'utf8');
+  return text
     .replaceAll('{{nonce}}', nonce).replaceAll('{{csp}}', webview.cspSource)
     .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css'))
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
@@ -31,7 +55,8 @@ function html(webview, context, name) {
     .replaceAll('{{roiScript}}', uri('roiGeometry.js'))
     .replaceAll('{{zstdScript}}', uri('vendor/fzstd.js'))
     .replaceAll('{{zfpScript}}', uri('vendor/zfp.js'))
-    .replaceAll('{{zfpWasm}}', uri('vendor/wasm-zfp.wasm')));
+    .replaceAll('{{zfpWasm}}', uri('vendor/wasm-zfp.wasm'))
+    .replaceAll('{{setiFont}}', setiFont).replaceAll('{{setiTheme}}', setiTheme);
 }
 
 function activate(context) {
@@ -111,7 +136,7 @@ function activate(context) {
         session.panel.reveal();
       } else {
         const panel = vscode.window.createWebviewPanel('vivi.session', path.basename(file), vscode.ViewColumn.Active,
-          { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] });
+          { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: webviewResourceRoots(context) });
         createSession(panel, file, sequenceMode, openOptions);
       }
     } else await openNormally(uri, newTab);
@@ -122,7 +147,7 @@ function activate(context) {
     constructor(kind = 'explorer') { this.kind = kind; this.listSerial = 0; }
     async resolveWebviewView(view) {
       this.view = view;
-      view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] };
+      view.webview.options = { enableScripts: true, localResourceRoots: webviewResourceRoots(context) };
       view.webview.onDidReceiveMessage(async msg => {
         try {
           if (msg.type === 'ready' && this.kind === 'explorer') await this.list(context.workspaceState.get('explorerPath', config().get('defaultPath', '~')),
@@ -287,7 +312,7 @@ function activate(context) {
     activeSession=session;
     setSessionContext();
     panel.onDidChangeViewState(()=>{if(panel.active){activeSession=session;publishSidebar(session);}});
-    panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] };
+    panel.webview.options = { enableScripts: true, localResourceRoots: webviewResourceRoots(context) };
     panel.onDidDispose(() => {
       disposed = true;
       for (const frame of frames.values()) frame.worker.dispose();

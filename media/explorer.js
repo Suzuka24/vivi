@@ -8,6 +8,7 @@ const selectedChildByFolder = new Map();
 let layoutState = null, heldSlice = null, errorUntil = 0, errorTimer;
 let adjustSource = null;
 let openAsPath='';
+const setiTheme=window.ViviSetiTheme||{};
 const columnKeys=['name','size','date'];
 const columnMinimums={name:90,size:60,date:112};
 let columnWidths=vscode.getState()?.columnWidths||{};
@@ -17,6 +18,27 @@ const sideAction = (action, value) => vscode.postMessage({type:'sideAction',acti
 const shortcutNames={ctrl:'Ctrl',control:'Ctrl',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Cmd',meta:'Cmd',enter:'Enter',arrowup:'Up',arrowdown:'Down',arrowleft:'Left',arrowright:'Right',escape:'Esc',backspace:'Backspace',delete:'Delete',' ':'Space'};
 const shortcutLabel=binding=>String(binding||'').split('+').map(part=>shortcutNames[part.trim().toLowerCase()]||part.trim().toUpperCase()).filter(Boolean).join('+');
 const shortcutButtons={slicePrev:'previousSlice',sliceNext:'nextSlice',slicePlay:'play',framePrevious:'previousFrame',frameNext:'nextFrame',frameTile:'toggleFrameDisplay',frameMoveUp:'moveFrameUp',frameMoveDown:'moveFrameDown',frameMoveFirst:'moveFrameFirst',frameMoveLast:'moveFrameLast',adjustAuto:'autoCuts',adjustReset:'resetCuts',adjustStackAuto:'stackAutoCuts',adjustStackReset:'stackResetCuts',adjustToggleBC:'toggleBC'};
+function fileIcon(item){
+  if(item.directory)return {glyph:'▸',color:''};
+  const name=item.name.toLowerCase(),extensions=Object.keys(setiTheme.fileExtensions||{}).filter(extension=>name===extension||name.endsWith(`.${extension}`)).sort((left,right)=>right.length-left.length);
+  const key=setiTheme.fileNames?.[name]||setiTheme.fileExtensions?.[extensions[0]]||setiTheme.file,definition=setiTheme.iconDefinitions?.[key];
+  const code=Number.parseInt(String(definition?.fontCharacter||'').replace('\\',''),16);
+  return {glyph:Number.isFinite(code)?String.fromCodePoint(code):'·',color:definition?.fontColor||''};
+}
+function scrollbarHit(event){
+  for(let element=event.target instanceof Element?event.target:null;element;element=element.parentElement){
+    const vertical=element.scrollHeight>element.clientHeight&&event.clientX>=element.getBoundingClientRect().right-(element.offsetWidth-element.clientWidth);
+    const horizontal=element.scrollWidth>element.clientWidth&&event.clientY>=element.getBoundingClientRect().bottom-(element.offsetHeight-element.clientHeight);
+    if(vertical||horizontal)return true;
+  }
+  return false;
+}
+function restoreShortcutFocus(event){
+  if(!scrollbarHit(event))return;
+  requestAnimationFrame(()=>{if(document.activeElement?.matches('input,select,textarea,[contenteditable="true"]'))return;document.body.tabIndex=-1;document.body.focus({preventScroll:true});window.focus();});
+}
+window.addEventListener('pointerdown',restoreShortcutFocus,true);
+window.addEventListener('pointerup',restoreShortcutFocus,true);
 function updateShortcutTips(){
   for(const [id,action] of Object.entries(shortcutButtons)){
     const button=$(id);if(!button)continue;
@@ -198,7 +220,7 @@ function render() {
     row.title = item.path;
     row.dataset.path=item.path;
     row.setAttribute('role','listitem');
-    const name=document.createElement('span');name.className='file-cell file-name';name.textContent=`${item.directory ? '▸' : item.supported ? '▧' : '·'}  ${item.name}`;
+    const name=document.createElement('span');name.className='file-cell file-name';const icon=fileIcon(item),iconElement=document.createElement('span'),label=document.createElement('span');iconElement.className='file-icon';iconElement.textContent=icon.glyph;if(icon.color)iconElement.style.color=icon.color;label.className='file-label';label.textContent=item.name;name.append(iconElement,label);
     const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatSizeKiB(item.size);
     const date=document.createElement('span');date.className='file-cell file-date';date.textContent=formatModified(item.mtimeMs);
     row.append(name,size,date);
