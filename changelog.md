@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.24 (development build; not published)
+
+- Remove the responsive loading protection, transfer pacing, worker priority adjustment, and related setting introduced in 0.7.23 while retaining the redesigned vivi image icon.
+
 ## 0.7.23 (development build; not published)
 
 - Match the dedicated vivi image icon to the existing simple monochrome outline style.

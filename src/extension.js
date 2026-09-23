@@ -10,7 +10,6 @@ const { listDirectory } = require('./explorerListing');
 const { uniqueFrameLabel } = require('./frameLabels');
 const { menuPaths } = require('./menuVisibility');
 const { previewCompressionOptions } = require('./compressionPolicy');
-const { CooperativeTransferScheduler } = require('./transferScheduler');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -62,7 +61,6 @@ async function html(webview, context, name) {
 
 function activate(context) {
   const output = vscode.window.createOutputChannel('vivi');
-  const transferScheduler = new CooperativeTransferScheduler();
   context.subscriptions.push(output);
   const config = () => vscode.workspace.getConfiguration('vivi');
   const previousMenuSetting = config().inspect('explorerContextMenu');
@@ -123,7 +121,7 @@ function activate(context) {
     // python3 is the portable Linux default; Windows installations commonly use python.exe.
     const configured = c.get('pythonPath', '') || vscode.workspace.getConfiguration('imageViewer').get('pythonPath', 'python3');
     const python = process.platform === 'win32' && configured === 'python3' ? 'python' : configured;
-    return new Backend(python, path.join(context.extensionPath, 'backend', 'worker.py'), c.get('requestTimeoutSeconds', 120)*1000, s => output.append(s), c.get('maxDecodedPixels', 256000000), c.get('responsiveLoadingProtection', true));
+    return new Backend(python, path.join(context.extensionPath, 'backend', 'worker.py'), c.get('requestTimeoutSeconds', 120)*1000, s => output.append(s), c.get('maxDecodedPixels', 256000000));
   };
   // The editor converts a file URI from the remote extension host over RPC.
   const uriFor = file => vscode.Uri.file(file);
@@ -527,22 +525,16 @@ function activate(context) {
             }, frame.sourceFileBytes));
           }
           const forwarding=[];
-          const protectLoading=config().get('responsiveLoadingProtection',true);
-          const postTransport=message=>protectLoading
-            ? transferScheduler.post(value=>panel.webview.postMessage(value),message)
-            : panel.webview.postMessage(message);
           const result = msg.op === 'renderStack'
             ? await frame.worker.requestStream(msg.op, args, event => {
-                if (disposed) return;
-                const message={type:'stream',id:msg.id,event:event.streamEvent,frame:event.frame,total:event.total,result:event.result};
-                if(protectLoading)return postTransport(message);
-                forwarding.push(postTransport(message));
+                if (!disposed) forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
+                  frame:event.frame,total:event.total,result:event.result}));
               })
             : await frame.worker.request(msg.op, args);
           if(msg.op==='renderStack')await Promise.all(forwarding);
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };
-          if (!disposed) await postTransport({ type: 'result', id: msg.id, op: msg.op, result });
+          if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result });
         } else if (msg.type === 'export') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');

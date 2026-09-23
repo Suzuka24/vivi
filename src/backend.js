@@ -1,9 +1,8 @@
 'use strict';
 const { spawn } = require('node:child_process');
-const os = require('node:os');
 
 class Backend {
-  constructor(python, script, timeout, log, maxPixels, protectResources = false) {
+  constructor(python, script, timeout, log, maxPixels) {
     this.pending = new Map();
     this.nextId = 0;
     this.timeout = timeout;
@@ -12,36 +11,12 @@ class Backend {
     this.headerParts = [];
     this.headerBytes = 0;
     this.binaryMessage = null;
-    this.outputPaused = false;
-    this.queuedChunks = [];
     this.child = spawn(python, ['-u', script], { shell: false, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-    if (protectResources) {
-      try { os.setPriority(this.child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); }
-      catch {}
-    }
     this.child.stderr.on('data', data => log(String(data)));
     this.child.on('error', error => this.stop(new Error(`Python backend: ${error.message}. Configure vivi.pythonPath on this machine.`)));
     this.child.on('exit', code => this.stop(new Error(`Python backend exited (${code}). Check Python dependencies in README; reopen the image to restart.`)));
     this.child.stdin.on('error', error => this.stop(error));
-    this.child.stdout.on('data', chunk => this.accept(chunk));
-  }
-  accept(chunk) {
-    if (this.outputPaused) this.queuedChunks.push(chunk);
-    else this.consume(chunk);
-  }
-  resumeOutput() {
-    if (this.dead) return;
-    this.outputPaused = false;
-    const queued = this.queuedChunks;
-    this.queuedChunks = [];
-    for (let index = 0; index < queued.length; index++) {
-      this.consume(queued[index]);
-      if (this.outputPaused) {
-        this.queuedChunks.unshift(...queued.slice(index + 1));
-        return;
-      }
-    }
-    this.child.stdout.resume();
+    this.child.stdout.on('data', chunk => this.consume(chunk));
   }
   consume(chunk) {
     let offset = 0;
@@ -58,11 +33,7 @@ class Backend {
         const {msg} = state;
         msg.result.payload = payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
         this.binaryMessage = null;
-        const paused = this.dispatch(msg);
-        if (paused) {
-          if (offset < chunk.length) this.queuedChunks.push(chunk.subarray(offset));
-          return;
-        }
+        this.dispatch(msg);
       } else {
         const newline = chunk.indexOf(10, offset);
         if (newline < 0) {
@@ -83,21 +54,8 @@ class Backend {
             this.stop(new Error('Invalid backend binary length')); return;
           }
           if (msg.binaryLength) this.binaryMessage = {msg, length: msg.binaryLength, parts: [], bytes: 0};
-          else {
-            msg.result.payload = new ArrayBuffer(0);
-            const paused = this.dispatch(msg);
-            if (paused) {
-              if (offset < chunk.length) this.queuedChunks.push(chunk.subarray(offset));
-              return;
-            }
-          }
-        } else {
-          const paused = this.dispatch(msg);
-          if (paused) {
-            if (offset < chunk.length) this.queuedChunks.push(chunk.subarray(offset));
-            return;
-          }
-        }
+          else { msg.result.payload = new ArrayBuffer(0); this.dispatch(msg); }
+        } else this.dispatch(msg);
       }
     }
   }
@@ -120,21 +78,11 @@ class Backend {
     const item = this.pending.get(msg.id);
     if (!item || !msg.streamEvent) { this.complete(msg); return; }
     this.touchStream(msg.id);
-    let eventResult;
-    try { eventResult = item.onEvent(msg); }
+    try { item.onEvent(msg); }
     catch (error) { this.pending.delete(msg.id); clearTimeout(item.timer); item.reject(error); return; }
-    const finish = () => {
-      if (msg.streamEvent !== 'end') return;
+    if (msg.streamEvent === 'end') {
       this.pending.delete(msg.id); clearTimeout(item.timer); item.resolve(msg.result);
-    };
-    if (eventResult?.then) {
-      this.outputPaused = true;
-      this.child.stdout.pause();
-      Promise.resolve(eventResult).then(() => { finish(); this.resumeOutput(); }, error => this.stop(error));
-      return true;
     }
-    finish();
-    return false;
   }
   request(op, args = {}) {
     if (this.dead) return Promise.reject(new Error('Backend stopped. Reopen this image to restart.'));

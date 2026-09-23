@@ -1684,8 +1684,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keyup',e=>{if(e.code==='Space')spaceHeld=false;});
 new ResizeObserver(()=>{if(dataset)scheduleRender(80);}).observe($('stage'));
 document.addEventListener('visibilitychange',()=>{if(document.hidden){spaceHeld=false;stopPlay();stopSliceHold();}});
-const transportChunks=new Map();
-function handleHostMessage(m){
+window.addEventListener('message',({data:m})=>{
   if(m.type==='frameAdded'){
     if(m.menuVisibility)applyMenuVisibility(m.menuVisibility);
     if(m.keyboardShortcuts)keyboardShortcuts={...keyboardShortcuts,...m.keyboardShortcuts};
@@ -1726,19 +1725,5 @@ function handleHostMessage(m){
   }else if(m.type==='result'||m.type==='error'){
     const p=pending.get(m.id);if(p){pending.delete(m.id);m.type==='error'?p.reject(new Error(m.message)):p.resolve(m.result);}else if(m.type==='error')showError(new Error(m.message));
   }
-}
-window.addEventListener('message',({data:m})=>{
-  if(m.type!=='transportChunk'){handleHostMessage(m);return;}
-  let state=transportChunks.get(m.transferId);
-  if(!state){
-    if(!m.message)return;
-    state={message:m.message,parts:new Array(m.count),received:0,totalBytes:m.totalBytes};
-    transportChunks.set(m.transferId,state);
-  }
-  if(!state.parts[m.index]){state.parts[m.index]=new Uint8Array(m.chunk);state.received++;}
-  if(state.received!==state.parts.length)return;
-  const payload=new Uint8Array(state.totalBytes);let offset=0;
-  for(const part of state.parts){payload.set(part,offset);offset+=part.byteLength;}
-  transportChunks.delete(m.transferId);state.message.result.payload=payload.buffer;handleHostMessage(state.message);
 });
 vscode.postMessage({type:'ready'});
