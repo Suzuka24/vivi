@@ -18,12 +18,26 @@ const sideAction = (action, value) => vscode.postMessage({type:'sideAction',acti
 const shortcutNames={ctrl:'Ctrl',control:'Ctrl',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Cmd',meta:'Cmd',enter:'Enter',arrowup:'Up',arrowdown:'Down',arrowleft:'Left',arrowright:'Right',escape:'Esc',backspace:'Backspace',delete:'Delete',' ':'Space'};
 const shortcutLabel=binding=>String(binding||'').split('+').map(part=>shortcutNames[part.trim().toLowerCase()]||part.trim().toUpperCase()).filter(Boolean).join('+');
 const shortcutButtons={slicePrev:'previousSlice',sliceNext:'nextSlice',slicePlay:'play',framePrevious:'previousFrame',frameNext:'nextFrame',frameTile:'toggleFrameDisplay',frameMoveUp:'moveFrameUp',frameMoveDown:'moveFrameDown',frameMoveFirst:'moveFrameFirst',frameMoveLast:'moveFrameLast',adjustAuto:'autoCuts',adjustReset:'resetCuts',adjustStackAuto:'stackAutoCuts',adjustStackReset:'stackResetCuts',adjustToggleBC:'toggleBC'};
+// VS Code Codicons (MIT): stable fallbacks for types not supplied by Seti.
+const codiconPaths={
+  folder:['M2 4.5V6H5.58579C5.71839 6 5.84557 5.94732 5.93934 5.85355L7.29289 4.5 5.93934 3.14645C5.84557 3.05268 5.71839 3 5.58579 3H3.5C2.67157 3 2 3.67157 2 4.5ZM1 4.5C1 3.11929 2.11929 2 3.5 2H5.58579C5.98361 2 6.36514 2.15804 6.64645 2.43934L8.20711 4H12.5C13.8807 4 15 5.11929 15 6.5V11.5C15 12.8807 13.8807 14 12.5 14H3.5C2.11929 14 1 12.8807 1 11.5V4.5ZM2 7V11.5C2 12.3284 2.67157 13 3.5 13H12.5C13.3284 13 14 12.3284 14 11.5V6.5C14 5.67157 13.3284 5 12.5 5H8.20711L6.64645 6.56066C6.36514 6.84197 5.98361 7 5.58579 7H2Z'],
+  file:['M5 1C3.89543 1 3 1.89543 3 3V13C3 14.1046 3.89543 15 5 15H11C12.1046 15 13 14.1046 13 13V5.41421C13 5.01639 12.842 4.63486 12.5607 4.35355L9.64645 1.43934C9.36514 1.15804 8.98361 1 8.58579 1H5ZM4 3C4 2.44772 4.44772 2 5 2H8V4.5C8 5.32843 8.67157 6 9.5 6H12V13C12 13.5523 11.5523 14 11 14H5C4.44772 14 4 13.5523 4 13V3ZM11.7929 5H9.5C9.22386 5 9 4.77614 9 4.5V2.20711L11.7929 5Z']
+};
 function fileIcon(item){
-  if(item.directory)return {glyph:'▸',color:''};
+  if(item.directory)return {paths:codiconPaths.folder,color:'var(--vscode-icon-foreground,#c5c5c5)'};
   const name=item.name.toLowerCase(),extensions=Object.keys(setiTheme.fileExtensions||{}).filter(extension=>name===extension||name.endsWith(`.${extension}`)).sort((left,right)=>right.length-left.length);
   const key=setiTheme.fileNames?.[name]||setiTheme.fileExtensions?.[extensions[0]]||setiTheme.file,definition=setiTheme.iconDefinitions?.[key];
   const code=Number.parseInt(String(definition?.fontCharacter||'').replace('\\',''),16);
-  return {glyph:Number.isFinite(code)?String.fromCodePoint(code):'·',color:definition?.fontColor||''};
+  return Number.isFinite(code)?{glyph:String.fromCodePoint(code),color:definition?.fontColor||''}:{paths:codiconPaths.file,color:'var(--vscode-icon-foreground,#c5c5c5)'};
+}
+function fileIconElement(item){
+  const icon=fileIcon(item),element=document.createElement('span');element.className='file-icon';
+  if(icon.paths){
+    element.classList.add('codicon-file-icon');const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 16 16');svg.setAttribute('aria-hidden','true');
+    for(const data of icon.paths){const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',data);svg.append(path);}element.append(svg);
+  }else element.textContent=icon.glyph;
+  if(icon.color)element.style.color=icon.color;
+  return element;
 }
 function scrollbarHit(event){
   for(const element of document.querySelectorAll('*')){
@@ -220,7 +234,7 @@ function render() {
     row.title = item.path;
     row.dataset.path=item.path;
     row.setAttribute('role','listitem');
-    const name=document.createElement('span');name.className='file-cell file-name';const icon=fileIcon(item),iconElement=document.createElement('span'),label=document.createElement('span');iconElement.className='file-icon';iconElement.textContent=icon.glyph;if(icon.color)iconElement.style.color=icon.color;label.className='file-label';label.textContent=item.name;name.append(iconElement,label);
+    const name=document.createElement('span');name.className='file-cell file-name';const iconElement=fileIconElement(item),label=document.createElement('span');label.className='file-label';label.textContent=item.name;name.append(iconElement,label);
     const size=document.createElement('span');size.className='file-cell file-size';size.textContent=item.directory||item.size==null?'':formatSizeKiB(item.size);
     const date=document.createElement('span');date.className='file-cell file-date';date.textContent=formatModified(item.mtimeMs);
     row.append(name,size,date);
@@ -335,9 +349,13 @@ function shortcutMatches(binding,event){
   const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),key=parts.pop(),modifiers=new Set(parts);
   return event.key.toLowerCase()===key&&event.ctrlKey===(modifiers.has('ctrl')||modifiers.has('control'))&&event.metaKey===(modifiers.has('cmd')||modifiers.has('meta'))&&event.altKey===(modifiers.has('alt')||modifiers.has('option'))&&event.shiftKey===modifiers.has('shift');
 }
+function shortcutEditingTarget(event){
+  const target=event.target.closest?.('input,select,textarea,[contenteditable="true"]');
+  return !!target&&!(target.tagName==='INPUT'&&['range','checkbox','radio'].includes(target.type));
+}
 window.addEventListener('keydown',event=>{
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,event))?.[0];
-  if(event.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;
+  if(shortcutEditingTarget(event))return;
   if(action==='rename'){
     if(document.body.classList.contains('view-layout')&&layoutState?.active)sideAction('renameFrame',layoutState.active);
     else if(document.body.classList.contains('view-explorer')&&selectedPath)vscode.postMessage({type:'action',action:'rename',path:selectedPath,folder:current});

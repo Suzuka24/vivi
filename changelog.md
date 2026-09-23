@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.21 (development build; not published)
+
+- Keep configurable shortcuts active after HTML range sliders or native scrollbars receive focus, while continuing to suppress shortcuts during text and select editing.
+- Use VS Code's built-in Seti mappings for file-type icons, Codicon folder and fallback file shapes, and a fixed icon column so every file name starts at the same position.
+
 ## 0.7.20 (development build; not published)
 
 - Apply Stretch only to normalized display brightness after Minimum/Maximum; keep Auto/Reset, histograms, measurements, profiles, thresholds, and pixel readouts on real pixel values, and draw the selected nonlinear function in Curve.

@@ -1669,9 +1669,13 @@ function shortcutMatches(binding,event){
   const parts=String(binding).toLowerCase().split('+').map(part=>part.trim()),key=parts.pop(),modifiers=new Set(parts);
   return event.key.toLowerCase()===key&&event.ctrlKey===(modifiers.has('ctrl')||modifiers.has('control'))&&event.metaKey===(modifiers.has('cmd')||modifiers.has('meta'))&&event.altKey===(modifiers.has('alt')||modifiers.has('option'))&&event.shiftKey===modifiers.has('shift');
 }
+function shortcutEditingTarget(event){
+  const target=event.target.closest?.('input,select,textarea,[contenteditable="true"]');
+  return !!target&&!(target.tagName==='INPUT'&&['range','checkbox','radio'].includes(target.type));
+}
 document.addEventListener('keydown',e=>{
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,e))?.[0];
-  if(e.target.closest?.('input,select,textarea,[contenteditable="true"]'))return;
+  if(shortcutEditingTarget(e))return;
   if(e.code==='Space'&&orthogonal){spaceHeld=true;e.preventDefault();return;}
   if(!action)return;
   e.preventDefault();
