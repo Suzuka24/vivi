@@ -315,5 +315,5 @@ function sliceDisplayRange(histograms,bounds,frameId,datasetId,slice,low,high){
 }
 
 if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
-if(typeof window!=='undefined')window.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
 })();

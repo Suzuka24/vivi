@@ -60,6 +60,8 @@ const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
 let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelRunning = false;
 let playing = false, playbackTimer, analysisRunning = false, blinking = false, blinkTimer;
 const pending = new Map();
+let imageTaskSerial=0;
+const imageWorkerBundleUrls=new Map();
 let cacheSignature = '', cacheGeneration = 0, cacheBytes = 0, preloadRunning = false, preloadRestartWanted = false, preloadTimer, activePng = '';
 let sliceHoldTimer, sliceRepeatTimer;
 const overviewCache = new Map(), transferHistograms = new Map(), displayBounds = new Map();
@@ -87,15 +89,39 @@ function sidebarState(){
 }
 function publishSidebar(delay=20){clearTimeout(sidebarTimer);sidebarTimer=setTimeout(()=>vscode.postMessage({type:'sidebarState',state:sidebarState()}),delay);}
 function request(op, args, prefetch = false, fileFrame = activeFileFrame) {
-  return new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});vscode.postMessage({type:'request',id,op,args,prefetch,fileFrame});});
+  return new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject,fileFrame});vscode.postMessage({type:'request',id,op,args,prefetch,fileFrame});});
 }
 function requestStream(op,args,onEvent,fileFrame=activeFileFrame){
   return new Promise((resolve,reject)=>{
     const id=++serial;let chain=Promise.resolve(),streamError=null;
-    pending.set(id,{reject,onStream:message=>{chain=chain.then(()=>onEvent(message)).catch(error=>{streamError=error;});},resolve:result=>{chain.then(()=>streamError?reject(streamError):resolve(result),reject);}});
+    pending.set(id,{reject,fileFrame,onStream:message=>{chain=chain.then(()=>onEvent(message)).catch(error=>{streamError=error;});},resolve:result=>{chain.then(()=>streamError?reject(streamError):resolve(result),reject);}});
     vscode.postMessage({type:'request',id,op,args,prefetch:true,fileFrame});
   });
 }
+function abortError(){const error=new Error('Image processing cancelled.');error.name='AbortError';return error;}
+function cancelFrameRequests(id){for(const [requestId,item] of pending)if(item.fileFrame===id){pending.delete(requestId);item.reject(abortError());}}
+function imageWorkerBundleUrl(withZfp=false){
+  const key=withZfp?'zfp':'base';if(imageWorkerBundleUrls.has(key))return imageWorkerBundleUrls.get(key);
+  const urls=[window.ViviZstdScriptUrl,...(withZfp?[window.ViviZfpScriptUrl]:[]),window.ViviDisplayScriptUrl,window.ViviImageWorkerUrl];
+  const bundle=Promise.all(urls.map(url=>fetch(url).then(response=>{if(!response.ok)throw new Error(`Unable to load image worker resource: ${response.status}`);return response.text();})))
+    .then(parts=>URL.createObjectURL(new Blob([...(withZfp?[`self.ViviZfpWasmUrl=${JSON.stringify(window.ViviZfpWasmUrl)};\n`]:[]),parts.join('\n')],{type:'text/javascript'})));
+  imageWorkerBundleUrls.set(key,bundle);return bundle;
+}
+function frameImageWorker(state,withZfp=false){
+  if(state.imageWorker&&(!withZfp||state.imageWorker.withZfp))return state.imageWorker;
+  if(state.imageWorker)disposeFrameImageWorker(state);
+  const jobs=new Map(),api={worker:null,jobs,cancelled:false,withZfp};
+  api.ready=imageWorkerBundleUrl(withZfp).then(url=>new Promise((resolve,reject)=>{
+    if(api.cancelled){reject(abortError());return;}
+    const worker=api.worker=new Worker(url);
+    worker.onmessage=({data})=>{if(data.type==='ready'){resolve();return;}const job=jobs.get(data.id);if(!job)return;jobs.delete(data.id);if(data.type==='error'){const error=new Error(data.message);error.stack=data.stack||error.stack;job.reject(error);}else job.resolve(data);};
+    worker.onerror=event=>{const error=new Error(event.message||'Image worker failed.');reject(error);for(const job of jobs.values())job.reject(error);jobs.clear();state.imageWorker=null;worker.terminate();};
+    worker.postMessage({type:'init'});
+  }));
+  api.decode=async(result,args,paint,lut)=>{await api.ready;if(api.cancelled)throw abortError();return new Promise((resolve,reject)=>{const id=++imageTaskSerial;jobs.set(id,{resolve,reject});api.worker.postMessage({type:'decode',id,result,args,paint,lut},[result.payload]);});};
+  state.imageWorker=api;return api;
+}
+function disposeFrameImageWorker(state){if(!state?.imageWorker)return;state.imageWorker.cancelled=true;for(const job of state.imageWorker.jobs.values())job.reject(abortError());state.imageWorker.jobs.clear();state.imageWorker.worker?.terminate();state.imageWorker=null;}
 function updateLoadProgress(state=fileFrames.get(activeFileFrame)){
   const panel=$('loadProgress');
   if(!state?.loading){panel.hidden=true;panel.removeAttribute('aria-valuenow');return;}
@@ -401,15 +427,20 @@ function scheduleCachedRecolor(id,state){
   }
   setTimeout(next,0);
 }
-async function decodePreview(result,args,paint=true) {
+async function decodePreview(result,args,paint=true,fileFrame=activeFileFrame,transferMs=0) {
   if(result.payload instanceof ArrayBuffer){
-    const {raw:sourceRaw,sourceBytes}=await decodeRawPayload(result);
-    const scale=Number(result.bscale??1),zero=Number(result.bzero??0),blank=result.blank;
-    const calibrated=scale!==1||zero!==0||blank!=null;
-    const raw=calibrated?Float64Array.from(sourceRaw,value=>blank!=null&&String(value)===String(blank)?NaN:Number(value)*scale+zero):sourceRaw;
-    delete result.payload;
-    const entry={image:null,raw,sourceRaw,sourceBytes,channels:result.channels,result,sourceFrame:args.frame,sourceDataset:args.dataset,baseMode:args.cuts,baseLimits:[result.low,result.high],bytes:raw.byteLength+(sourceBytes.buffer===raw.buffer?0:sourceBytes.byteLength)};
-    if(paint)await recolorEntry(entry,args);
+    const state=fileFrames.get(fileFrame);if(!state)throw abortError();
+    const lut=paint&&(result.channels<=1||args.threshold)?await lutTable(args.cmap):null;
+    const decoded=await frameImageWorker(state,result.lossy?.method==='zfp').decode(result,args,paint,lut);
+    const Type=globalThis[decoded.rawType];if(typeof Type!=='function')throw new Error(`Unsupported worker dtype: ${decoded.rawType}`);
+    const raw=new Type(decoded.rawBuffer,0,decoded.rawLength);result.payload=decoded.payload;
+    const transport=transportSnapshot(result,args);delete result.payload;
+    let image=null;if(decoded.bitmap)image=decoded.bitmap;else if(decoded.pixels){image=document.createElement('canvas');image.width=result.width;image.height=result.height;image.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(decoded.pixels),image.width,image.height),0,0);}
+    result.low=decoded.low;result.high=decoded.high;
+    const colorKey=paint?JSON.stringify([decoded.low,decoded.high,args.stretch,args.cmap,args.invert,args.threshold]):'';
+    const entry={image,raw,sourceRaw:raw,sourceBytes:new Uint8Array(raw.buffer),channels:result.channels,result,sourceFrame:args.frame,sourceDataset:args.dataset,
+      baseMode:args.cuts,baseLimits:decoded.baseLimits,bytes:raw.byteLength,transport,colorKey};
+    if(transferMs>0)vscode.postMessage({type:'loadTiming',path:state.metadata.path,transferMs,decodeMs:decoded.decodeMs,paintMs:decoded.paintMs});
     return entry;
   }
   if(result.raw){
@@ -444,7 +475,7 @@ async function restoreRecentFrame(state,cached){
   if(!d||d.frames!==1)throw new Error('Cached image shape no longer matches the source.');
   const args={...cached.transport.args,dataset:d.id,frame:0,box:[0,0,d.width,d.height],size:state.metadata.maxSize};
   const result={...cached.transport.result,payload:cached.transport.result.payload};
-  const entry=await decodePreview(result,args);entry.transport=cached.transport;
+  const entry=await decodePreview(result,args,true,state.metadata.frameId);entry.transport=cached.transport;
   Object.assign(state,cached.presentation,{datasetId:d.id,plane:1,preview:entry.image,previewBox:entry.result.box,
     frameCache:new Map([[cacheKey(0,args.box),entry]]),cacheSignature:`${state.metadata.frameId}:${d.id}:${args.size}`,cacheBytes:entry.bytes});
 }
@@ -462,11 +493,11 @@ function showPreview(entry, ticket) {
 }
 function scheduleOverview() {
   if(fullPreview()||overviewRunning||renderRunning||renderWanted)return;
-  const frame=Number($('frame').value)-1,signature=cacheSignature,key=overviewKey(signature,frame);
+  const id=activeFileFrame,frame=Number($('frame').value)-1,signature=cacheSignature,key=overviewKey(signature,frame);
   if(overviewCache.has(key))return;
   overviewRunning=true;
   const args={...renderArgs(frame),box:fullBox()};
-  request('render',args,true).then(result=>decodePreview(result,args)).then(async entry=>{
+  request('render',args,true,id).then(result=>decodePreview(result,args,true,id)).then(async entry=>{
     if(cacheSignature!==signature)return;
     await recolorEntry(entry,renderArgs(frame));
     if(cacheSignature!==signature)return;
@@ -499,11 +530,10 @@ async function loadStack(id,state,args,signature){
     if(message.event!=='frame')return;
     if(fileFrames.get(id)!==state||state.stackLoadGeneration!==generation)return;
     const frame=Number(message.frame),frameArgs={...args,frame};
-    const entry=await decodePreview(message.result,frameArgs,false);
-    if(!firstLimits)firstLimits=[entry.result.low,entry.result.high];
+    if(!firstLimits)firstLimits=[message.result.low,message.result.high];
     const paint=statePaintArgs(state,frame);
     if((state.cuts||args.cuts)!=='manual'){paint.cuts='manual';paint.low=firstLimits[0];paint.high=firstLimits[1];}
-    await recolorEntry(entry,paint);
+    const entry=await decodePreview(message.result,{...frameArgs,...paint},true,id);
     entries.set(cacheKey(frame,args.box),entry);bytes+=entry.bytes;
     setFrameLoading(id,true,entries.size,message.total||stackDataset?.frames||0,'Loading stack…');
     await new Promise(resolve=>setTimeout(resolve,0));
@@ -523,7 +553,7 @@ async function loadStack(id,state,args,signature){
 }
 async function render() {
   if(renderRunning||!renderWanted||!dataset)return;
-  renderWanted=false;const ticket=revision, frame=Number($('frame').value)-1;
+  renderWanted=false;const ticket=revision,id=activeFileFrame,frame=Number($('frame').value)-1;
   const args=renderArgs(frame), signature=signatureOf(args);
   ensureCache(signature);
   const key=cacheKey(frame,args.box),cached=frameCache.get(key);
@@ -539,20 +569,23 @@ async function render() {
   renderRunning=true;
   if (!preview) $('busy').textContent='Loading…';
   try {
-    const state=fileFrames.get(activeFileFrame);
-    if(dataset.frames>1){await loadStack(activeFileFrame,state,args,signature);return;}
-    setFrameLoading(activeFileFrame,true,0,0,'Loading image…');
-    const result=await request('render',args),transport=transportSnapshot(result,args);
-    const entry=await decodePreview(result,args);entry.transport=transport;
-    if (cacheSignature === signature) {frameCache.set(key,entry);cacheBytes += entry.bytes;updateCacheStatus();}
-    showPreview(entry,ticket);
-    if(fileFrames.get(activeFileFrame)===state&&cacheSignature===signature){saveFileFrame();rememberRecentFrame(state);}
+    const state=fileFrames.get(id);
+    if(dataset.frames>1){await loadStack(id,state,args,signature);return;}
+    setFrameLoading(id,true,0,0,'Loading image…');
+    const requestedAt=performance.now(),result=await request('render',args,false,id);
+    const entry=await decodePreview(result,args,true,id,performance.now()-requestedAt);
+    if(fileFrames.get(id)===state){
+      if(state.cacheSignature!==signature){state.frameCache=new Map();state.cacheBytes=0;state.cacheSignature=signature;}
+      state.frameCache.set(key,entry);state.cacheBytes+=entry.bytes;state.preview=entry.image;state.previewBox=entry.result.box;
+      if(activeFileFrame===id&&cacheSignature===signature){frameCache=state.frameCache;cacheBytes=state.cacheBytes;showPreview(entry,ticket);saveFileFrame();updateCacheStatus();}
+      rememberRecentFrame(state);
+    }
   } catch(error){showError(error);stopPlay();}
-  finally{if(dataset?.frames===1)setFrameLoading(activeFileFrame,false);renderRunning=false;if(renderWanted)render();else{schedulePlayback();schedulePreload();}}
+  finally{setFrameLoading(id,false);renderRunning=false;if(renderWanted)render();else{schedulePlayback();schedulePreload();}}
 }
 function dismissError(){errorUntil=0;clearTimeout(errorTimer);$('error').hidden=true;if($('busy').textContent==='Error')$('busy').textContent='';}
 function clearExpiredError(){if(Date.now()>=errorUntil)dismissError();}
-function showError(error){$('errorMessage').textContent=error.message;$('error').hidden=false;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
+function showError(error){if(error?.name==='AbortError')return;$('errorMessage').textContent=error.message;$('error').hidden=false;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
 $('dismissError').onclick=dismissError;
 function fit(){if(!dataset)return;const {w,h}=size(),depth=orthogonal?.depth||0;scale=Math.min(w/(dataset.width+depth),h/(dataset.height+depth))*.96;cx=(dataset.width+depth)/2;cy=(dataset.height+depth)/2;commitFrameChange('view');scheduleRender(0);}
 const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32];
@@ -780,7 +813,7 @@ async function refreshTilePreviews(){
       const generation=(state.tileGeneration||0)+1;state.tileGeneration=generation;
       const cached=state.frameCache?.get(cacheKey(args.frame,args.box))||state.tileEntry;
       const reusable=cached&&cached.sourceFrame===args.frame&&cached.sourceDataset===args.dataset&&cached.result.box.join(',')===args.box.join(',');
-      const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,false));
+      const source=reusable?Promise.resolve(cached):request('render',args,true,id).then(result=>decodePreview(result,args,true,id));
       jobs.push(source.then(async entry=>{if(fileFrames.get(id)!==state||state.tileGeneration!==generation)return null;await recolorEntry(entry,args);return {id,state,generation,entry};}).catch(()=>{if(state.tileGeneration===generation)state.tileSignature='';return null;}));
     }
     const ready=await Promise.all(jobs);
@@ -939,6 +972,7 @@ function closeFileFrame(id=activeFileFrame){
   id=Number(id);if(!fileFrames.has(id))return;
   if(id===activeFileFrame)saveFileFrame();
   const closing=fileFrames.get(id),retainRecentSeconds=rememberRecentFrame(closing)||recentPayloadCache.remainingSeconds();
+  cancelFrameRequests(id);disposeFrameImageWorker(closing);
   if(fileFrames.size===1){
     disableOrthogonal();stopPlay();stopSliceHold();clearTimeout(renderTimer);clearTimeout(preloadTimer);revision++;cacheGeneration++;
     fileFrames.delete(id);activeFileFrame=null;metadata=null;dataset=null;preview=null;previewBox=null;frameCache=new Map();cacheSignature='';cacheBytes=0;
@@ -1759,7 +1793,7 @@ window.addEventListener('message',({data:m})=>{
   }else if(m.type==='stream'){
     const p=pending.get(m.id);if(p?.onStream)p.onStream(m);
   }else if(m.type==='result'||m.type==='error'){
-    const p=pending.get(m.id);if(p){pending.delete(m.id);m.type==='error'?p.reject(new Error(m.message)):p.resolve(m.result);}else if(m.type==='error')showError(new Error(m.message));
+    const p=pending.get(m.id);if(p){pending.delete(m.id);m.type==='error'?p.reject(new Error(m.message)):p.resolve(m.result);}else if(m.type==='error'&&!m.id)showError(new Error(m.message));
   }
 });
 vscode.postMessage({type:'ready'});

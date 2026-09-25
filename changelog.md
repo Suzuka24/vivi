@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.29 (development build; not published)
+
+- Keep each image payload as one full-speed Remote SSH transfer while moving local decompression, byte unshuffle, dtype decoding, calibration, initial LUT/B&C mapping, and image construction to a per-Frame Web Worker.
+- Cancel pending Webview requests and terminate a Frame's image worker when the Frame closes; backend disposal already stops its active file read, compression, and transfer.
+- Record backend/transfer, local decode, and initial paint durations in the vivi output channel without coupling diagnostics to loading progress.
+
 ## 0.7.28 (development build; not published)
 
 - Keep transport payloads for the three most recently opened single images in local memory for 20 seconds from opening, evicting older or expired entries without disk persistence.

@@ -53,6 +53,7 @@ async function html(webview, context, name) {
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
     .replaceAll('{{formatScript}}', uri('numberFormat.js'))
     .replaceAll('{{displayScript}}', uri('display.js'))
+    .replaceAll('{{imageWorkerScript}}', uri('imageWorker.js'))
     .replaceAll('{{recentCacheScript}}', uri('recentPayloadCache.js'))
     .replaceAll('{{roiScript}}', uri('roiGeometry.js'))
     .replaceAll('{{zstdScript}}', uri('vendor/fzstd.js'))
@@ -378,6 +379,8 @@ function activate(context) {
           await vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', msg.active === true);
         } else if (msg.type === 'activeFrame') {
           if (frames.has(msg.frameId)) activeId = msg.frameId;
+        } else if (msg.type === 'loadTiming') {
+          output.appendLine(`[load] ${msg.path || 'image'} transfer+backend=${Number(msg.transferMs||0).toFixed(1)}ms decode=${Number(msg.decodeMs||0).toFixed(1)}ms paint=${Number(msg.paintMs||0).toFixed(1)}ms`);
         } else if (msg.type === 'sidebarState') {
           session.sidebarState=msg.state;
           if(activeSession===session)publishSidebar(session);
