@@ -7,7 +7,18 @@ from pathlib import Path
 @lru_cache(maxsize=1)
 def imagej_tables():
     with np.load(Path(__file__).with_name("imagej_luts.npz"), allow_pickle=False) as archive:
-        return {name: archive[name] for name in archive.files}
+        tables = {name: archive[name] for name in archive.files}
+    aliases = {
+        "ij-001-mpl-plasma": "ij-mpl-plasma",
+        "ij-002-physics": "ij-physics",
+        "ij-003-phase": "ij-phase",
+        "ij-004-spectrum": "ij-002-spectrum",
+        "ij-005-ice": "ij-003-ice",
+        "ij-006-phase": "ij-004-phase",
+        "ij-007-random": "ij-005-random",
+    }
+    tables.update({alias: tables[source] for alias, source in aliases.items()})
+    return tables
 
 PALETTES = {
     "heat": [(0, 0, 0), (255, 0, 0), (255, 255, 0), (255, 255, 255)],

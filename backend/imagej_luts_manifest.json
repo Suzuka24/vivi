@@ -4,24 +4,32 @@
     "000 Gray"
   ],
   [
-    "ij-001-fire",
-    "001 Fire"
+    "ij-001-mpl-plasma",
+    "001 MPL Plasma"
   ],
   [
-    "ij-002-spectrum",
-    "002 Spectrum"
+    "ij-002-physics",
+    "002 Physics"
   ],
   [
-    "ij-003-ice",
-    "003 Ice"
+    "ij-003-phase",
+    "003 Phase"
   ],
   [
-    "ij-004-phase",
-    "004 Phase"
+    "ij-004-spectrum",
+    "004 Spectrum"
   ],
   [
-    "ij-005-random",
-    "005 Random"
+    "ij-005-ice",
+    "005 Ice"
+  ],
+  [
+    "ij-006-phase",
+    "006 Phase"
+  ],
+  [
+    "ij-007-random",
+    "007 Random"
   ],
   [
     "ij-16-colors",

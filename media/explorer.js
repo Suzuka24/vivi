@@ -13,6 +13,7 @@ const setiTheme=window.ViviSetiTheme||{};
 const columnKeys=['name','size','date'];
 const columnMinimums={name:90,size:60,date:112};
 let columnWidths=vscode.getState()?.columnWidths||{};
+let columnMeasureRequest=0;
 let keyboardShortcuts={previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',rename:'f2',toggleBC:'',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const formatAdjust = window.ViviNumberFormat.formatNumber;
 const sideAction = (action, value) => vscode.postMessage({type:'sideAction',action,value});
@@ -303,10 +304,19 @@ function setColumnWidth(key,width){
   vscode.setState({...vscode.getState(),columnWidths});
 }
 function compactColumn(key){
-  const selector=key==='name'?'.file-name':key==='size'?'.file-size':'.file-date';
+  const requestId=++columnMeasureRequest;
+  vscode.postMessage({type:'measureColumn',path:current,key,showHidden,requestId});
+}
+function measuredColumnWidth(key,values){
+  const sample=key==='name'?document.querySelector('.file-label'):document.querySelector(key==='size'?'.file-size':'.file-date');
+  const style=getComputedStyle(sample||document.body),canvas=document.createElement('canvas'),context=canvas.getContext('2d');
+  context.font=style.font||`${style.fontSize} ${style.fontFamily}`;
+  const display=value=>key==='size'?formatSizeKiB(value):key==='date'?formatModified(value):String(value);
+  let content=0;
+  for(const value of values)content=Math.max(content,context.measureText(display(value)).width);
   const header=$('fileColumns').querySelector(`[data-column="${key}"]`);
-  const width=Math.max(header.scrollWidth,...[...document.querySelectorAll(selector)].map(cell=>cell.scrollWidth))+10;
-  setColumnWidth(key,width);
+  const contentWidth=Math.ceil(content)+(key==='name'?28:12);
+  return Math.max(header.scrollWidth+2,contentWidth);
 }
 $('navigate').onsubmit = event => { event.preventDefault(); list($('path').value); };
 $('pathHistory').onclick=event=>{
@@ -417,6 +427,10 @@ window.addEventListener('message', ({data:message}) => {
   if(message.type==='focusLayout'){$('layoutModule').open=true;$('frameItems').scrollIntoView({block:'nearest'});return;}
   if(message.type==='menuItems'){menuItems=message.items;closeMenu();return;}
   if(message.type==='fileClipboard'){cutPaths=new Set(message.move?message.paths||[]:[]);updateSelectionUi();return;}
+  if(message.type==='columnValues'){
+    if(message.path===current&&message.requestId===columnMeasureRequest)setColumnWidth(message.key,measuredColumnWidth(message.key,message.values||[]));
+    return;
+  }
   if (message.type !== 'list') return;
   const append=message.path===current&&message.offset===entries.length&&message.offset>0;
   const sameFolder=message.path===current;current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;if(!append&&!sameFolder){selectedPath=selectedChildByFolder.get(current)||'';selectedPaths=new Set(selectedPath?[selectedPath]:[]);selectionAnchor=selectedPath;}more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;

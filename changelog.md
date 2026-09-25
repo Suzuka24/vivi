@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.26 (development build; not published)
+
+- Size an Explorer column from every entry in the current directory when its divider is double-clicked, including entries beyond the current page.
+- Put Gray, MPL Plasma, Physics, and Phase first in the numbered LUT favorites and shift the previous Spectrum, Ice, Phase, and Random entries to `004` through `007`.
+
 ## 0.7.25 (development build; not published)
 
 - Add Explorer range and toggle multiselect, copy/cut/paste and batch Delete shortcuts, drag-to-move for selected files and folders, and middle-click insertion of selected paths into the terminal.

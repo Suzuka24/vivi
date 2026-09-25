@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { listDirectory } = require('../src/explorerListing');
+const { listDirectory, listColumnValues } = require('../src/explorerListing');
 
 test('hidden files, folders, size and modification sorting', async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'vivi-list-'));
@@ -34,5 +34,17 @@ test('pagination follows the ordering of the whole directory', async () => {
     assert.equal(first.more, true);
     assert.deepEqual(second.entries.map(item=>item.name), ['file-500','file-501','file-502']);
     assert.equal(second.more, false);
+  } finally { await fs.rm(folder, {recursive:true,force:true}); }
+});
+
+test('column measurement includes entries beyond the first page', async () => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'vivi-columns-'));
+  try {
+    for (let i = 0; i < 501; i++) await fs.writeFile(path.join(folder, `file-${String(i).padStart(3,'0')}`), 'x');
+    const longest = 'z'.repeat(80);
+    await fs.writeFile(path.join(folder, longest), 'long');
+    assert.ok((await listColumnValues(folder, 'name')).includes(longest));
+    assert.ok((await listColumnValues(folder, 'size')).includes(4));
+    assert.equal((await listColumnValues(folder, 'date')).length, 502);
   } finally { await fs.rm(folder, {recursive:true,force:true}); }
 });

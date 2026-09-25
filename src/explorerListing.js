@@ -59,4 +59,31 @@ async function listDirectory(folder, offset = 0, mode = 'nameAsc', showHidden = 
   return {entries:sorted.slice(offset,offset+pageSize),more:count>offset+pageSize,offset,sortMode:mode,showHidden};
 }
 
-module.exports = {listDirectory, compare, sortModes};
+async function listColumnValues(folder, key, showHidden = true) {
+  if (!['name','size','date'].includes(key)) throw new Error('Unknown Explorer column.');
+  const values = [], dir = await fs.opendir(folder);
+  let batch = [];
+  async function addBatch(items) {
+    if (key === 'name') {
+      values.push(...items.map(item => item.name));
+      return;
+    }
+    const measured = await Promise.all(items.map(async item => {
+      try {
+        const stat = await fs.stat(path.join(folder,item.name));
+        if (key === 'size') return stat.isDirectory() ? null : stat.size;
+        return stat.mtimeMs;
+      } catch { return null; }
+    }));
+    values.push(...measured.filter(value => value != null));
+  }
+  for await (const item of dir) {
+    if (!showHidden && item.name.startsWith('.')) continue;
+    batch.push(item);
+    if (batch.length >= 32) { await addBatch(batch); batch = []; }
+  }
+  if (batch.length) await addBatch(batch);
+  return values;
+}
+
+module.exports = {listDirectory, listColumnValues, compare, sortModes};

@@ -6,7 +6,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { Backend } = require('./backend');
 const { viewerFor, isManaged, nativeEditorFor } = require('./formats');
-const { listDirectory } = require('./explorerListing');
+const { listDirectory, listColumnValues } = require('./explorerListing');
 const { uniqueFrameLabel } = require('./frameLabels');
 const { menuPaths } = require('./menuVisibility');
 const { previewCompressionOptions } = require('./compressionPolicy');
@@ -169,6 +169,10 @@ function activate(context) {
             publishSidebar(activeSession);
           }
           if (msg.type === 'list' && this.kind === 'explorer') await this.list(msg.path, msg.offset || 0, msg.sortMode, msg.showHidden);
+          if (msg.type === 'measureColumn' && this.kind === 'explorer') {
+            const folder=nativePath(msg.path),values=await listColumnValues(folder,msg.key,msg.showHidden);
+            view.webview.postMessage({type:'columnValues',path:folder,key:msg.key,requestId:msg.requestId,values});
+          }
           if (msg.type === 'open') await open(msg.path, msg.newTab === true);
           if (msg.type === 'inspectOpenAs') {
             const worker=newBackend();

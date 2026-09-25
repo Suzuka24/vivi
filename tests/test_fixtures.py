@@ -55,10 +55,10 @@ class FixtureTests(unittest.TestCase):
                 with Image.open(io.BytesIO(base64.b64decode(result['png']))) as image:
                     self.assertEqual(image.size, (32, 24))
                     self.assertEqual(image.mode, 'L' if lut == 'gray' else 'RGB')
-        self.assertEqual(len(imagej_tables()), 95)
+        self.assertEqual(len(imagej_tables()), 102)
         self.assertIn('ij-physics', imagej_tables())
         manifest=json.loads((Path(__file__).parents[1]/'backend'/'imagej_luts_manifest.json').read_text())
-        for name in ('ij-000-gray','ij-001-fire','ij-002-spectrum','ij-003-ice','ij-004-phase','ij-005-random'):
+        for name in ('ij-000-gray','ij-001-mpl-plasma','ij-002-physics','ij-003-phase','ij-004-spectrum','ij-005-ice','ij-006-phase','ij-007-random'):
             self.assertIn(name,imagej_tables())
         for lut in imagej_tables():
             with self.subTest(lut=lut):
