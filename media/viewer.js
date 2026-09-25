@@ -94,7 +94,7 @@ function request(op, args, prefetch = false, fileFrame = activeFileFrame) {
 function requestStream(op,args,onEvent,fileFrame=activeFileFrame){
   return new Promise((resolve,reject)=>{
     const id=++serial;let chain=Promise.resolve(),streamError=null;
-    pending.set(id,{reject,fileFrame,onStream:message=>{chain=chain.then(()=>onEvent(message)).catch(error=>{streamError=error;});},resolve:result=>{chain.then(()=>streamError?reject(streamError):resolve(result),reject);}});
+    pending.set(id,{reject,fileFrame,onStream:message=>{chain=chain.then(()=>message.event==='httpStack'?receiveHttpStack(message.result,fileFrame,onEvent):onEvent(message)).catch(error=>{streamError=error;});},resolve:result=>{chain.then(()=>streamError?reject(streamError):resolve(result),reject);}});
     vscode.postMessage({type:'request',id,op,args,prefetch:true,fileFrame});
   });
 }
@@ -121,7 +121,46 @@ function frameImageWorker(state,withZfp=false){
   api.decode=async(result,args,paint,lut)=>{await api.ready;if(api.cancelled)throw abortError();return new Promise((resolve,reject)=>{const id=++imageTaskSerial;jobs.set(id,{resolve,reject});api.worker.postMessage({type:'decode',id,result,args,paint,lut},[result.payload]);});};
   state.imageWorker=api;return api;
 }
-function disposeFrameImageWorker(state){if(!state?.imageWorker)return;state.imageWorker.cancelled=true;for(const job of state.imageWorker.jobs.values())job.reject(abortError());state.imageWorker.jobs.clear();state.imageWorker.worker?.terminate();state.imageWorker=null;}
+function disposeFrameImageWorker(state){
+  if(!state)return;
+  for(const controller of state.httpControllers||[])controller.abort();
+  state.httpControllers?.clear();
+  if(!state.imageWorker)return;
+  state.imageWorker.cancelled=true;for(const job of state.imageWorker.jobs.values())job.reject(abortError());state.imageWorker.jobs.clear();state.imageWorker.worker?.terminate();state.imageWorker=null;
+}
+async function receiveHttpPayload(result,fileFrame){
+  const descriptor=result?.httpPayload;if(!descriptor)return result;
+  const state=fileFrames.get(fileFrame);if(!state)throw abortError();
+  const controller=new AbortController();if(!state.httpControllers)state.httpControllers=new Set();state.httpControllers.add(controller);
+  let complete=false;
+  try{
+    const response=await fetch(descriptor.url,{signal:controller.signal,cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP image transfer failed (${response.status}).`);
+    const expected=Number(response.headers.get('content-length'))||Number(descriptor.byteLength)||0;
+    if(!expected)throw new Error('HTTP image transfer did not provide a payload length.');
+    const payload=new Uint8Array(expected),reader=response.body?.getReader();let received=0;
+    if(reader){
+      while(true){const {done,value}=await reader.read();if(done)break;if(received+value.byteLength>payload.byteLength)throw new Error('HTTP image transfer exceeded its declared size.');payload.set(value,received);received+=value.byteLength;setFrameLoading(fileFrame,true,received,expected,'Transferring image…');}
+    }else{const value=new Uint8Array(await response.arrayBuffer());if(value.byteLength!==expected)throw new Error('HTTP image transfer size mismatch.');payload.set(value);received=value.byteLength;}
+    if(received!==expected)throw new Error(`HTTP image transfer ended early (${received}/${expected} bytes).`);
+    delete result.httpPayload;result.payload=payload.buffer;complete=true;return result;
+  } finally {
+    state.httpControllers.delete(controller);
+    vscode.postMessage({type:complete?'httpTransferComplete':'httpTransferCancel',token:descriptor.token});
+  }
+}
+async function receiveHttpStack(message,fileFrame,onEvent){
+  const received=await receiveHttpPayload({httpPayload:message.httpStack},fileFrame),bytes=new Uint8Array(received.payload);
+  if(bytes.byteLength<4)throw new Error('HTTP stack payload header is incomplete.');
+  const headerLength=new DataView(bytes.buffer,bytes.byteOffset,4).getUint32(0,true),dataOffset=4+headerLength;
+  if(dataOffset>bytes.byteLength)throw new Error('HTTP stack payload manifest is incomplete.');
+  const manifest=JSON.parse(new TextDecoder().decode(bytes.subarray(4,dataOffset)));
+  for(const item of manifest){
+    const start=dataOffset+Number(item.offset),end=start+Number(item.byteLength);
+    if(start<dataOffset||end>bytes.byteLength)throw new Error('HTTP stack payload frame is incomplete.');
+    await onEvent({event:'frame',frame:item.frame,total:item.total,result:{...item.result,payload:bytes.buffer.slice(bytes.byteOffset+start,bytes.byteOffset+end)}});
+  }
+}
 function updateLoadProgress(state=fileFrames.get(activeFileFrame)){
   const panel=$('loadProgress');
   if(!state?.loading){panel.hidden=true;panel.removeAttribute('aria-valuenow');return;}
@@ -428,6 +467,9 @@ function scheduleCachedRecolor(id,state){
   setTimeout(next,0);
 }
 async function decodePreview(result,args,paint=true,fileFrame=activeFileFrame,transferMs=0) {
+  const httpStarted=result?.httpPayload?performance.now():0;
+  result=await receiveHttpPayload(result,fileFrame);
+  if(httpStarted)transferMs+=performance.now()-httpStarted;
   if(result.payload instanceof ArrayBuffer){
     const state=fileFrames.get(fileFrame);if(!state)throw abortError();
     const lut=paint&&(result.channels<=1||args.threshold)?await lutTable(args.cmap):null;

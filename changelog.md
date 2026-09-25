@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.34 (development build; not published)
+
+- Add `vivi.transportMode` with cancellable HTTP Stream as the default and the existing Webview `postMessage` transport as a legacy option.
+- Serve each compressed pixel payload through a single-use, token-protected continuous HTTP response forwarded by VS Code Remote SSH, while retaining the existing payload bytes, dtype, compression, cache, and Web Worker decode path.
+- Abort active HTTP responses and the corresponding Python backend when a loading Frame is cancelled; filter delayed sidebar snapshots so a cancelled Frame cannot reappear.
+- Report HTTP byte progress from `Content-Length` without adding application-level payload chunks, and fall back to `postMessage` if the HTTP endpoint cannot start.
+
 ## 0.7.33 (development build; not published)
 
 - Revert optimistic removal of LAYOUT Frame rows so a Frame disappears only after the extension host has actually accepted its cancellation.

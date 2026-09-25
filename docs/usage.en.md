@@ -36,6 +36,7 @@ Pixel operations under Image, Process, and Analyze Skeleton replace the current 
 | `vivi.defaultPath` | Explorer's initial host directory. |
 | `vivi.managedExtensions` | File suffixes opened by vivi on double-click. |
 | `vivi.explorerContextMenu` | Checkboxes for visible first- and second-level viewer menu items, including planned commands; all shown by default. Also available through **vivi: Configure Menu Visibility**. |
+| `vivi.transportMode` | Large pixel payloads use a cancellable continuous HTTP stream by default. The legacy `postMessage` option remains available, but an in-flight single-message payload cannot be interrupted. Compression runs before either transport. |
 | `vivi.losslessCompression` | On by default: reversibly byte-shuffle and zlib-compress source-dtype pixel bytes. Off: transmit the source bytes directly. Incompressible data automatically stays raw. |
 | `vivi.lossyCompression` | Off by default. When enabled, encode floating-point previews from source files above the threshold with a lossy codec. Source files and host-side measurements remain exact. |
 | `vivi.lossyMinFileMiB` | Source file threshold for lossy previews, 128 MiB by default. Only strictly larger files qualify. |

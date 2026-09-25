@@ -36,6 +36,7 @@ Image、Process 和 Analyze Skeleton 下的像素运算会替换当前 Frame 的
 | `vivi.defaultPath` | Explorer 的初始主机目录。 |
 | `vivi.managedExtensions` | 双击时由 vivi 接管的文件后缀。 |
 | `vivi.explorerContextMenu` | 图像视图一级、二级菜单的显隐勾选；默认全部显示，包括待实现的灰色命令。也可运行 **vivi: Configure Menu Visibility**。 |
+| `vivi.transportMode` | 大型像素 payload 默认使用可立即取消的 HTTP 连续流；可切换为旧版 `postMessage`，但已开始的单消息 payload 无法中途终止。压缩先于两种传输方式执行。 |
 | `vivi.losslessCompression` | 默认开启，原始 dtype 的像素字节经可逆重排和 zlib 压缩后传输；关闭则直接传原始字节。压缩无收益时会自动使用原始字节。 |
 | `vivi.lossyCompression` | 默认关闭。开启后仅对超过阈值的浮点图像预览进行有损编码；源文件、服务端测量和导出数据保持原值。 |
 | `vivi.lossyMinFileMiB` | 有损编码的源文件大小阈值，默认 128 MiB；只有严格大于阈值的文件才启用。 |

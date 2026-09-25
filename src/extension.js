@@ -11,6 +11,7 @@ const { uniqueFrameLabel } = require('./frameLabels');
 const { menuPaths } = require('./menuVisibility');
 const { previewCompressionOptions } = require('./compressionPolicy');
 const { compactPaths, transferEntries } = require('./fileOperations');
+const { HttpPayloadTransport, packStackPayload } = require('./httpTransport');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -30,7 +31,7 @@ function webviewResourceRoots(context) {
   return roots;
 }
 
-async function html(webview, context, name) {
+async function html(webview, context, name, httpCsp = '') {
   const nonce = crypto.randomBytes(20).toString('hex');
   const uri = file => webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', file)).toString();
   let setiFont = '', setiTheme = '{}';
@@ -48,7 +49,7 @@ async function html(webview, context, name) {
   }
   const text = await fs.readFile(path.join(context.extensionPath, 'media', `${name}.html`), 'utf8');
   return text
-    .replaceAll('{{nonce}}', nonce).replaceAll('{{csp}}', webview.cspSource)
+    .replaceAll('{{nonce}}', nonce).replaceAll('{{csp}}', webview.cspSource).replaceAll('{{httpCsp}}', httpCsp)
     .replaceAll('{{script}}', uri(`${name}.js`)).replaceAll('{{style}}', uri('style.css'))
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
     .replaceAll('{{formatScript}}', uri('numberFormat.js'))
@@ -62,9 +63,16 @@ async function html(webview, context, name) {
     .replaceAll('{{setiFont}}', setiFont).replaceAll('{{setiTheme}}', setiTheme);
 }
 
-function activate(context) {
+async function activate(context) {
   const output = vscode.window.createOutputChannel('vivi');
   context.subscriptions.push(output);
+  const httpTransport = new HttpPayloadTransport(message=>output.appendLine(String(message)));
+  context.subscriptions.push(httpTransport);
+  let httpCsp='';
+  try {
+    const local=await httpTransport.listen(),external=await vscode.env.asExternalUri(vscode.Uri.parse(local));
+    httpTransport.setExternalBase(external.toString());httpCsp=httpTransport.cspSource;
+  } catch(error) { output.appendLine(`[transport] HTTP stream unavailable; postMessage fallback will be used: ${error.message}`); }
   const config = () => vscode.workspace.getConfiguration('vivi');
   const previousMenuSetting = config().inspect('explorerContextMenu');
   for (const [value, target] of [
@@ -327,13 +335,14 @@ function activate(context) {
   }));
   function createSession(panel, firstFile, firstMode = '2d', firstOptions = {}) {
     const frames = new Map();
+    const sessionKey=crypto.randomUUID(),transportOwner=frameId=>`${sessionKey}:${Number(frameId)}`;
     const pendingPaths = [{file:firstFile,mode:firstMode,options:firstOptions}];
     const generatedPaths = [];
     let ready = false, disposed = false, nextId = 0, activeId = null, idleDisposeTimer = null;
     const removeFrame = (frameId, retainRecentSeconds = 0, notifyViewer = false) => {
       const id=Number(frameId),frame=frames.get(id);
       if (!frame) return false;
-      frame.worker.dispose();frames.delete(id);
+      httpTransport.cancelFrame(transportOwner(id));frame.worker.dispose();frames.delete(id);
       if (!frames.has(activeId)) activeId=frames.keys().next().value||null;
       if (session.sidebarState) {
         const sidebarFrames=session.sidebarState.frames.filter(item=>item.id!==id),active=sidebarFrames.find(item=>item.id===activeId);
@@ -353,10 +362,7 @@ function activate(context) {
     const session = {
       panel,
       sidebarState:null,
-      cancelFrameLoad(frameId) {
-        const loading=session.sidebarState?.frames?.some(item=>item.id===Number(frameId)&&item.loading);
-        return loading&&removeFrame(frameId,0,true);
-      },
+      cancelFrameLoad(frameId) { return removeFrame(frameId,0,true); },
       async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d', openOptions = {}) {
         if (disposed) throw new Error('Viewer closed.');
         clearTimeout(idleDisposeTimer);idleDisposeTimer=null;
@@ -408,8 +414,13 @@ function activate(context) {
           if (frames.has(msg.frameId)) activeId = msg.frameId;
         } else if (msg.type === 'loadTiming') {
           output.appendLine(`[load] ${msg.path || 'image'} transfer+backend=${Number(msg.transferMs||0).toFixed(1)}ms decode=${Number(msg.decodeMs||0).toFixed(1)}ms paint=${Number(msg.paintMs||0).toFixed(1)}ms`);
+        } else if (msg.type === 'httpTransferComplete') {
+          httpTransport.complete(msg.token);
+        } else if (msg.type === 'httpTransferCancel') {
+          httpTransport.cancel(msg.token);
         } else if (msg.type === 'sidebarState') {
-          session.sidebarState=msg.state;
+          const currentFrames=msg.state?.frames?.filter(item=>frames.has(item.id))||[];
+          session.sidebarState=currentFrames.length?{...msg.state,frames:currentFrames,active:frames.has(msg.state.active)?msg.state.active:activeId}:null;
           if(activeSession===session)publishSidebar(session);
         } else if (msg.type === 'focusAdjust') {
           await vscode.commands.executeCommand('vivi.adjust.focus');
@@ -583,18 +594,39 @@ function activate(context) {
               tolerance: config().get('lossyTolerance', 1e-4)
             }, frame.sourceFileBytes));
           }
-          const forwarding=[];
+          const mode=config().get('transportMode','http'),useHttp=mode==='http'&&!!httpTransport.externalBase;
+          const transportResult=async result=>{
+            if(!useHttp||!(result?.payload instanceof ArrayBuffer))return result;
+            const {payload,...metadata}=result;
+            const httpPayload=httpTransport.offer(Buffer.from(payload),transportOwner(frame.id),()=>{
+              if(frames.get(frame.id)===frame)removeFrame(frame.id,0,true);
+            });
+            return {...metadata,httpPayload};
+          };
+          const forwarding=[],stackEvents=[];
           const result = msg.op === 'renderStack'
             ? await frame.worker.requestStream(msg.op, args, event => {
-                if (!disposed && frames.get(msg.fileFrame)===frame) forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
+                if (disposed||frames.get(msg.fileFrame)!==frame)return;
+                if(useHttp&&event.streamEvent==='frame'){stackEvents.push({frame:event.frame,total:event.total,result:event.result});return;}
+                if(useHttp&&event.streamEvent==='end')return;
+                forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
                   frame:event.frame,total:event.total,result:event.result}));
               })
             : await frame.worker.request(msg.op, args);
           if(msg.op==='renderStack')await Promise.all(forwarding);
           if(frames.get(msg.fileFrame)!==frame)return;
-          if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;
+          if(msg.op==='renderStack'&&useHttp){
+            const total=stackEvents.length;
+            const httpStack=httpTransport.offer(packStackPayload(stackEvents),transportOwner(frame.id),()=>{
+              if(frames.get(frame.id)===frame)removeFrame(frame.id,0,true);
+            });
+            stackEvents.length=0;
+            await panel.webview.postMessage({type:'stream',id:msg.id,event:'httpStack',result:{httpStack,total}});
+          }
+          const outgoing=await transportResult(result);
+          if (msg.op === 'render' && !msg.prefetch) frame.latestPng = outgoing.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };
-          if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result });
+          if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result:outgoing });
         } else if (msg.type === 'export') {
           const frame = frames.get(msg.fileFrame || activeId);
           if (!frame) throw new Error('Select a frame first.');
@@ -626,7 +658,7 @@ function activate(context) {
         if (!disposed) panel.webview.postMessage({ type: 'error', id: msg.id, message: error.message });
       }
     });
-    html(panel.webview, context, 'viewer').then(content => { if (!disposed) panel.webview.html = content; }).catch(report);
+    html(panel.webview, context, 'viewer', httpCsp).then(content => { if (!disposed) panel.webview.html = content; }).catch(report);
     return session;
   }
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('vivi.viewer', {

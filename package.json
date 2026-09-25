@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.33",
+  "version": "0.7.34",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -38,7 +38,7 @@
     "onView:vivi.adjust"
   ],
   "scripts": {
-    "check": "node --check src/extension.js && node --check src/compressionPolicy.js && node --check src/fileOperations.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/imageWorker.js && node --check media/recentPayloadCache.js && node --check media/viewer.js && node --check media/explorer.js",
+    "check": "node --check src/extension.js && node --check src/httpTransport.js && node --check src/compressionPolicy.js && node --check src/fileOperations.js && node --check src/explorerListing.js && node --check src/formats.js && node --check src/frameLabels.js && node --check src/backend.js && node --check media/imageWorker.js && node --check media/recentPayloadCache.js && node --check media/viewer.js && node --check media/explorer.js",
     "test": "node --test tests/*.test.js",
     "test:python": "python -m unittest discover -s tests -p test_*.py -v",
     "package": "vsce package --no-dependencies --allow-missing-repository"
@@ -180,6 +180,13 @@
           "minimum": 10,
           "maximum": 1800,
           "description": "Backend timeout. A timeout stops the worker; reopen the image to restart. 后端请求的超时时间（秒）；超时会停止工作进程，重新打开图像即可重启。"
+        },
+        "vivi.transportMode": {
+          "type": "string",
+          "default": "http",
+          "enum": ["http", "postMessage"],
+          "enumDescriptions": ["HTTP Stream: cancellable continuous payload transfer; recommended default. HTTP 流：可取消的连续 payload 传输，推荐默认方案。", "Webview postMessage: legacy single-message transfer; an in-flight payload cannot be interrupted. Webview postMessage：旧版单消息传输，已开始的 payload 无法中途终止。"],
+          "description": "Transport used for large rendered pixel payloads. Compression settings are applied before either transport. 大型像素 payload 的传输方式；两种方式都会先执行现有压缩设置。"
         },
         "vivi.recentCacheSeconds": {
           "type": "number",
