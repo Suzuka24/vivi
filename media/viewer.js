@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const windowMemory={...(vscode.getState()?.windowMemory||{})};
 const formatValue = window.ViviNumberFormat.formatNumber;
 const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
+const recentPayloadCache = new window.ViviRecentPayloadCache.RecentPayloadCache();
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
 const lutOptions=[['gray','Grays'],['fire','Fire'],['ice','Ice'],['spectrum','Spectrum'],['rgb332','3-3-2 RGB'],['red','Red'],['green','Green'],['blue','Blue'],['cyan','Cyan'],['magenta','Magenta'],['yellow','Yellow'],['redgreen','Red/Green'],['heat','Heat'],['plasma','Plasma'],['magma','Magma'],['inferno','Inferno'],['turbo','Turbo']];
@@ -84,7 +85,7 @@ function sidebarState(){
     datasets:metadata.datasets.map(d=>({id:d.id,name:d.name})),datasetId:dataset.id,slice:Number($('frame').value),total:dataset.frames,fps:Number($('fps').value)||defaultFps,playing,blinking,tile:tileMode,columns:layoutColumns,rows:layoutRows,locks:[...frameLocks],
     cuts:$('cuts').value,low:$('low').value,high:$('high').value,rangeMin,rangeMax,stretch:$('stretch').value,cmap:$('cmap').value,luts:lutOptions,invert:$('invert').checked,threshold:$('threshold').checked,bcVisible:transferVisible};
 }
-function publishSidebar(delay=20){clearTimeout(sidebarTimer);sidebarTimer=setTimeout(()=>{const state=sidebarState();if(state)vscode.postMessage({type:'sidebarState',state});},delay);}
+function publishSidebar(delay=20){clearTimeout(sidebarTimer);sidebarTimer=setTimeout(()=>vscode.postMessage({type:'sidebarState',state:sidebarState()}),delay);}
 function request(op, args, prefetch = false, fileFrame = activeFileFrame) {
   return new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});vscode.postMessage({type:'request',id,op,args,prefetch,fileFrame});});
 }
@@ -423,6 +424,30 @@ async function decodePreview(result,args,paint=true) {
   const image=new Image();image.src='data:image/png;base64,'+result.png;await image.decode();
   return {image,result,bytes:image.width*image.height*4+result.png.length*.75};
 }
+function transportSnapshot(result,args){
+  if(!(result?.payload instanceof ArrayBuffer))return null;
+  return {result:{...result,payload:result.payload},args:{...args}};
+}
+function rememberRecentFrame(state){
+  recentPayloadCache.clear();
+  const identity=state?.metadata?.sourceIdentity,seconds=state?.metadata?.recentCacheSeconds;
+  const d=state?.metadata?.datasets?.find(item=>item.id===(state.datasetId??state.metadata.datasets[0]?.id));
+  if(!identity||!d||d.frames!==1)return false;
+  const entry=[...(state.frameCache?.values()||[])].find(item=>item.sourceDataset===d.id&&item.sourceFrame===0&&item.transport);
+  if(!entry)return false;
+  const presentation={datasetId:d.id,scale:state.scale,cx:state.cx,cy:state.cy,cuts:state.cuts,low:state.low,high:state.high,stretch:state.stretch,cmap:state.cmap,invert:state.invert};
+  recentPayloadCache.remember(identity,{transport:entry.transport,presentation},seconds);
+  return Number(seconds)>0;
+}
+async function restoreRecentFrame(state,cached){
+  const d=state.metadata.datasets.find(item=>item.id===cached.presentation.datasetId)||state.metadata.datasets[0];
+  if(!d||d.frames!==1)throw new Error('Cached image shape no longer matches the source.');
+  const args={...cached.transport.args,dataset:d.id,frame:0,box:[0,0,d.width,d.height],size:state.metadata.maxSize};
+  const result={...cached.transport.result,payload:cached.transport.result.payload};
+  const entry=await decodePreview(result,args);entry.transport=cached.transport;
+  Object.assign(state,cached.presentation,{datasetId:d.id,plane:1,preview:entry.image,previewBox:entry.result.box,
+    frameCache:new Map([[cacheKey(0,args.box),entry]]),cacheSignature:`${state.metadata.frameId}:${d.id}:${args.size}`,cacheBytes:entry.bytes});
+}
 function showPreview(entry, ticket) {
   if (ticket !== revision) return;
   preview = entry.image; previewBox = entry.result.box; activePng = entry.result.png||'';
@@ -517,7 +542,8 @@ async function render() {
     const state=fileFrames.get(activeFileFrame);
     if(dataset.frames>1){await loadStack(activeFileFrame,state,args,signature);return;}
     setFrameLoading(activeFileFrame,true,0,0,'Loading image…');
-    const entry=await decodePreview(await request('render',args),args);
+    const result=await request('render',args),transport=transportSnapshot(result,args);
+    const entry=await decodePreview(result,args);entry.transport=transport;
     if (cacheSignature === signature) {frameCache.set(key,entry);cacheBytes += entry.bytes;updateCacheStatus();}
     showPreview(entry,ticket);
   } catch(error){showError(error);stopPlay();}
@@ -828,7 +854,7 @@ function frameList() {
   }
   box.value=String(activeFileFrame);
   $('filePosition').textContent=`${[...fileFrames.keys()].indexOf(activeFileFrame)+1}/${fileFrames.size}`;
-  $('closeFileFrame').disabled=false;
+  $('closeFileFrame').disabled=!fileFrames.size;
   $('tile').classList.toggle('selected',tileMode);
   $('lockView').classList.toggle('selected',frameLocks.size>0);
   $('lockView').title=frameLocks.size?`Locked: ${[...frameLocks].join(', ')}. Click to unlock all.`:'Lock all Frame parameters';
@@ -910,7 +936,14 @@ function selectFileFrame(id) {
 function moveFileFrame(delta){const ids=visibleFrameIds(),at=ids.indexOf(activeFileFrame),next=ids[(at+delta+ids.length)%ids.length];if(next)selectFileFrame(next);}
 function closeFileFrame(id=activeFileFrame){
   id=Number(id);if(!fileFrames.has(id))return;
-  if(fileFrames.size===1){vscode.postMessage({type:'closeFrame',frameId:id});return;}
+  if(id===activeFileFrame)saveFileFrame();
+  const closing=fileFrames.get(id),retainRecent=rememberRecentFrame(closing);
+  if(fileFrames.size===1){
+    disableOrthogonal();stopPlay();stopSliceHold();clearTimeout(renderTimer);clearTimeout(preloadTimer);revision++;cacheGeneration++;
+    fileFrames.delete(id);activeFileFrame=null;metadata=null;dataset=null;preview=null;previewBox=null;frameCache=new Map();cacheSignature='';cacheBytes=0;
+    $('filename').textContent='';$('busy').textContent='';$('empty').textContent='No image open.';$('empty').hidden=false;
+    frameList();updateLoadProgress(null);draw();publishSidebar(0);vscode.postMessage({type:'closeFrame',frameId:id,retainRecent});return;
+  }
   if(id===activeFileFrame){const next=visibleFrameIds().find(value=>value!==id)||[...fileFrames.keys()].find(value=>value!==id);fileFrames.get(next).visible=true;selectFileFrame(next);}
   fileFrames.delete(id);vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();
 }
@@ -1692,9 +1725,11 @@ window.addEventListener('message',({data:m})=>{
     if(fileFrames.size===0){defaultFps=Math.max(1,Math.min(60,Number(m.defaultFps)||24));$('fps').value=defaultFps;$('viewerSliceFps').value=defaultFps;}
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
-  fileFrames.set(m.frameId,{metadata:m,flipState:m.flipState});selectFileFrame(m.frameId);
-    setTool('pan');
-    if(m.initialSelection){selection=m.initialSelection;refreshSelection();saveFileFrame();}
+    const state={metadata:m,flipState:m.flipState},cached=recentPayloadCache.take(m.sourceIdentity);
+    fileFrames.set(m.frameId,state);
+    const activate=()=>{selectFileFrame(m.frameId);setTool('pan');if(m.initialSelection){selection=m.initialSelection;refreshSelection();saveFileFrame();}};
+    if(cached)restoreRecentFrame(state,cached).then(activate).catch(error=>{showError(error);activate();});
+    else activate();
   }else if(m.type==='frameUpdated'){
     if(orthogonal&&m.frameId===activeFileFrame)disableOrthogonal();
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.27 (development build; not published)
+
+- Keep the most recently closed single-image transport payload in local Webview memory for 10 seconds by default, allowing an unchanged local or Remote SSH image to reopen without retransmitting its pixels.
+- Replace the cached item on the next close, invalidate it when source file identity changes, and release it automatically on expiry or viewer disposal without persistent disk storage.
+
 ## 0.7.26 (development build; not published)
 
 - Size an Explorer column from every entry in the current directory when its divider is double-clicked, including entries beyond the current page.

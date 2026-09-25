@@ -53,6 +53,7 @@ async function html(webview, context, name) {
     .replaceAll('{{extraStyle}}', uri(`${name}.css`))
     .replaceAll('{{formatScript}}', uri('numberFormat.js'))
     .replaceAll('{{displayScript}}', uri('display.js'))
+    .replaceAll('{{recentCacheScript}}', uri('recentPayloadCache.js'))
     .replaceAll('{{roiScript}}', uri('roiGeometry.js'))
     .replaceAll('{{zstdScript}}', uri('vendor/fzstd.js'))
     .replaceAll('{{zfpScript}}', uri('vendor/zfp.js'))
@@ -324,18 +325,20 @@ function activate(context) {
     const frames = new Map();
     const pendingPaths = [{file:firstFile,mode:firstMode,options:firstOptions}];
     const generatedPaths = [];
-    let ready = false, disposed = false, nextId = 0, activeId = null;
+    let ready = false, disposed = false, nextId = 0, activeId = null, idleDisposeTimer = null;
     const session = {
       panel,
       sidebarState:null,
       async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d', openOptions = {}) {
         if (disposed) throw new Error('Viewer closed.');
+        clearTimeout(idleDisposeTimer);idleDisposeTimer=null;
         if (!ready) { pendingPaths.push({file,mode:sequenceMode,options:openOptions}); return; }
         const worker = newBackend();
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels, sequenceMode, ...openOptions });
           const sourceStat = await fs.stat(file).catch(() => null);
           const sourceFileBytes = sourceStat?.isFile() ? sourceStat.size : 0;
+          const sourceIdentity = sourceStat?.isFile() ? {path:path.resolve(file),size:sourceStat.size,mtimeMs:sourceStat.mtimeMs,ctimeMs:sourceStat.ctimeMs,ino:Number(sourceStat.ino)||0} : null;
           const id = ++nextId;
           label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
           frames.set(id, { id, file, label, worker, generated, sequenceMode, openOptions, pathOptions:new Map([[file,openOptions]]), sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], flipState: {horizontal:false,vertical:false}, undoFlipStates:[], redoFlipStates:[], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
@@ -344,7 +347,8 @@ function activate(context) {
           panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
             maxSize: Math.max(...data.datasets.map(item => Math.max(item.width, item.height))),
             menuVisibility: menuVisibility(),
-            keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: mouseShortcuts(), defaultFps:config().get('defaultFps', 24), flipState:frames.get(id).flipState });
+            keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: mouseShortcuts(), defaultFps:config().get('defaultFps', 24),
+            recentCacheSeconds:config().get('recentCacheSeconds',10),sourceIdentity,flipState:frames.get(id).flipState });
         } catch (error) { worker.dispose(); throw error; }
       }
     };
@@ -358,6 +362,7 @@ function activate(context) {
     panel.webview.options = { enableScripts: true, localResourceRoots: webviewResourceRoots(context) };
     panel.onDidDispose(() => {
       disposed = true;
+      clearTimeout(idleDisposeTimer);
       for (const frame of frames.values()) frame.worker.dispose();
       for (const file of generatedPaths) fs.unlink(file).catch(error => output.appendLine(error.message));
       sessions.splice(sessions.indexOf(session), 1);
@@ -538,7 +543,13 @@ function activate(context) {
           if (frames.size) {
             if (!frames.has(activeId)) activeId = frames.keys().next().value;
             panel.title = frames.size === 1 ? (frames.get(activeId).label || path.basename(frames.get(activeId).file)) : `vivi · ${frames.size} frames`;
-          } else panel.dispose();
+          } else {
+            activeId=null;panel.title='vivi';session.sidebarState=null;
+            if(activeSession===session)publishSidebar(session);
+            const seconds=msg.retainRecent?Math.max(0,Math.min(60,Number(config().get('recentCacheSeconds',10))||0)):0;
+            if(seconds)idleDisposeTimer=setTimeout(()=>{if(!disposed&&!frames.size)panel.dispose();},seconds*1000);
+            else panel.dispose();
+          }
         } else if (msg.type === 'request' && ['render','renderStack','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
