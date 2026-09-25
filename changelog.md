@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.33 (development build; not published)
+
+- Revert optimistic removal of LAYOUT Frame rows so a Frame disappears only after the extension host has actually accepted its cancellation.
+- Keep the loading progress overlay free of a cancel button while the transport cancellation design is reconsidered.
+
 ## 0.7.32 (development build; not published)
 
 - Route both loading cancellation and ordinary LAYOUT Frame close actions directly to the extension host, without relying on possibly stale loading state or the busy viewer message queue.

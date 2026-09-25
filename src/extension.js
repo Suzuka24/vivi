@@ -198,7 +198,7 @@ function activate(context) {
           }
           if (msg.type === 'action') await this.action(msg);
           if (msg.type === 'sideAction') {
-            if (msg.action === 'cancelFrameLoad'||msg.action === 'closeFrame') activeSession?.closeFrameFromSidebar(msg.value);
+            if (msg.action === 'cancelFrameLoad') activeSession?.cancelFrameLoad(msg.value);
             else activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
           }
           if (msg.type === 'scrollbarShortcutFocus') await vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', msg.active === true);
@@ -353,7 +353,10 @@ function activate(context) {
     const session = {
       panel,
       sidebarState:null,
-      closeFrameFromSidebar(frameId) { return removeFrame(frameId,0,true); },
+      cancelFrameLoad(frameId) {
+        const loading=session.sidebarState?.frames?.some(item=>item.id===Number(frameId)&&item.loading);
+        return loading&&removeFrame(frameId,0,true);
+      },
       async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d', openOptions = {}) {
         if (disposed) throw new Error('Viewer closed.');
         clearTimeout(idleDisposeTimer);idleDisposeTimer=null;
