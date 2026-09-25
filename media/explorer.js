@@ -310,6 +310,16 @@ function compactColumn(key){
   const requestId=++columnMeasureRequest;
   vscode.postMessage({type:'measureColumn',path:current,key,showHidden,requestId});
 }
+function boxSpacing(style){
+  return ['paddingLeft','paddingRight','marginLeft','marginRight'].reduce((sum,name)=>sum+(Number.parseFloat(style[name])||0),0);
+}
+function intrinsicHeaderWidth(key){
+  const header=$('fileColumns').querySelector(`[data-column="${key}"]`),probe=header.cloneNode(true);
+  probe.querySelector('.column-resizer')?.remove();
+  Object.assign(probe.style,{position:'fixed',left:'-10000px',top:'0',width:'max-content',minWidth:'0',maxWidth:'none',visibility:'hidden'});
+  document.body.append(probe);
+  const width=Math.ceil(probe.getBoundingClientRect().width);probe.remove();return width;
+}
 function measuredColumnWidth(key,values){
   const sample=key==='name'?document.querySelector('.file-label'):document.querySelector(key==='size'?'.file-size':'.file-date');
   const style=getComputedStyle(sample||document.body),canvas=document.createElement('canvas'),context=canvas.getContext('2d');
@@ -317,9 +327,14 @@ function measuredColumnWidth(key,values){
   const display=value=>key==='size'?formatSizeKiB(value):key==='date'?formatModified(value):String(value);
   let content=0;
   for(const value of values)content=Math.max(content,context.measureText(display(value)).width);
-  const header=$('fileColumns').querySelector(`[data-column="${key}"]`);
-  const contentWidth=Math.ceil(content)+(key==='name'?28:12);
-  return Math.max(header.scrollWidth+2,contentWidth);
+  const cell=key==='name'?document.querySelector('.file-name'):sample;
+  let extra=cell?boxSpacing(getComputedStyle(cell)):0;
+  if(key==='name'){
+    const icon=document.querySelector('.file-icon');
+    if(icon)extra+=icon.getBoundingClientRect().width+boxSpacing(getComputedStyle(icon));
+  }
+  const contentWidth=Math.ceil(content+extra+1);
+  return Math.max(columnMinimums[key],intrinsicHeaderWidth(key),contentWidth);
 }
 $('navigate').onsubmit = event => { event.preventDefault(); list($('path').value); };
 $('pathHistory').onclick=event=>{

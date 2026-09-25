@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.35 (development build; not published)
+
+- Fix Explorer column auto-sizing so double-clicking a divider always recomputes the intrinsic minimum width from every item in the current directory, allowing an oversized column to shrink as well as a narrow column to grow.
+
 ## 0.7.34 (development build; not published)
 
 - Add `vivi.transportMode` with cancellable HTTP Stream as the default and the existing Webview `postMessage` transport as a legacy option.
