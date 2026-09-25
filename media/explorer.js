@@ -97,7 +97,10 @@ function renderSidebar(state){
     const locked=frameIcon(frame.locked?'i-frame-lock':'i-frame-unlock',`${frame.locked?'Remove':'Include'} ${frame.label} ${frame.locked?'from':'in'} parameter locks`,frame.locked,()=>sideAction('frameLockMember',{id:frame.id,enabled:!frame.locked}));
     const button=document.createElement('button');button.textContent=`${frame.id}: ${frame.label}`;button.title=frame.label;button.onclick=()=>sideAction('selectFrame',frame.id);
     const loading=document.createElement('span');loading.className='frame-loading';loading.title='Loading image';loading.hidden=!frame.loading;
-    const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';remove.title=`Close Frame ${frame.id}: ${frame.label}`;remove.setAttribute('aria-label',remove.title);remove.onclick=()=>sideAction('closeFrame',frame.id);
+    const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';
+    remove.title=frame.loading?`Cancel loading Frame ${frame.id}: ${frame.label}`:`Close Frame ${frame.id}: ${frame.label}`;
+    remove.setAttribute('aria-label',remove.title);remove.classList.toggle('loading-cancel',!!frame.loading);
+    remove.onclick=()=>sideAction(frame.loading?'cancelFrameLoad':'closeFrame',frame.id);
     row.append(handle,visible,locked,button,loading,remove);
     row.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(frame.id));e.dataTransfer.effectAllowed='move';row.classList.add('dragging');};
     row.ondragend=()=>row.classList.remove('dragging');
@@ -112,7 +115,7 @@ function renderSidebar(state){
       const frameIndex=state.frames.findIndex(item=>item.id===frame.id),lastIndex=state.frames.length-1;
       const moveButton=(label,position,disabled)=>{const item=document.createElement('button');item.type='button';item.role='menuitem';item.textContent=label;item.disabled=disabled;item.onclick=()=>{closeMenu();sideAction('moveFrameAt',{id:frame.id,position});};return item;};
       const moveUp=moveButton('Move Up','up',frameIndex<=0),moveDown=moveButton('Move Down','down',frameIndex>=lastIndex),moveFirst=moveButton('Move to Top','first',frameIndex<=0),moveLast=moveButton('Move to Bottom','last',frameIndex>=lastIndex);
-      const removeFrame=document.createElement('button');removeFrame.type='button';removeFrame.role='menuitem';removeFrame.textContent='Close Frame';removeFrame.onclick=()=>{closeMenu();sideAction('closeFrame',frame.id);};
+      const removeFrame=document.createElement('button');removeFrame.type='button';removeFrame.role='menuitem';removeFrame.textContent=frame.loading?'Cancel Loading':'Close Frame';removeFrame.onclick=()=>{closeMenu();sideAction(frame.loading?'cancelFrameLoad':'closeFrame',frame.id);};
       menu.append(rename,duplicate,moveUp,moveDown,moveFirst,moveLast,removeFrame);menu.hidden=false;
       menu.style.left=Math.max(4,Math.min(e.clientX,window.innerWidth-menu.offsetWidth-4))+'px';
       menu.style.top=Math.max(4,Math.min(e.clientY,window.innerHeight-menu.offsetHeight-4))+'px';

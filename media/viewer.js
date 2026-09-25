@@ -982,6 +982,7 @@ function closeFileFrame(id=activeFileFrame){
   if(id===activeFileFrame){const next=visibleFrameIds().find(value=>value!==id)||[...fileFrames.keys()].find(value=>value!==id);fileFrames.get(next).visible=true;selectFileFrame(next);}
   fileFrames.delete(id);vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();
 }
+$('cancelLoad').onclick=()=>{const state=fileFrames.get(activeFileFrame);if(state?.loading)closeFileFrame(activeFileFrame);};
 function interactivePlot(canvas,values,xValues=null,readout=null){
   const finite=values.map(value=>value==null?NaN:Number(value)),xs=xValues?.map(value=>value==null?NaN:Number(value))||finite.map((_,index)=>index),valid=finite.some((value,index)=>Number.isFinite(value)&&Number.isFinite(xs[index]));
   canvas._plot={values:finite,xs,view:[0,Math.max(1,finite.length-1)],readout,hover:-1};canvas.classList.toggle('has-data',valid);if(readout&&!valid)readout.textContent='';
@@ -1373,6 +1374,7 @@ function applySidebarAction(action,value){
   else if(action==='renameFrame'&&fileFrames.has(Number(value)))vscode.postMessage({type:'imageAction',action:'rename',frameId:Number(value)});
   else if(action==='duplicateFrame'&&fileFrames.has(Number(value)))vscode.postMessage({type:'cloneFrame',frameId:Number(value)});
   else if(action==='closeFrame')closeFileFrame(value);
+  else if(action==='cancelFrameLoad'&&fileFrames.get(Number(value))?.loading)closeFileFrame(value);
   else if(action==='previousFrame')moveFileFrame(-1);
   else if(action==='nextFrame')moveFileFrame(1);
   else if(['moveFrameUp','moveFrameDown','moveFrameFirst','moveFrameLast'].includes(action))reorderFileFrame(action.replace('moveFrame','').toLowerCase());

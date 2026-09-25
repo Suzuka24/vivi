@@ -571,11 +571,12 @@ function activate(context) {
           const forwarding=[];
           const result = msg.op === 'renderStack'
             ? await frame.worker.requestStream(msg.op, args, event => {
-                if (!disposed) forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
+                if (!disposed && frames.get(msg.fileFrame)===frame) forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
                   frame:event.frame,total:event.total,result:event.result}));
               })
             : await frame.worker.request(msg.op, args);
           if(msg.op==='renderStack')await Promise.all(forwarding);
+          if(frames.get(msg.fileFrame)!==frame)return;
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = result.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };
           if (!disposed) panel.webview.postMessage({ type: 'result', id: msg.id, op: msg.op, result });

@@ -53,6 +53,7 @@ body.view-layout .frame-items{max-height:none;overflow:visible}
 body.view-layout .frame-item{flex:none;min-height:27px}
 body.view-layout .frame-item button:not(.frame-icon):not(.frame-remove){flex:1;width:0;min-width:0;text-align:left}
 body.view-layout .frame-loading{width:14px;height:14px;flex:none;border:2px solid color-mix(in srgb,var(--vscode-icon-foreground,#aeb9c5) 30%,transparent);border-top-color:var(--vscode-progressBar-background,#65c9ae);border-radius:50%;animation:vivi-spin .8s linear infinite}
+body.view-layout .frame-remove.loading-cancel{opacity:1;color:var(--vscode-errorForeground,#f48771);border-color:color-mix(in srgb,var(--vscode-errorForeground,#f48771) 55%,transparent)}
 @keyframes vivi-spin{to{transform:rotate(360deg)}}
 body.view-adjust .adjust-grid{font-size:11px}
 body.view-adjust .adjust-grid>label{justify-content:flex-start;gap:6px;font-size:11px}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.30 (development build; not published)
+
+- Let users cancel an in-progress image or stack load from either the Frame row's close control or the loading progress panel.
+- Closing a loading Frame immediately cancels its pending Webview requests and image worker, stops its Python backend, and ignores any stream events that were already in flight.
+
 ## 0.7.29 (development build; not published)
 
 - Keep each image payload as one full-speed Remote SSH transfer while moving local decompression, byte unshuffle, dtype decoding, calibration, initial LUT/B&C mapping, and image construction to a per-Frame Web Worker.
