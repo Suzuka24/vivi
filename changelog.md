@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.31 (development build; not published)
+
+- Cancel a loading Frame directly in the Remote SSH extension host when its LAYOUT close button is clicked, avoiding the large-payload Webview forwarding queue that previously delayed cancellation until loading completed.
+- Remove the cancelled Frame from LAYOUT immediately, stop its Python backend, silently discard its cancelled request, and then reconcile the viewer without sending a duplicate close request.
+
 ## 0.7.30 (development build; not published)
 
 - Let users cancel an in-progress image or stack load from either the Frame row's close control or the loading progress panel.

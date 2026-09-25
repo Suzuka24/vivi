@@ -968,7 +968,7 @@ function selectFileFrame(id) {
   vscode.postMessage({type:'activeFrame',frameId:id});
 }
 function moveFileFrame(delta){const ids=visibleFrameIds(),at=ids.indexOf(activeFileFrame),next=ids[(at+delta+ids.length)%ids.length];if(next)selectFileFrame(next);}
-function closeFileFrame(id=activeFileFrame){
+function closeFileFrame(id=activeFileFrame,notifyExtension=true){
   id=Number(id);if(!fileFrames.has(id))return;
   if(id===activeFileFrame)saveFileFrame();
   const closing=fileFrames.get(id),retainRecentSeconds=rememberRecentFrame(closing)||recentPayloadCache.remainingSeconds();
@@ -977,10 +977,10 @@ function closeFileFrame(id=activeFileFrame){
     disableOrthogonal();stopPlay();stopSliceHold();clearTimeout(renderTimer);clearTimeout(preloadTimer);revision++;cacheGeneration++;
     fileFrames.delete(id);activeFileFrame=null;metadata=null;dataset=null;preview=null;previewBox=null;frameCache=new Map();cacheSignature='';cacheBytes=0;
     $('filename').textContent='';$('busy').textContent='';$('empty').textContent='No image open.';$('empty').hidden=false;
-    frameList();updateLoadProgress(null);draw();publishSidebar(0);vscode.postMessage({type:'closeFrame',frameId:id,retainRecentSeconds});return;
+    frameList();updateLoadProgress(null);draw();publishSidebar(0);if(notifyExtension)vscode.postMessage({type:'closeFrame',frameId:id,retainRecentSeconds});return;
   }
   if(id===activeFileFrame){const next=visibleFrameIds().find(value=>value!==id)||[...fileFrames.keys()].find(value=>value!==id);fileFrames.get(next).visible=true;selectFileFrame(next);}
-  fileFrames.delete(id);vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();
+  fileFrames.delete(id);if(notifyExtension)vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();
 }
 $('cancelLoad').onclick=()=>{const state=fileFrames.get(activeFileFrame);if(state?.loading)closeFileFrame(activeFileFrame);};
 function interactivePlot(canvas,values,xValues=null,readout=null){
@@ -1788,6 +1788,8 @@ window.addEventListener('message',({data:m})=>{
     keyboardShortcuts={...keyboardShortcuts,...m.keyboardShortcuts};updateShortcutTips();
   }else if(m.type==='sideAction'){
     applySidebarAction(m.action,m.value);
+  }else if(m.type==='frameCancelled'){
+    closeFileFrame(m.frameId,false);
   }else if(m.type==='frameRenamed'){
     const state=fileFrames.get(m.frameId);if(state){state.metadata={...state.metadata,...m};if(m.frameId===activeFileFrame){metadata=state.metadata;$('filename').textContent=metadata.label;$('filename').title=metadata.path;}frameList();draw();}
   }else if(m.type==='memoryInfo'){

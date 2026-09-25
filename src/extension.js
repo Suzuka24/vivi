@@ -197,7 +197,10 @@ function activate(context) {
             }
           }
           if (msg.type === 'action') await this.action(msg);
-          if (msg.type === 'sideAction') activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
+          if (msg.type === 'sideAction') {
+            if (msg.action === 'cancelFrameLoad') activeSession?.cancelFrameLoad(msg.value);
+            else activeSession?.panel.webview.postMessage({type:'sideAction',action:msg.action,value:msg.value});
+          }
           if (msg.type === 'scrollbarShortcutFocus') await vscode.commands.executeCommand('setContext', 'vivi.scrollbarShortcutFocus', msg.active === true);
         } catch (error) { view.webview.postMessage({ type: 'error', message: error.message }); }
       }, undefined, context.subscriptions);
@@ -327,9 +330,33 @@ function activate(context) {
     const pendingPaths = [{file:firstFile,mode:firstMode,options:firstOptions}];
     const generatedPaths = [];
     let ready = false, disposed = false, nextId = 0, activeId = null, idleDisposeTimer = null;
+    const removeFrame = (frameId, retainRecentSeconds = 0, notifyViewer = false) => {
+      const id=Number(frameId),frame=frames.get(id);
+      if (!frame) return false;
+      frame.worker.dispose();frames.delete(id);
+      if (!frames.has(activeId)) activeId=frames.keys().next().value||null;
+      if (session.sidebarState) {
+        const sidebarFrames=session.sidebarState.frames.filter(item=>item.id!==id),active=sidebarFrames.find(item=>item.id===activeId);
+        session.sidebarState=sidebarFrames.length?{...session.sidebarState,frames:sidebarFrames,active:activeId,activeLabel:active?.label||''}:null;
+        if(activeSession===session)publishSidebar(session);
+      }
+      if (notifyViewer&&!disposed) panel.webview.postMessage({type:'frameCancelled',frameId:id});
+      if (frames.size) panel.title=frames.size===1?(frames.get(activeId).label||path.basename(frames.get(activeId).file)):`vivi · ${frames.size} frames`;
+      else {
+        panel.title='vivi';
+        const seconds=Math.max(0,Math.min(60,Number(retainRecentSeconds)||0));
+        if(seconds)idleDisposeTimer=setTimeout(()=>{if(!disposed&&!frames.size)panel.dispose();},seconds*1000);
+        else panel.dispose();
+      }
+      return true;
+    };
     const session = {
       panel,
       sidebarState:null,
+      cancelFrameLoad(frameId) {
+        const loading=session.sidebarState?.frames?.some(item=>item.id===Number(frameId)&&item.loading);
+        return loading&&removeFrame(frameId,0,true);
+      },
       async add(file, generated = false, label = '', initialSelection = null, sequenceMode = '2d', openOptions = {}) {
         if (disposed) throw new Error('Viewer closed.');
         clearTimeout(idleDisposeTimer);idleDisposeTimer=null;
@@ -540,19 +567,7 @@ function activate(context) {
             await session.add(frame.file, frame.generated, `${source} [copy ${serial}]`, null, frame.sequenceMode, frame.openOptions);
           }
         } else if (msg.type === 'closeFrame') {
-          const frame = frames.get(msg.frameId);
-          if (!frame) return;
-          frame.worker.dispose(); frames.delete(msg.frameId);
-          if (frames.size) {
-            if (!frames.has(activeId)) activeId = frames.keys().next().value;
-            panel.title = frames.size === 1 ? (frames.get(activeId).label || path.basename(frames.get(activeId).file)) : `vivi · ${frames.size} frames`;
-          } else {
-            activeId=null;panel.title='vivi';session.sidebarState=null;
-            if(activeSession===session)publishSidebar(session);
-            const seconds=Math.max(0,Math.min(60,Number(msg.retainRecentSeconds)||0));
-            if(seconds)idleDisposeTimer=setTimeout(()=>{if(!disposed&&!frames.size)panel.dispose();},seconds*1000);
-            else panel.dispose();
-          }
+          removeFrame(msg.frameId,msg.retainRecentSeconds,false);
         } else if (msg.type === 'request' && ['render','renderStack','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
@@ -606,6 +621,7 @@ function activate(context) {
           }
         }
       } catch (error) {
+        if(msg.type==='request'&&msg.fileFrame&&!frames.has(Number(msg.fileFrame)))return;
         output.appendLine(error.stack || error.message);
         if (!disposed) panel.webview.postMessage({ type: 'error', id: msg.id, message: error.message });
       }
