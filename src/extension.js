@@ -348,7 +348,7 @@ function activate(context) {
             maxSize: Math.max(...data.datasets.map(item => Math.max(item.width, item.height))),
             menuVisibility: menuVisibility(),
             keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: mouseShortcuts(), defaultFps:config().get('defaultFps', 24),
-            recentCacheSeconds:config().get('recentCacheSeconds',10),sourceIdentity,flipState:frames.get(id).flipState });
+            recentCacheSeconds:config().get('recentCacheSeconds',20),sourceIdentity,flipState:frames.get(id).flipState });
         } catch (error) { worker.dispose(); throw error; }
       }
     };
@@ -546,7 +546,7 @@ function activate(context) {
           } else {
             activeId=null;panel.title='vivi';session.sidebarState=null;
             if(activeSession===session)publishSidebar(session);
-            const seconds=msg.retainRecent?Math.max(0,Math.min(60,Number(config().get('recentCacheSeconds',10))||0)):0;
+            const seconds=Math.max(0,Math.min(60,Number(msg.retainRecentSeconds)||0));
             if(seconds)idleDisposeTimer=setTimeout(()=>{if(!disposed&&!frames.size)panel.dispose();},seconds*1000);
             else panel.dispose();
           }

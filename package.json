@@ -2,7 +2,7 @@
   "name": "vivi",
   "displayName": "vivi",
   "description": "View large scientific images and stacks locally or over Remote SSH, with a configurable data explorer.",
-  "version": "0.7.27",
+  "version": "0.7.28",
   "publisher": "Suzuka24",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/marketplace-icon.png",
@@ -183,10 +183,10 @@
         },
         "vivi.recentCacheSeconds": {
           "type": "number",
-          "default": 10,
+          "default": 20,
           "minimum": 0,
           "maximum": 60,
-          "description": "Keep the most recently closed single-image transport payload in local memory for this many seconds so an unchanged file can reopen without Remote SSH retransmission. A new cached image replaces the old one; 0 disables the cache. 将最近关闭的一张单幅图像传输 payload 在本机内存中保留指定秒数，使未变化的文件可在 Remote SSH 下免重传快速重开。新缓存会替换旧缓存；设为 0 可关闭。"
+          "description": "Keep the three most recently opened single-image transport payloads in local memory for this many seconds from opening, so unchanged files can reopen without Remote SSH retransmission. Older entries and expired entries are released; 0 disables the cache. 将最近打开的三张单幅图像传输 payload 从打开时起在本机内存中保留指定秒数，使未变化的文件可在 Remote SSH 下免重传快速重开。更早或过期的条目会被释放；设为 0 可关闭。"
         },
         "vivi.managedExtensions": {
           "type": "array",

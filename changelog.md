@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.28 (development build; not published)
+
+- Keep transport payloads for the three most recently opened single images in local memory for 20 seconds from opening, evicting older or expired entries without disk persistence.
+- Populate the cache as soon as a payload finishes loading, retain each entry across repeated reopen operations, and keep recent entries independent of Frame close order.
+
 ## 0.7.27 (development build; not published)
 
 - Keep the most recently closed single-image transport payload in local Webview memory for 10 seconds by default, allowing an unchanged local or Remote SSH image to reopen without retransmitting its pixels.

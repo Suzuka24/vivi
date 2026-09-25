@@ -429,15 +429,15 @@ function transportSnapshot(result,args){
   return {result:{...result,payload:result.payload},args:{...args}};
 }
 function rememberRecentFrame(state){
-  recentPayloadCache.clear();
   const identity=state?.metadata?.sourceIdentity,seconds=state?.metadata?.recentCacheSeconds;
   const d=state?.metadata?.datasets?.find(item=>item.id===(state.datasetId??state.metadata.datasets[0]?.id));
   if(!identity||!d||d.frames!==1)return false;
   const entry=[...(state.frameCache?.values()||[])].find(item=>item.sourceDataset===d.id&&item.sourceFrame===0&&item.transport);
   if(!entry)return false;
   const presentation={datasetId:d.id,scale:state.scale,cx:state.cx,cy:state.cy,cuts:state.cuts,low:state.low,high:state.high,stretch:state.stretch,cmap:state.cmap,invert:state.invert};
-  recentPayloadCache.remember(identity,{transport:entry.transport,presentation},seconds);
-  return Number(seconds)>0;
+  const value={transport:entry.transport,presentation};
+  if(!recentPayloadCache.update(identity,value))recentPayloadCache.remember(identity,value,seconds,state.openedAt);
+  return recentPayloadCache.remainingSeconds();
 }
 async function restoreRecentFrame(state,cached){
   const d=state.metadata.datasets.find(item=>item.id===cached.presentation.datasetId)||state.metadata.datasets[0];
@@ -546,6 +546,7 @@ async function render() {
     const entry=await decodePreview(result,args);entry.transport=transport;
     if (cacheSignature === signature) {frameCache.set(key,entry);cacheBytes += entry.bytes;updateCacheStatus();}
     showPreview(entry,ticket);
+    if(fileFrames.get(activeFileFrame)===state&&cacheSignature===signature){saveFileFrame();rememberRecentFrame(state);}
   } catch(error){showError(error);stopPlay();}
   finally{if(dataset?.frames===1)setFrameLoading(activeFileFrame,false);renderRunning=false;if(renderWanted)render();else{schedulePlayback();schedulePreload();}}
 }
@@ -937,12 +938,12 @@ function moveFileFrame(delta){const ids=visibleFrameIds(),at=ids.indexOf(activeF
 function closeFileFrame(id=activeFileFrame){
   id=Number(id);if(!fileFrames.has(id))return;
   if(id===activeFileFrame)saveFileFrame();
-  const closing=fileFrames.get(id),retainRecent=rememberRecentFrame(closing);
+  const closing=fileFrames.get(id),retainRecentSeconds=rememberRecentFrame(closing)||recentPayloadCache.remainingSeconds();
   if(fileFrames.size===1){
     disableOrthogonal();stopPlay();stopSliceHold();clearTimeout(renderTimer);clearTimeout(preloadTimer);revision++;cacheGeneration++;
     fileFrames.delete(id);activeFileFrame=null;metadata=null;dataset=null;preview=null;previewBox=null;frameCache=new Map();cacheSignature='';cacheBytes=0;
     $('filename').textContent='';$('busy').textContent='';$('empty').textContent='No image open.';$('empty').hidden=false;
-    frameList();updateLoadProgress(null);draw();publishSidebar(0);vscode.postMessage({type:'closeFrame',frameId:id,retainRecent});return;
+    frameList();updateLoadProgress(null);draw();publishSidebar(0);vscode.postMessage({type:'closeFrame',frameId:id,retainRecentSeconds});return;
   }
   if(id===activeFileFrame){const next=visibleFrameIds().find(value=>value!==id)||[...fileFrames.keys()].find(value=>value!==id);fileFrames.get(next).visible=true;selectFileFrame(next);}
   fileFrames.delete(id);vscode.postMessage({type:'closeFrame',frameId:id});frameList();draw();
@@ -1725,10 +1726,10 @@ window.addEventListener('message',({data:m})=>{
     if(fileFrames.size===0){defaultFps=Math.max(1,Math.min(60,Number(m.defaultFps)||24));$('fps').value=defaultFps;$('viewerSliceFps').value=defaultFps;}
     if($('editUndo'))$('editUndo').disabled=!m.canUndo;
     if($('editRedo'))$('editRedo').disabled=!m.canRedo;
-    const state={metadata:m,flipState:m.flipState},cached=recentPayloadCache.take(m.sourceIdentity);
+    const state={metadata:m,flipState:m.flipState,openedAt:Date.now()},cached=recentPayloadCache.get(m.sourceIdentity);
     fileFrames.set(m.frameId,state);
     const activate=()=>{selectFileFrame(m.frameId);setTool('pan');if(m.initialSelection){selection=m.initialSelection;refreshSelection();saveFileFrame();}};
-    if(cached)restoreRecentFrame(state,cached).then(activate).catch(error=>{showError(error);activate();});
+    if(cached){recentPayloadCache.remove(m.sourceIdentity);restoreRecentFrame(state,cached).then(()=>{rememberRecentFrame(state);activate();}).catch(error=>{showError(error);activate();});}
     else activate();
   }else if(m.type==='frameUpdated'){
     if(orthogonal&&m.frameId===activeFileFrame)disableOrthogonal();
