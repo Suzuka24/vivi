@@ -100,7 +100,7 @@ function renderSidebar(state){
     const remove=document.createElement('button');remove.className='frame-remove';remove.textContent='×';
     remove.title=frame.loading?`Cancel loading Frame ${frame.id}: ${frame.label}`:`Close Frame ${frame.id}: ${frame.label}`;
     remove.setAttribute('aria-label',remove.title);remove.classList.toggle('loading-cancel',!!frame.loading);
-    remove.onclick=()=>sideAction(frame.loading?'cancelFrameLoad':'closeFrame',frame.id);
+    remove.onclick=()=>{row.remove();sideAction(frame.loading?'cancelFrameLoad':'closeFrame',frame.id);};
     row.append(handle,visible,locked,button,loading,remove);
     row.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(frame.id));e.dataTransfer.effectAllowed='move';row.classList.add('dragging');};
     row.ondragend=()=>row.classList.remove('dragging');

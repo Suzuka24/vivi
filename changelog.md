@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.32 (development build; not published)
+
+- Route both loading cancellation and ordinary LAYOUT Frame close actions directly to the extension host, without relying on possibly stale loading state or the busy viewer message queue.
+- Remove a clicked Frame row optimistically and remove the cancel button from the loading progress overlay.
+
 ## 0.7.31 (development build; not published)
 
 - Cancel a loading Frame directly in the Remote SSH extension host when its LAYOUT close button is clicked, avoiding the large-payload Webview forwarding queue that previously delayed cancellation until loading completed.
