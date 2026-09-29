@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const {HttpPayloadTransport,packStackPayload} = require('../src/httpTransport');
+const {HttpPayloadTransport,packStackPayload,packStackRecord} = require('../src/httpTransport');
 
 test('HTTP payload transport preserves bytes and tokens are single-use', async t => {
   const transport=new HttpPayloadTransport();t.after(()=>transport.dispose());
@@ -50,4 +50,25 @@ test('stack payload container preserves frame metadata and bytes', () => {
   const data=packed.subarray(4+headerLength);
   assert.deepEqual(manifest.map(item=>[item.frame,item.total,item.result.dtype,item.offset,item.byteLength]),[[0,2,'<u2',0,3],[1,2,'<u2',3,2]]);
   assert.deepEqual([...data],[1,2,3,4,5]);
+});
+
+test('live stack transport streams records without a combined payload allocation', async t => {
+  const transport=new HttpPayloadTransport();t.after(()=>transport.dispose());
+  transport.setExternalBase(await transport.listen());
+  const stream=transport.offerStream(23),request=fetch(stream.descriptor.url);
+  await stream.ready;
+  const records=[
+    {frame:0,total:2,result:{dtype:'<f4',payload:Uint8Array.from([1,2,3]).buffer}},
+    {frame:1,total:2,result:{dtype:'<f4',payload:Uint8Array.from([4,5]).buffer}}
+  ];
+  for(const record of records)await stream.write(packStackRecord(record));
+  stream.end();
+  const response=await request,wire=Buffer.from(await response.arrayBuffer());let offset=0;
+  for(const expected of records){
+    const length=wire.readUInt32LE(offset);offset+=4;
+    const header=JSON.parse(wire.subarray(offset,offset+length));offset+=length;
+    assert.equal(header.frame,expected.frame);assert.equal(header.total,2);assert.equal(header.result.dtype,'<f4');
+    assert.deepEqual([...wire.subarray(offset,offset+header.payloadLength)],[...new Uint8Array(expected.result.payload)]);offset+=header.payloadLength;
+  }
+  assert.equal(offset,wire.byteLength);transport.complete(stream.descriptor.token);
 });

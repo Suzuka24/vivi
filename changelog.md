@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.36 (development build; not published)
+
+- Stream HTTP stack records through one response with end-to-end backpressure instead of collecting the complete compressed stack into one remote buffer and one browser `Uint8Array`; this allows multi-GiB image folders to load without the former contiguous-allocation failure.
+- Remove the double-left-click Fit gesture while retaining `F` for Fit, and assign `G` as the default magnifying-glass tool shortcut.
+
 ## 0.7.35 (development build; not published)
 
 - Fix Explorer column auto-sizing so double-clicking a divider always recomputes the intrinsic minimum width from every item in the current directory, allowing an oversized column to shrink as well as a narrow column to grow.

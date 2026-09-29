@@ -77,12 +77,29 @@ class Backend {
     if (!this.pending) { this.complete(msg); return; }
     const item = this.pending.get(msg.id);
     if (!item || !msg.streamEvent) { this.complete(msg); return; }
+    if(item.processing){(item.eventQueue??=[]).push(msg);return;}
+    this.processStreamEvent(item,msg);
+  }
+  processStreamEvent(item,msg) {
+    if(!this.pending.has(msg.id))return;
     this.touchStream(msg.id);
-    try { item.onEvent(msg); }
-    catch (error) { this.pending.delete(msg.id); clearTimeout(item.timer); item.reject(error); return; }
-    if (msg.streamEvent === 'end') {
-      this.pending.delete(msg.id); clearTimeout(item.timer); item.resolve(msg.result);
-    }
+    let result;
+    try { result=item.onEvent(msg); }
+    catch(error){this.rejectStream(msg.id,item,error);return;}
+    const finish=()=>{
+      if(msg.streamEvent==='end'){
+        this.pending.delete(msg.id);clearTimeout(item.timer);item.processing=false;this.child?.stdout?.resume();item.resolve(msg.result);return;
+      }
+      const next=(item.eventQueue??=[]).shift();item.processing=false;
+      if(next)this.processStreamEvent(item,next);else this.child?.stdout?.resume();
+    };
+    if(result&&typeof result.then==='function'){
+      item.processing=true;this.child?.stdout?.pause();
+      Promise.resolve(result).then(finish,error=>this.rejectStream(msg.id,item,error));
+    }else finish();
+  }
+  rejectStream(id,item,error) {
+    this.pending.delete(id);clearTimeout(item.timer);item.reject(error);this.child?.stdout?.resume();
   }
   request(op, args = {}) {
     if (this.dead) return Promise.reject(new Error('Backend stopped. Reopen this image to restart.'));
@@ -100,7 +117,7 @@ class Backend {
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
       const timer = setTimeout(() => this.stop(new Error('Backend stream timed out and was stopped. Reopen the image or increase vivi.requestTimeoutSeconds.')), this.timeout);
-      this.pending.set(id, { resolve, reject, timer, onEvent });
+      this.pending.set(id, { resolve, reject, timer, onEvent, processing:false, eventQueue:[] });
       this.child.stdin.write(JSON.stringify({ ...args, op, id }) + '\n');
     });
   }

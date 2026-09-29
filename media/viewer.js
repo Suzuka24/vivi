@@ -19,7 +19,7 @@ let activeFileFrame = null, frameCache = new Map(), tileMode = false, toolVarian
 const toolVariants={roi:'roi',oval:'oval',line:'line'};
 const frameLocks = new Set(), lockGroups = {bc:['cuts','low','high','stretch','cmap','invert','threshold'],view:['cx','cy','scale'],slice:['plane'],selection:['roi','line','selection','orthogonalState']};
 let tileRefreshTimer, tileRefreshRunning=false, tileRefreshWanted=false, sidebarTimer, layoutColumns=0, layoutRows=0;
-let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'o',line:'l',measure:'m',clear:'c',undoTransform:'z',redoTransform:'',zoomIn:'=',zoomOut:'-',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
+let keyboardShortcuts={fit:'f',hand:'h',pointer:'p',roi:'r',oval:'o',line:'l',measure:'m',clear:'c',undoTransform:'z',redoTransform:'',zoomTool:'g',zoomIn:'=',zoomOut:'-',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',rename:'f2',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const shortcutNames={ctrl:'Ctrl',control:'Ctrl',shift:'Shift',alt:'Alt',option:'Alt',cmd:'Cmd',meta:'Cmd',enter:'Enter',arrowup:'Up',arrowdown:'Down',arrowleft:'Left',arrowright:'Right',escape:'Esc',backspace:'Backspace',delete:'Delete',' ':'Space'};
 const shortcutLabel=binding=>String(binding||'').split('+').map(part=>shortcutNames[part.trim().toLowerCase()]||part.trim().toUpperCase()).filter(Boolean).join('+');
 function scrollbarHit(event){
@@ -51,7 +51,7 @@ function updateShortcutTips(){
     const shortcut=shortcutLabel(binding);button.dataset.tip=shortcut?`${base} (${shortcut})`:base;button.title=button.dataset.tip;
   }
 }
-let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag',fit:'doubleclick'};
+let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag'};
 let defaultFps=24,transformsRunning=0;
 let imageJAutoThreshold=0,imageJStackAutoThreshold=0;
 let spaceHeld=false;
@@ -150,6 +150,7 @@ async function receiveHttpPayload(result,fileFrame){
   }
 }
 async function receiveHttpStack(message,fileFrame,onEvent){
+  if(message.httpStack?.streaming)return receiveHttpStackStream(message.httpStack,fileFrame,onEvent);
   const received=await receiveHttpPayload({httpPayload:message.httpStack},fileFrame),bytes=new Uint8Array(received.payload);
   if(bytes.byteLength<4)throw new Error('HTTP stack payload header is incomplete.');
   const headerLength=new DataView(bytes.buffer,bytes.byteOffset,4).getUint32(0,true),dataOffset=4+headerLength;
@@ -159,6 +160,37 @@ async function receiveHttpStack(message,fileFrame,onEvent){
     const start=dataOffset+Number(item.offset),end=start+Number(item.byteLength);
     if(start<dataOffset||end>bytes.byteLength)throw new Error('HTTP stack payload frame is incomplete.');
     await onEvent({event:'frame',frame:item.frame,total:item.total,result:{...item.result,payload:bytes.buffer.slice(bytes.byteOffset+start,bytes.byteOffset+end)}});
+  }
+}
+async function receiveHttpStackStream(descriptor,fileFrame,onEvent){
+  const state=fileFrames.get(fileFrame);if(!state)throw abortError();
+  const controller=new AbortController();if(!state.httpControllers)state.httpControllers=new Set();state.httpControllers.add(controller);
+  let complete=false;
+  try{
+    const response=await fetch(descriptor.url,{signal:controller.signal,cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP stack transfer failed (${response.status}).`);
+    const reader=response.body?.getReader();if(!reader)throw new Error('HTTP stack transfer is not stream-readable.');
+    const chunks=[];let available=0,ended=false;
+    async function readExact(length,allowEnd=false){
+      while(available<length&&!ended){const item=await reader.read();ended=item.done;if(!item.done&&item.value?.byteLength){chunks.push({value:item.value,offset:0});available+=item.value.byteLength;}}
+      if(available<length){if(allowEnd&&available===0&&ended)return null;throw new Error('HTTP stack transfer ended early.');}
+      const output=new Uint8Array(length);let written=0;
+      while(written<length){const item=chunks[0],take=Math.min(length-written,item.value.byteLength-item.offset);output.set(item.value.subarray(item.offset,item.offset+take),written);item.offset+=take;written+=take;available-=take;if(item.offset===item.value.byteLength)chunks.shift();}
+      return output;
+    }
+    while(true){
+      const prefix=await readExact(4,true);if(!prefix)break;
+      const headerLength=new DataView(prefix.buffer,prefix.byteOffset,4).getUint32(0,true);
+      if(!headerLength||headerLength>1024*1024)throw new Error('HTTP stack record header is invalid.');
+      const header=JSON.parse(new TextDecoder().decode(await readExact(headerLength))),payloadLength=Number(header.payloadLength);
+      if(!Number.isSafeInteger(payloadLength)||payloadLength<0)throw new Error('HTTP stack record payload length is invalid.');
+      const payload=await readExact(payloadLength);
+      await onEvent({event:'frame',frame:header.frame,total:header.total,result:{...header.result,payload:payload.buffer}});
+    }
+    complete=true;
+  } finally {
+    state.httpControllers.delete(controller);
+    vscode.postMessage({type:complete?'httpTransferComplete':'httpTransferCancel',token:descriptor.token});
   }
 }
 function updateLoadProgress(state=fileFrames.get(activeFileFrame)){
@@ -1208,7 +1240,6 @@ canvas.onpointerdown=e=>{
     roi=null;line=null;selection={type:tool,points:tool==='freehand'?[point]:[point,point]};
   }
 };
-canvas.ondblclick=e=>{if(mouseMatches(mouseShortcuts.fit,e,'doubleclick')){vertices=[];fit();}};
 canvas.onpointermove=e=>{
   if(!dataset)return;
   if(drag?.tool==='orthogonal'){if(tileMode)tileOrthogonalPoint(drag.orthogonalName,e);else orthogonalPoint('xy',e);return;}

@@ -105,3 +105,16 @@ test('backend stream keeps one request open across frame packets',async()=>{
   backend.dispatch({id:7,streamEvent:'end',result:{total:2}});
   assert.deepEqual(await done,{total:2});assert.deepEqual(events,[undefined,0,1,undefined]);assert.equal(backend.pending.has(7),false);
 });
+
+test('backend stream pauses stdout while an asynchronous consumer applies backpressure',async()=>{
+  const backend=Object.create(Backend.prototype);backend.pending=new Map();backend.timeout=1000;backend.dead=false;
+  let paused=0,resumed=0,release;
+  backend.child={stdout:{pause(){paused++;},resume(){resumed++;}}};
+  const events=[],gate=new Promise(resolve=>{release=resolve;});
+  const done=new Promise((resolve,reject)=>backend.pending.set(9,{resolve,reject,onEvent:event=>{events.push(event.frame);return event.frame===0?gate:undefined;},processing:false,eventQueue:[],timer:setTimeout(()=>{},1000)}));
+  backend.dispatch({id:9,streamEvent:'frame',frame:0,result:{}});
+  backend.dispatch({id:9,streamEvent:'frame',frame:1,result:{}});
+  backend.dispatch({id:9,streamEvent:'end',result:{total:2}});
+  assert.deepEqual(events,[0]);assert.equal(paused,1);
+  release();assert.deepEqual(await done,{total:2});assert.deepEqual(events,[0,1,undefined]);assert.ok(resumed>=1);
+});

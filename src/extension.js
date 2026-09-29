@@ -11,7 +11,7 @@ const { uniqueFrameLabel } = require('./frameLabels');
 const { menuPaths } = require('./menuVisibility');
 const { previewCompressionOptions } = require('./compressionPolicy');
 const { compactPaths, transferEntries } = require('./fileOperations');
-const { HttpPayloadTransport, packStackPayload } = require('./httpTransport');
+const { HttpPayloadTransport, packStackRecord } = require('./httpTransport');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -603,26 +603,31 @@ async function activate(context) {
             });
             return {...metadata,httpPayload};
           };
-          const forwarding=[],stackEvents=[];
-          const result = msg.op === 'renderStack'
-            ? await frame.worker.requestStream(msg.op, args, event => {
-                if (disposed||frames.get(msg.fileFrame)!==frame)return;
-                if(useHttp&&event.streamEvent==='frame'){stackEvents.push({frame:event.frame,total:event.total,result:event.result});return;}
-                if(useHttp&&event.streamEvent==='end')return;
-                forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
-                  frame:event.frame,total:event.total,result:event.result}));
-              })
-            : await frame.worker.request(msg.op, args);
+          const forwarding=[];
+          let stackStream=null,result;
+          try {
+            if(msg.op==='renderStack'&&useHttp){
+              stackStream=httpTransport.offerStream(transportOwner(frame.id),()=>{
+                if(frames.get(frame.id)===frame)removeFrame(frame.id,0,true);
+              });
+              await panel.webview.postMessage({type:'stream',id:msg.id,event:'httpStack',result:{httpStack:stackStream.descriptor}});
+              await stackStream.ready;
+            }
+            result=msg.op==='renderStack'
+              ? await frame.worker.requestStream(msg.op,args,event=>{
+                  if(disposed||frames.get(msg.fileFrame)!==frame)return;
+                  if(stackStream&&event.streamEvent==='frame')return stackStream.write(packStackRecord({frame:event.frame,total:event.total,result:event.result}));
+                  if(stackStream)return;
+                  forwarding.push(panel.webview.postMessage({type:'stream',id:msg.id,event:event.streamEvent,
+                    frame:event.frame,total:event.total,result:event.result}));
+                })
+              : await frame.worker.request(msg.op,args);
+            if(stackStream)stackStream.end();
+          } catch(error) {
+            stackStream?.fail(error);throw error;
+          }
           if(msg.op==='renderStack')await Promise.all(forwarding);
           if(frames.get(msg.fileFrame)!==frame)return;
-          if(msg.op==='renderStack'&&useHttp){
-            const total=stackEvents.length;
-            const httpStack=httpTransport.offer(packStackPayload(stackEvents),transportOwner(frame.id),()=>{
-              if(frames.get(frame.id)===frame)removeFrame(frame.id,0,true);
-            });
-            stackEvents.length=0;
-            await panel.webview.postMessage({type:'stream',id:msg.id,event:'httpStack',result:{httpStack,total}});
-          }
           const outgoing=await transportResult(result);
           if (msg.op === 'render' && !msg.prefetch) frame.latestPng = outgoing.png;
           if (['measure','histogram','profile'].includes(msg.op)) frame.lastResult = { op: msg.op, result };
