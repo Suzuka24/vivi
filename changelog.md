@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.37 (development build; not published)
+
+- Double-buffer streamed stacks in the browser so the next frame is received while the current frame is decoded and painted, while retaining ordered single-frame decoding and bounded memory use.
+
 ## 0.7.36 (development build; not published)
 
 - Stream HTTP stack records through one response with end-to-end backpressure instead of collecting the complete compressed stack into one remote buffer and one browser `Uint8Array`; this allows multi-GiB image folders to load without the former contiguous-allocation failure.

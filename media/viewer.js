@@ -3,7 +3,7 @@ const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const windowMemory={...(vscode.getState()?.windowMemory||{})};
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,consumeDoubleBuffered} = window.ViviDisplay;
 const recentPayloadCache = new window.ViviRecentPayloadCache.RecentPayloadCache();
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
@@ -178,15 +178,18 @@ async function receiveHttpStackStream(descriptor,fileFrame,onEvent){
       while(written<length){const item=chunks[0],take=Math.min(length-written,item.value.byteLength-item.offset);output.set(item.value.subarray(item.offset,item.offset+take),written);item.offset+=take;written+=take;available-=take;if(item.offset===item.value.byteLength)chunks.shift();}
       return output;
     }
-    while(true){
-      const prefix=await readExact(4,true);if(!prefix)break;
-      const headerLength=new DataView(prefix.buffer,prefix.byteOffset,4).getUint32(0,true);
-      if(!headerLength||headerLength>1024*1024)throw new Error('HTTP stack record header is invalid.');
-      const header=JSON.parse(new TextDecoder().decode(await readExact(headerLength))),payloadLength=Number(header.payloadLength);
-      if(!Number.isSafeInteger(payloadLength)||payloadLength<0)throw new Error('HTTP stack record payload length is invalid.');
-      const payload=await readExact(payloadLength);
-      await onEvent({event:'frame',frame:header.frame,total:header.total,result:{...header.result,payload:payload.buffer}});
+    async function* records(){
+      while(true){
+        const prefix=await readExact(4,true);if(!prefix)return;
+        const headerLength=new DataView(prefix.buffer,prefix.byteOffset,4).getUint32(0,true);
+        if(!headerLength||headerLength>1024*1024)throw new Error('HTTP stack record header is invalid.');
+        const header=JSON.parse(new TextDecoder().decode(await readExact(headerLength))),payloadLength=Number(header.payloadLength);
+        if(!Number.isSafeInteger(payloadLength)||payloadLength<0)throw new Error('HTTP stack record payload length is invalid.');
+        const payload=await readExact(payloadLength);
+        yield {event:'frame',frame:header.frame,total:header.total,result:{...header.result,payload:payload.buffer}};
+      }
     }
+    await consumeDoubleBuffered(records(),onEvent);
     complete=true;
   } finally {
     state.httpControllers.delete(controller);

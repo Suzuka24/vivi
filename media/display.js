@@ -314,6 +314,20 @@ function sliceDisplayRange(histograms,bounds,frameId,datasetId,slice,low,high){
   return [histogram?.min??saved?.[0]??low,histogram?.max??saved?.[1]??high];
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
-if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange};
+async function consumeDoubleBuffered(source,consume){
+  let active=null;
+  try{
+    for await(const item of source){
+      if(active)await active;
+      active=Promise.resolve().then(()=>consume(item));
+    }
+    if(active)await active;
+  }catch(error){
+    if(active)await active.catch(()=>{});
+    throw error;
+  }
+}
+
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,consumeDoubleBuffered};
+if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,consumeDoubleBuffered};
 })();
