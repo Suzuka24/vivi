@@ -36,6 +36,14 @@ function moveRect(rect,dx,dy,width,height,{shift=false}={}){
   const nx=Math.max(0,Math.min(width-w,x0+dx)),ny=Math.max(0,Math.min(height-h,y0+dy));
   return [nx,ny,nx+w,ny+h];
 }
+function constrainLineEndpoint(points,handle,pointer,shift=false){
+  const result=points.map(point=>[...point]);
+  if(!Number.isInteger(handle)||handle<0||handle>=result.length)return result;
+  if(!shift||result.length!==2){result[handle]=[...pointer];return result;}
+  const fixed=result[1-handle],dx=Math.abs(pointer[0]-fixed[0]),dy=Math.abs(pointer[1]-fixed[1]);
+  result[handle]=dx>=dy?[pointer[0],fixed[1]]:[fixed[0],pointer[1]];
+  return result;
+}
 function pixelPoint(point,width,height){return [Math.max(0,Math.min(width-1,Math.round(point[0]))),Math.max(0,Math.min(height-1,Math.round(point[1])))];}
 function specifiedRect(x,y,width,height,imageWidth,imageHeight,{centered=false}={}){
   if(![x,y,width,height].every(Number.isFinite)||width<=0||height<=0)throw new Error('Enter finite X, Y and positive width and height.');
@@ -62,6 +70,6 @@ function smoothPoints(points,closed=false){
   if(!closed)result.push([...sample.at(-1)]);
   return result;
 }
-const geometry={normalize,createRect,handles,resizeRect,moveRect,pixelPoint,specifiedRect,specifiedVertices,smoothPoints};
+const geometry={normalize,createRect,handles,resizeRect,moveRect,constrainLineEndpoint,pixelPoint,specifiedRect,specifiedVertices,smoothPoints};
 if(typeof module!=='undefined')module.exports=geometry;
 if(typeof window!=='undefined')window.ViviRoiGeometry=geometry;

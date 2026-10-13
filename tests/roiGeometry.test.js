@@ -24,3 +24,9 @@ test('mouse points snap to pixels while specified geometry retains decimals', ()
   assert.deepEqual(curve.at(-1),[8,0]);
   assert.ok(curve.length>3);
 });
+
+test('line endpoint editing keeps Shift horizontal or vertical like ImageJ', () => {
+  assert.deepEqual(roi.constrainLineEndpoint([[10,10],[20,20]],1,[31,13],true),[[10,10],[31,10]]);
+  assert.deepEqual(roi.constrainLineEndpoint([[10,10],[20,20]],0,[17,35],true),[[20,35],[20,20]]);
+  assert.deepEqual(roi.constrainLineEndpoint([[10,10],[20,20]],1,[31,13],false),[[10,10],[31,13]]);
+});

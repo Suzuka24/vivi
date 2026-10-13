@@ -39,3 +39,10 @@ test('zero seconds disables the cache',()=>{
   cache.remember(source(),{payload:'data'},0);
   assert.equal(cache.get(source()),null);
 });
+
+test('changed source identity never reuses a recent payload',()=>{
+  const cache=new RecentPayloadCache(),original=source('/a');
+  cache.remember(original,{payload:'old'},20);
+  assert.equal(cache.get({...original,mtimeMs:original.mtimeMs+1}),null);
+  assert.equal(cache.get({...original,size:original.size+1}),null);
+});

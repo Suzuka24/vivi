@@ -314,6 +314,12 @@ function sliceDisplayRange(histograms,bounds,frameId,datasetId,slice,low,high){
   return [histogram?.min??saved?.[0]??low,histogram?.max??saved?.[1]??high];
 }
 
+function imageJWheelPanDelta(delta,deltaMode,dimension){
+  if(!Number.isFinite(delta)||delta===0)return 0;
+  const units=deltaMode===1?delta:deltaMode===2?Math.sign(delta)*3:delta*3/100;
+  return units*Math.max(Number(dimension)/200,1);
+}
+
 async function consumeDoubleBuffered(source,consume){
   let active=null;
   try{
@@ -328,6 +334,6 @@ async function consumeDoubleBuffered(source,consume){
   }
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,consumeDoubleBuffered};
-if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,consumeDoubleBuffered};
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
+if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
 })();

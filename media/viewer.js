@@ -3,7 +3,7 @@ const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const windowMemory={...(vscode.getState()?.windowMemory||{})};
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,consumeDoubleBuffered} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered} = window.ViviDisplay;
 const recentPayloadCache = new window.ViviRecentPayloadCache.RecentPayloadCache();
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
@@ -51,7 +51,7 @@ function updateShortcutTips(){
     const shortcut=shortcutLabel(binding);button.dataset.tip=shortcut?`${base} (${shortcut})`:base;button.title=button.dataset.tip;
   }
 }
-let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag'};
+let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+wheel',verticalPan:'space+wheel',horizontalPan:'alt+wheel',orthogonalTool:'space+click',handDrag:'middle+drag',contrastDrag:'alt+right+drag'};
 let defaultFps=24,transformsRunning=0;
 let imageJAutoThreshold=0,imageJStackAutoThreshold=0;
 let spaceHeld=false;
@@ -665,7 +665,7 @@ function clearExpiredError(){if(Date.now()>=errorUntil)dismissError();}
 function showError(error){if(error?.name==='AbortError')return;$('errorMessage').textContent=error.message;$('error').hidden=false;errorUntil=Date.now()+2500;clearTimeout(errorTimer);errorTimer=setTimeout(clearExpiredError,2600);$('busy').textContent='Error';}
 $('dismissError').onclick=dismissError;
 function fit(){if(!dataset)return;const {w,h}=size(),depth=orthogonal?.depth||0;scale=Math.min(w/(dataset.width+depth),h/(dataset.height+depth))*.96;cx=(dataset.width+depth)/2;cy=(dataset.height+depth)/2;commitFrameChange('view');scheduleRender(0);}
-const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32];
+const zoomLevels=[1/72,1/48,1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,.75,1,1.5,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256];
 function zoom(direction,anchor=null){
   if(!dataset)return;
   const old=scale,epsilon=1e-9;
@@ -1123,6 +1123,8 @@ function imageWheel(event){
   event.preventDefault();
   if(mouseMatches(mouseShortcuts.zoomAtPointer,event,'wheel'))zoom(event.deltaY<0?1:-1,position(event));
   else if(mouseMatches(mouseShortcuts.zoomAtCenter,event,'wheel'))zoom(event.deltaY<0?1:-1);
+  else if(mouseMatches(mouseShortcuts.verticalPan,event,'wheel')){cy+=imageJWheelPanDelta(event.deltaY,event.deltaMode,dataset.height);clampCenter();commitFrameChange('view');scheduleRender(0);}
+  else if(mouseMatches(mouseShortcuts.horizontalPan,event,'wheel')){cx+=imageJWheelPanDelta(event.deltaY,event.deltaMode,dataset.width);clampCenter();commitFrameChange('view');scheduleRender(0);}
   else if(mouseMatches(mouseShortcuts.slice,event,'wheel')&&dataset.frames>1)changeFrame(event.deltaY<0?-1:1);
 }
 canvas.addEventListener('wheel',imageWheel,{passive:false});
@@ -1196,6 +1198,7 @@ function dragEditedSelection(e,point){
   const original=drag.original,center=!!(e.ctrlKey||e.metaKey),shift=e.shiftKey;
   if(drag.tool==='editHandle'){
     if(['roi','oval'].includes(original.type))selection.points=rectPoints(roiGeometry.resizeRect(drag.rect,drag.handle,point,{shift,center,aspect:e.altKey}));
+    else if(original.type==='line')selection.points=roiGeometry.constrainLineEndpoint(original.points,drag.handle,point,shift);
     else{selection.points=original.points.map(p=>[...p]);selection.points[drag.handle]=point;}
   }else{
     let dx=point[0]-drag.point[0],dy=point[1]-drag.point[1];
@@ -1288,7 +1291,7 @@ $('cmap').replaceChildren();
 for(const [value,label] of lutOptions){const option=document.createElement('option');option.value=value;option.textContent=label;$('cmap').append(option);}
 for(const button of document.querySelectorAll('.tool-button')) button.dataset.tip=button.title;
 $('fit').onclick=fit;$('actual').onclick=()=>{scale=1;commitFrameChange('view');scheduleRender(0);};$('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
-$('zoom').onchange=()=>{const value=Number($('zoom').value.trim().replace(/%$/,''));if(!Number.isFinite(value)||value<=0||value>6400){$('zoom').value=`${formatValue(scale*100)}%`;showError(new Error('Enter a zoom percentage greater than 0 and at most 6400.'));return;}scale=value/100;commitFrameChange('view');scheduleRender(0);};
+$('zoom').onchange=()=>{const value=Number($('zoom').value.trim().replace(/%$/,''));if(!Number.isFinite(value)||value<=0||value>25600){$('zoom').value=`${formatValue(scale*100)}%`;showError(new Error('Enter a zoom percentage greater than 0 and at most 25600.'));return;}scale=value/100;commitFrameChange('view');scheduleRender(0);};
 for(const button of document.querySelectorAll('[data-click]')) button.onclick=()=>$(button.dataset.click).click();
 for(const menu of document.querySelectorAll('.menu')){
   menu.querySelector(':scope > summary').addEventListener('click',event=>{event.preventDefault();menu.open=true;});
@@ -1821,7 +1824,7 @@ function shortcutEditingTarget(event){
 document.addEventListener('keydown',e=>{
   const action=Object.entries(keyboardShortcuts).find(([,binding])=>shortcutMatches(binding,e))?.[0];
   if(shortcutEditingTarget(e))return;
-  if(e.code==='Space'&&orthogonal){spaceHeld=true;e.preventDefault();return;}
+  if(e.code==='Space'){spaceHeld=true;e.preventDefault();return;}
   if(!action)return;
   e.preventDefault();
   runShortcut(action);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.40 (development build; not published)
+
+- Release TIFF, FITS, raster, video, and image-sequence source handles immediately after a complete preview payload has been delivered, while reopening sources only for later backend operations.
+- Keep recent single-image payload reuse guarded by source size, modification time, change time, and inode so an overwritten file is decoded again.
+- Constrain an existing straight-line endpoint horizontally or vertically when it is dragged with Shift, matching ImageJ editing behavior.
+- Add configurable Space+wheel vertical panning and Alt+wheel horizontal panning with ImageJ-style distance scaling.
+- Extend zoom steps beyond ImageJ's 3200% ceiling through 25600% for close pixel inspection.
+
 ## 0.7.39 (development build; not published)
 
 - Preserve original multidimensional TIFF shape and axes when stack transforms or in-place filters write their temporary working TIFF, including when display axes were folded or reordered.

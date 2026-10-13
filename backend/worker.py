@@ -139,6 +139,8 @@ class Source:
         self.sequence_index = -1
         self.slice_labels = None
         self.warning = ""
+        self.released = False
+        self.closed = False
         try:
             self._open()
         except Exception:
@@ -263,6 +265,7 @@ class Source:
         return (header.get('BSCALE', 1), header.get('BZERO', 0), header.get('BLANK'))
 
     def read(self, d, frame, box, step=1, pyramid=False, raw_stored=False):
+        self.ensure_open()
         frame = int(frame)
         if not 0 <= frame < d["frames"]:
             raise ValueError("Frame out of range")
@@ -357,7 +360,28 @@ class Source:
             order.append(remaining.index(d["storageChannel"]))
         return np.transpose(np.asarray(data), order)
 
-    def close(self):
+    def ensure_open(self):
+        if self.closed:
+            raise ValueError("Image source is closed")
+        if not self.released:
+            return
+        self.datasets = []
+        self.levels = {}
+        self.handles = []
+        self.frame_cache = None
+        self.frame_index = -1
+        self.sequence_source = None
+        self.sequence_index = -1
+        self.slice_labels = None
+        self.warning = ""
+        try:
+            self._open()
+            self.released = False
+        except Exception:
+            self.release()
+            raise
+
+    def release(self):
         if self.sequence_source:
             self.sequence_source.close()
             self.sequence_source = None
@@ -369,6 +393,11 @@ class Source:
             except Exception:
                 pass
         self.handles.clear()
+        self.released = True
+
+    def close(self):
+        self.release()
+        self.closed = True
 
 
 def bounds(d, value=None):
@@ -495,10 +524,11 @@ class Session:
             self.source = Source(req["path"], int(req.get("maxPixels", 64_000_000)),
                                  req.get("sequenceMode","2d"), req.get("sequenceSize"),
                                  req.get("axisLayouts"))
-            return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets, warning=self.source.warning,
-                        sliceLabels=self.source.slice_labels)
+            return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets,
+                        warning=self.source.warning, sliceLabels=self.source.slice_labels)
         if not self.source:
             raise ValueError("Open an image first")
+        self.source.ensure_open()
         d = self.source.dataset(req.get("dataset", self.source.datasets[0]["id"]))
         frame = int(req.get("frame", 0))
         box = bounds(d, req.get("box"))
@@ -1284,15 +1314,19 @@ def main():
                     if req.get('op') == 'renderStack':
                         if not session.source:
                             raise ValueError("Open an image first")
-                        dataset = session.source.dataset(req.get('dataset', session.source.datasets[0]['id']))
-                        total = dataset['frames']
-                        send(dict(id=req.get('id'), streamEvent='start', result=dict(total=total)))
-                        for frame in range(total):
-                            result = session.handle({**req, 'op': 'render', 'frame': frame})
-                            payload = result.pop('_binary', None)
-                            send(dict(id=req.get('id'), streamEvent='frame', frame=frame,
-                                      total=total, result=result), payload)
-                        send(dict(id=req.get('id'), streamEvent='end', result=dict(total=total)))
+                        try:
+                            session.source.ensure_open()
+                            dataset = session.source.dataset(req.get('dataset', session.source.datasets[0]['id']))
+                            total = dataset['frames']
+                            send(dict(id=req.get('id'), streamEvent='start', result=dict(total=total)))
+                            for frame in range(total):
+                                result = session.handle({**req, 'op': 'render', 'frame': frame})
+                                payload = result.pop('_binary', None)
+                                send(dict(id=req.get('id'), streamEvent='frame', frame=frame,
+                                          total=total, result=result), payload)
+                            send(dict(id=req.get('id'), streamEvent='end', result=dict(total=total)))
+                        finally:
+                            session.source.release()
                         continue
                     result = session.handle(req)
                 payload = result.pop('_binary', None) if isinstance(result, dict) else None
@@ -1301,6 +1335,8 @@ def main():
                 payload = None
                 response = dict(id=req.get("id"), error=f"{type(exc).__name__}: {exc}")
             send(response, payload)
+            if session.source and req.get('op') != 'open':
+                session.source.release()
     finally:
         if session.source:
             session.source.close()

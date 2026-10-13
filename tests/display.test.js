@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange}=require('../media/display');
+const {autoLimits,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -84,6 +84,13 @@ test('frame reorder actions move the active entry without changing frame identit
   assert.deepEqual(reorderedEntries(entries,2,'first').map(([id])=>id),[2,1,3]);
   assert.deepEqual(reorderedEntries(entries,2,'last').map(([id])=>id),[1,3,2]);
   assert.deepEqual(entries.map(([id])=>id),[1,2,3]);
+});
+
+test('wheel panning follows ImageJ image-dimension steps',()=>{
+  assert.equal(imageJWheelPanDelta(100,0,1000),15);
+  assert.equal(imageJWheelPanDelta(-100,0,1000),-15);
+  assert.equal(imageJWheelPanDelta(3,1,100),3);
+  assert.equal(imageJWheelPanDelta(1,2,400),6);
 });
 
 test('Adjust slider bounds follow the current stack slice',()=>{

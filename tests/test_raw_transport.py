@@ -76,6 +76,27 @@ class RawTransportTests(unittest.TestCase):
                 if session.source:
                     session.source.close()
 
+    def test_release_closes_tiff_and_reopens_it_on_demand(self):
+        import tifffile
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'replaceable.tif'
+            tifffile.imwrite(path, np.arange(12, dtype=np.uint16).reshape(3, 4))
+            session = Session()
+            try:
+                session.handle({'op': 'open', 'path': str(path)})
+                self.assertFalse(session.source.released)
+                session.source.release()
+                self.assertTrue(session.source.released)
+                self.assertEqual(session.source.handles, [])
+                tifffile.imwrite(path, np.full((3, 4), 7, dtype=np.uint16))
+                preview = session.handle({'op': 'render', 'raw': True, 'binary': True,
+                                          'cuts': 'manual', 'low': 0, 'high': 10})
+                self.assertEqual(preview['dtype'], '<u2')
+                self.assertEqual(np.frombuffer(preview['_binary'], dtype=np.uint16).tolist(), [7] * 12)
+            finally:
+                if session.source:
+                    session.source.close()
+
 
 if __name__ == '__main__':
     unittest.main()
