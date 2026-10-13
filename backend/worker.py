@@ -187,7 +187,7 @@ class Source:
             self.raster_color = color
             shape = (count, h, w, 3) if color else (count, h, w)
             self._add(0, "Image", shape, "TYXS" if color else "TYX", self.file.mode)
-            self.warning = "PNG/JPEG/GIF are fully decoded on the server (one frame cached); only the preview crosses SSH."
+            self.warning = "PNG/JPEG/BMP/GIF are fully decoded on the server (one frame cached); only the preview crosses SSH."
         if not self.datasets:
             raise ValueError("No supported 2D image planes in this file")
 

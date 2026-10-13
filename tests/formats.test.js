@@ -15,6 +15,8 @@ test('takeover is case insensitive and user controlled', () => {
   assert.equal(isManaged('/data/SCIENCE.FITS', ['png']), false);
   assert.equal(isManaged('/data/notes.txt', ['txt']), false);
   assert.equal(isManaged('C:\\data\\scan.TIFF', ['.tiff']), true);
+  assert.equal(isManaged('C:\\data\\preview.BMP', ['bmp']), true);
+  assert.ok(manifest.contributes.configuration.properties['vivi.managedExtensions'].default.includes('bmp'));
 });
 
 test('unmanaged common media use Cursor native previews', () => {

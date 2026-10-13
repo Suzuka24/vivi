@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.38 (development build; not published)
+
+- Open BMP images with vivi by default, including uppercase `.BMP`, and cover lossless RGB BMP decoding with a fixed regression fixture.
+
 ## 0.7.37 (development build; not published)
 
 - Double-buffer streamed stacks in the browser so the next frame is received while the current frame is decoded and painted, while retaining ordered single-frame decoding and bounded memory use.

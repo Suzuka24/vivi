@@ -35,7 +35,7 @@ class FixtureTests(unittest.TestCase):
         return self.session.handle({'op': 'render', 'dataset': dataset, 'frame': frame, 'size': 128})
 
     def test_raster(self):
-        for name, kind in [('gray.png', 'raster'), ('color.jpg', 'raster')]:
+        for name, kind in [('gray.png', 'raster'), ('color.jpg', 'raster'), ('color.bmp', 'raster')]:
             with self.subTest(name=name):
                 info = self.open(name)
                 self.assertEqual(info['kind'], kind)
@@ -43,6 +43,11 @@ class FixtureTests(unittest.TestCase):
                 self.assertTrue(self.render()['png'])
         self.open('gray.png')
         self.assertEqual(self.pixel(), 131)
+
+    def test_bmp_preserves_rgb_pixels(self):
+        info = self.open('color.bmp')
+        self.assertEqual(info['datasets'][0]['shape'][-1], 3)
+        self.assertEqual(self.pixel(x=3, y=4), [24, 40, 64])
 
     def test_luts_and_zscale_on_fixed_image(self):
         self.open('plain.tif')
