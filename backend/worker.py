@@ -82,6 +82,46 @@ def rotate_image(image, options):
                           borderValue=(background,) * min(4, image.shape[-1]) if image.ndim == 3 else background)
 
 
+def preserved_stack_layout(dataset, plane):
+    """Return source-storage shape, axes, and target frames in storage order."""
+    storage_shape = list(dataset["storageShape"])
+    storage_y, storage_x = dataset["storageY"], dataset["storageX"]
+    storage_channel = dataset["labelToStorage"].get("c")
+    if storage_channel is None:
+        if plane.ndim != 2:
+            return None
+    elif (dataset["channel"] is None or storage_channel != len(storage_shape) - 1 or
+          plane.ndim != 3 or plane.shape[-1] != storage_shape[storage_channel]):
+        # A channel promoted to a stack axis, or a leading-channel source, is an
+        # intentional target-layout change and cannot be streamed back as YXS pages.
+        return None
+    storage_shape[storage_y], storage_shape[storage_x] = plane.shape[:2]
+    extra_storage = [index for index in range(len(storage_shape))
+                     if index not in (storage_y, storage_x, storage_channel)]
+    frame_by_coordinates = {}
+    for frame in range(dataset["frames"]):
+        indexes = storage_indices(dataset, frame, slice(None), slice(None))
+        coordinates = tuple(indexes[index] for index in extra_storage)
+        if any(not isinstance(value, int) for value in coordinates):
+            return None
+        frame_by_coordinates[coordinates] = frame
+    ordered_coordinates = np.ndindex(*(storage_shape[index] for index in extra_storage))
+    try:
+        frame_order = [frame_by_coordinates[coordinates] for coordinates in ordered_coordinates]
+    except KeyError:
+        return None
+    if len(frame_order) != dataset["frames"]:
+        return None
+    axes = dataset["axes"] if len(dataset.get("axes", "")) == len(storage_shape) else ""
+    if not axes:
+        labels = ["Q"] * len(storage_shape)
+        labels[storage_y], labels[storage_x] = "Y", "X"
+        if storage_channel is not None:
+            labels[storage_channel] = "S"
+        axes = "".join(labels)
+    return tuple(storage_shape), axes, frame_order
+
+
 class Source:
     def __init__(self, path, max_pixels=64_000_000, sequence_mode="2d",
                  sequence_size=None, axis_layouts=None):
@@ -804,14 +844,17 @@ class Session:
             try:
                 result = np.ascontiguousarray(result)
                 if req.get("preserveStack") and action in ("flipHorizontal", "flipVertical", "rotateLeft", "rotateRight", "rotate180", "rotate") and d["frames"] > 1:
-                    output_shape = list(d["shape"])
-                    output_shape[d["y"]], output_shape[d["x"]] = result.shape[:2]
-                    target_storage_order = [d["labelToStorage"][group[0]] for group in d["targetGroups"] if len(group) == 1]
-                    unchanged_layout = len(d["storageShape"]) == len(d["shape"]) and all(len(group) == 1 for group in d["targetGroups"]) and target_storage_order == list(range(len(d["storageShape"])))
-                    output_axes = d["axes"] if unchanged_layout and d["axes"] else \
-                        (("T" if len(d["extra"]) == 1 else "Q" * len(d["extra"])) + "YX" + ("S" if d["channel"] is not None else ""))
+                    stored_layout = preserved_stack_layout(d, result)
+                    if stored_layout:
+                        output_shape, output_axes, frame_order = stored_layout
+                    else:
+                        output_shape = list(d["shape"])
+                        output_shape[d["y"]], output_shape[d["x"]] = result.shape[:2]
+                        output_shape, frame_order = tuple(output_shape), range(d["frames"])
+                        output_axes = (("T" if len(d["extra"]) == 1 else "Q" * len(d["extra"])) +
+                                       "YX" + ("S" if d["channel"] is not None else ""))
                     def transformed_planes():
-                        for plane in range(d["frames"]):
+                        for plane in frame_order:
                             if plane == frame:
                                 yield result
                                 continue
@@ -822,12 +865,12 @@ class Session:
                             else: image = np.rot90(image, {"rotateLeft":1,"rotateRight":3,"rotate180":2}[action])
                             yield np.ascontiguousarray(image)
                     with tifffile.TiffWriter(destination, bigtiff=True) as writer:
-                        writer.write(transformed_planes(), shape=tuple(output_shape), dtype=result.dtype,
+                        writer.write(transformed_planes(), shape=output_shape, dtype=result.dtype,
                                      photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack",
                                      metadata={"axes": output_axes})
                 elif req.get("preserveStack") and not action.startswith("z") and action not in ("stackToRgb", "mergeChannels") and d["frames"] > 1:
-                    def retained_planes():
-                        for plane in range(d["frames"]):
+                    def retained_planes(planes):
+                        for plane in planes:
                             if plane == frame:
                                 yield result
                                 continue
@@ -846,11 +889,16 @@ class Session:
                             if image.shape != result.shape:
                                 raise ValueError("This operation changes the stack plane size incompatibly")
                             yield np.ascontiguousarray(image, dtype=result.dtype)
-                    output_shape = (d["frames"],) + result.shape
-                    output_axes = "TYXS" if result.ndim == 3 and result.shape[-1] in (3, 4) else "TYX"
+                    stored_layout = preserved_stack_layout(d, result)
+                    if stored_layout:
+                        output_shape, output_axes, frame_order = stored_layout
+                    else:
+                        output_shape = (d["frames"],) + result.shape
+                        output_axes = "TYXS" if result.ndim == 3 and result.shape[-1] in (3, 4) else "TYX"
+                        frame_order = range(d["frames"])
                     with tifffile.TiffWriter(destination, bigtiff=True) as writer:
-                        writer.write(retained_planes(), shape=output_shape, dtype=result.dtype,
-                                     photometric="rgb" if output_axes == "TYXS" else "minisblack",
+                        writer.write(retained_planes(frame_order), shape=output_shape, dtype=result.dtype,
+                                     photometric="rgb" if result.ndim == 3 and result.shape[-1] in (3, 4) else "minisblack",
                                      metadata={"axes": output_axes})
                 else:
                     tifffile.imwrite(destination, result, bigtiff=True,

@@ -232,6 +232,26 @@ class StackTests(unittest.TestCase):
         finally:
             os.unlink(result["path"])
 
+    def test_hyperstack_axes_survive_reordered_view_and_filter(self):
+        data = np.arange(2 * 3 * 4 * 5, dtype=np.float32).reshape(2, 3, 4, 5)
+        path = str(Path(self.directory.name) / "reordered-hyper.tif")
+        tifffile.imwrite(path, data, metadata={"axes": "QQYX"})
+        self.session.handle({"op": "open", "path": path, "axisLayouts": {"0": "v u h w"}})
+        result = self.session.handle({"op": "derive", "action": "smooth", "dataset": 0,
+                                      "frame": 4, "preserveStack": True})
+        try:
+            with tifffile.TiffFile(result["path"]) as transformed:
+                self.assertEqual(transformed.series[0].axes, "QQYX")
+                self.assertEqual(transformed.series[0].shape, data.shape)
+            actual = tifffile.imread(result["path"])
+            for u in range(2):
+                for v in range(3):
+                    if (u, v) != (0, 2):
+                        np.testing.assert_array_equal(actual[u, v], data[u, v])
+            self.assertFalse(np.array_equal(actual[0, 2], data[0, 2]))
+        finally:
+            os.unlink(result["path"])
+
     def test_split_rgb_channels_and_lut_preview(self):
         rgb = np.stack((self.data[0], self.data[0] + 100, self.data[0] + 200), axis=-1)
         path = str(Path(self.directory.name) / "rgb.tif")

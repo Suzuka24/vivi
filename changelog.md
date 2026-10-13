@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.39 (development build; not published)
+
+- Preserve original multidimensional TIFF shape and axes when stack transforms or in-place filters write their temporary working TIFF, including when display axes were folded or reordered.
+
 ## 0.7.38 (development build; not published)
 
 - Open BMP images with vivi by default, including uppercase `.BMP`, and cover lossless RGB BMP decoding with a fixed regression fixture.
