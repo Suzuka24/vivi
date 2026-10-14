@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.41 (development build; not published)
+
+- Make Shift-constrained editing of either straight-line endpoint use the same 45-degree direction steps as drawing a new line, including horizontal, vertical, and diagonal directions.
+
 ## 0.7.40 (development build; not published)
 
 - Release TIFF, FITS, raster, video, and image-sequence source handles immediately after a complete preview payload has been delivered, while reopening sources only for later backend operations.

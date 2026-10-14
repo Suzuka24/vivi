@@ -40,8 +40,10 @@ function constrainLineEndpoint(points,handle,pointer,shift=false){
   const result=points.map(point=>[...point]);
   if(!Number.isInteger(handle)||handle<0||handle>=result.length)return result;
   if(!shift||result.length!==2){result[handle]=[...pointer];return result;}
-  const fixed=result[1-handle],dx=Math.abs(pointer[0]-fixed[0]),dy=Math.abs(pointer[1]-fixed[1]);
-  result[handle]=dx>=dy?[pointer[0],fixed[1]]:[fixed[0],pointer[1]];
+  const fixed=result[1-handle],dx=pointer[0]-fixed[0],dy=pointer[1]-fixed[1],diagonal=Math.SQRT1_2;
+  const directions=[[1,0],[diagonal,diagonal],[0,1],[-diagonal,diagonal],[-1,0],[-diagonal,-diagonal],[0,-1],[diagonal,-diagonal]];
+  const direction=directions[(Math.round(Math.atan2(dy,dx)/(Math.PI/4))+8)%8],length=Math.hypot(dx,dy);
+  result[handle]=[fixed[0]+length*direction[0],fixed[1]+length*direction[1]];
   return result;
 }
 function pixelPoint(point,width,height){return [Math.max(0,Math.min(width-1,Math.round(point[0]))),Math.max(0,Math.min(height-1,Math.round(point[1])))];}

@@ -25,8 +25,13 @@ test('mouse points snap to pixels while specified geometry retains decimals', ()
   assert.ok(curve.length>3);
 });
 
-test('line endpoint editing keeps Shift horizontal or vertical like ImageJ', () => {
-  assert.deepEqual(roi.constrainLineEndpoint([[10,10],[20,20]],1,[31,13],true),[[10,10],[31,10]]);
-  assert.deepEqual(roi.constrainLineEndpoint([[10,10],[20,20]],0,[17,35],true),[[20,35],[20,20]]);
+test('line endpoint editing uses the same 45-degree Shift constraint as drawing', () => {
+  const constrained=(points,handle,pointer)=>roi.constrainLineEndpoint(points,handle,pointer,true).map(point=>roi.pixelPoint(point,100,100));
+  assert.deepEqual(constrained([[10,10],[20,20]],1,[31,13]),[[10,10],[31,10]]);
+  assert.deepEqual(constrained([[10,10],[20,20]],0,[17,35]),[[20,35],[20,20]]);
+  const diagonal=constrained([[10,10],[20,20]],1,[30,27])[1];
+  assert.equal(diagonal[0],diagonal[1]);
+  const reverse=constrained([[10,10],[20,20]],0,[2,3])[0];
+  assert.equal(reverse[0],reverse[1]);
   assert.deepEqual(roi.constrainLineEndpoint([[10,10],[20,20]],1,[31,13],false),[[10,10],[31,13]]);
 });

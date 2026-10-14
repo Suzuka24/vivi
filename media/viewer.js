@@ -1198,7 +1198,7 @@ function dragEditedSelection(e,point){
   const original=drag.original,center=!!(e.ctrlKey||e.metaKey),shift=e.shiftKey;
   if(drag.tool==='editHandle'){
     if(['roi','oval'].includes(original.type))selection.points=rectPoints(roiGeometry.resizeRect(drag.rect,drag.handle,point,{shift,center,aspect:e.altKey}));
-    else if(original.type==='line')selection.points=roiGeometry.constrainLineEndpoint(original.points,drag.handle,point,shift);
+    else if(original.type==='line')selection.points=roiGeometry.constrainLineEndpoint(original.points,drag.handle,point,shift).map(q=>roiGeometry.pixelPoint(q,dataset.width,dataset.height));
     else{selection.points=original.points.map(p=>[...p]);selection.points[drag.handle]=point;}
   }else{
     let dx=point[0]-drag.point[0],dy=point[1]-drag.point[1];
@@ -1255,7 +1255,7 @@ canvas.onpointermove=e=>{
     if(drag.tool==='pan'){cx=drag.cx-dx/drag.pixelsPerImage;cy=drag.cy-dy/drag.pixelsPerImage;clampCenter();commitFrameChange('view');scheduleRender(100);}
     else if(drag.tool==='contrast'){const span=Math.max(Number.MIN_VALUE,drag.high-drag.low),range=span*Math.exp(dy/150),middle=(drag.low+drag.high)/2-dx/300*span;$('cuts').value='manual';$('low').value=middle-range/2;$('high').value=middle+range/2;drawTransferCurve();commitFrameChange('bc');scheduleRender(100);}
     else if(selection){let end=roiGeometry.pixelPoint(p,dataset.width,dataset.height);if(['roi','oval'].includes(drag.tool))selection.points=rectPoints(roiGeometry.createRect(drag.point,end,{shift:e.shiftKey,center:e.ctrlKey||e.metaKey}));
-      else if(drag.tool==='line'&&e.shiftKey){const dx=end[0]-drag.point[0],dy=end[1]-drag.point[1],angle=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*Math.PI/4,length=Math.hypot(dx,dy);end=bounded([drag.point[0]+length*Math.cos(angle),drag.point[1]+length*Math.sin(angle)]);selection.points=[drag.point,end];}
+      else if(drag.tool==='line'&&e.shiftKey)selection.points=roiGeometry.constrainLineEndpoint([drag.point,end],1,end,true);
       else if(drag.tool==='freehand'||toolVariant==='freeline')selection.points.push(end);else selection.points=[drag.point,end];
       selection.points=selection.points.map(q=>roiGeometry.pixelPoint(q,dataset.width,dataset.height));
       $('region').textContent=selectionStatus(selection);commitFrameChange('selection');draw();}
