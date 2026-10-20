@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.43 (development build; not published)
+
+- Resolve the Explorer's default flexible columns to one shared set of pixel widths when entering an unconfigured directory, so long names cannot independently expand a row beyond the Name header.
+- Keep file labels clipped with an ellipsis inside the Name column from the first render.
+
 ## 0.7.42 (development build; not published)
 
 - Remember Explorer Name, Size, and Last modified column widths independently for up to 100 recently visited directories, restoring each directory's widths when it is revisited.

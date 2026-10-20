@@ -301,8 +301,14 @@ function selectColumnSort(column){sortMode=sortMode===`${column}Asc`?`${column}D
 function applyColumnWidths(){
   const table=$('fileTable');for(const key of columnKeys){table.style.removeProperty(`--column-${key}`);if(Number.isFinite(columnWidths[key]))table.style.setProperty(`--column-${key}`,`${columnWidths[key]}px`);}
 }
+function resolvedDefaultColumnWidths(){
+  const widths={};
+  for(const header of $('fileColumns').querySelectorAll('.file-column'))widths[header.dataset.column]=Math.max(columnMinimums[header.dataset.column],Math.round(header.getBoundingClientRect().width));
+  return widths;
+}
 function restoreColumnWidths(path){
-  columnWidths={...(columnWidthsByPath[path]||{})};applyColumnWidths();
+  const saved=columnWidthsByPath[path];columnWidths={...(saved||{})};applyColumnWidths();
+  if(!saved){columnWidths=resolvedDefaultColumnWidths();applyColumnWidths();}
 }
 function rememberColumnWidths(){
   if(!current)return;
