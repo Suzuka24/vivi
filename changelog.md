@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.42 (development build; not published)
+
+- Remember Explorer Name, Size, and Last modified column widths independently for up to 100 recently visited directories, restoring each directory's widths when it is revisited.
+- Make all three Explorer columns manually resizable and double-click autosizable.
+- Add `File > Header` with a movable, resizable, minimizable, pinnable window that displays every FITS HDU header and gives an explicit no-header message for other formats.
+
 ## 0.7.41 (development build; not published)
 
 - Make Shift-constrained editing of either straight-line endpoint use the same 45-degree direction steps as drawing a new line, including horizontal, vertical, and diagonal directions.

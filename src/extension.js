@@ -579,7 +579,7 @@ async function activate(context) {
           }
         } else if (msg.type === 'closeFrame') {
           removeFrame(msg.frameId,msg.retainRecentSeconds,false);
-        } else if (msg.type === 'request' && ['render','renderStack','pixel','measure','histogram','profile','stack','lutPreview','orthogonal'].includes(msg.op)) {
+        } else if (msg.type === 'request' && ['render','renderStack','pixel','measure','histogram','profile','stack','lutPreview','orthogonal','header'].includes(msg.op)) {
           const frame = frames.get(msg.fileFrame);
           if (!frame) throw new Error('Frame closed.');
           const args = { ...msg.args };

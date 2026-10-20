@@ -532,6 +532,14 @@ class Session:
         d = self.source.dataset(req.get("dataset", self.source.datasets[0]["id"]))
         frame = int(req.get("frame", 0))
         box = bounds(d, req.get("box"))
+        if op == "header":
+            if self.source.kind != "fits":
+                return {"available": False, "message": "No header information is available for this file."}
+            hdus = []
+            for index, hdu in enumerate(self.source.file):
+                hdus.append({"index": index, "name": hdu.name or "HDU",
+                             "text": hdu.header.tostring(sep="\n", endcard=False, padding=False)})
+            return {"available": True, "hdus": hdus}
         if op == "orthogonalDuplicate":
             import tifffile
             plane = req.get("plane")

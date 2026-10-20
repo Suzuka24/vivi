@@ -12,7 +12,7 @@ let openAsPath='';
 const setiTheme=window.ViviSetiTheme||{};
 const columnKeys=['name','size','date'];
 const columnMinimums={name:90,size:60,date:112};
-let columnWidths=vscode.getState()?.columnWidths||{};
+let columnWidthsByPath=vscode.getState()?.columnWidthsByPath||{},columnWidths={};
 let columnMeasureRequest=0;
 let keyboardShortcuts={previousFrame:'arrowup',nextFrame:'arrowdown',moveFrameUp:'shift+arrowup',moveFrameDown:'shift+arrowdown',moveFrameFirst:'ctrl+arrowup',moveFrameLast:'ctrl+arrowdown',toggleFrameDisplay:'d',play:'enter',previousSlice:'arrowleft',nextSlice:'arrowright',rename:'f2',toggleBC:'',autoCuts:'a',resetCuts:'s',stackAutoCuts:'shift+a',stackResetCuts:'shift+s'};
 const formatAdjust = window.ViviNumberFormat.formatNumber;
@@ -299,12 +299,22 @@ function updateColumnHeaders(){
 }
 function selectColumnSort(column){sortMode=sortMode===`${column}Asc`?`${column}Desc`:`${column}Asc`;list(current);}
 function applyColumnWidths(){
-  const table=$('fileTable');for(const key of columnKeys)if(Number.isFinite(columnWidths[key]))table.style.setProperty(`--column-${key}`,`${columnWidths[key]}px`);
+  const table=$('fileTable');for(const key of columnKeys){table.style.removeProperty(`--column-${key}`);if(Number.isFinite(columnWidths[key]))table.style.setProperty(`--column-${key}`,`${columnWidths[key]}px`);}
+}
+function restoreColumnWidths(path){
+  columnWidths={...(columnWidthsByPath[path]||{})};applyColumnWidths();
+}
+function rememberColumnWidths(){
+  if(!current)return;
+  const next={...columnWidthsByPath};delete next[current];next[current]={...columnWidths};
+  while(Object.keys(next).length>100)delete next[Object.keys(next)[0]];
+  columnWidthsByPath=next;
+  const {columnWidths:legacy,...state}=vscode.getState()||{};vscode.setState({...state,columnWidthsByPath});
 }
 function setColumnWidth(key,width){
   columnWidths={...columnWidths,[key]:Math.max(columnMinimums[key],Math.round(width))};
   $('fileTable').style.setProperty(`--column-${key}`,`${columnWidths[key]}px`);
-  vscode.setState({...vscode.getState(),columnWidths});
+  rememberColumnWidths();
 }
 function compactColumn(key){
   const requestId=++columnMeasureRequest;
@@ -451,7 +461,7 @@ window.addEventListener('message', ({data:message}) => {
   }
   if (message.type !== 'list') return;
   const append=message.path===current&&message.offset===entries.length&&message.offset>0;
-  const sameFolder=message.path===current;current=message.path;parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;if(!append&&!sameFolder){selectedPath=selectedChildByFolder.get(current)||'';selectedPaths=new Set(selectedPath?[selectedPath]:[]);selectionAnchor=selectedPath;}more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
+  const sameFolder=message.path===current;current=message.path;if(!append&&!sameFolder)restoreColumnWidths(current);parent=message.parent;offset=message.offset;entries=append?entries.concat(message.entries):message.entries;if(!append&&!sameFolder){selectedPath=selectedChildByFolder.get(current)||'';selectedPaths=new Set(selectedPath?[selectedPath]:[]);selectionAnchor=selectedPath;}more=!!message.more;loading=false;menuItems=message.menuItems||[];history=message.history||[];sortMode=message.sortMode||sortMode;showHidden=!!message.showHidden;
   $('path').value = current;
   $('pathHistory').disabled=!history.length;
   $('hidden').classList.toggle('selected',showHidden);$('hidden').setAttribute('aria-pressed',String(showHidden));$('hidden').title=showHidden?'Hide hidden files':'Show hidden files';$('hidden').setAttribute('aria-label',$('hidden').title);$('hidden').dataset.tip=$('hidden').title;

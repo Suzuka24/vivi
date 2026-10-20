@@ -97,6 +97,31 @@ class RawTransportTests(unittest.TestCase):
                 if session.source:
                     session.source.close()
 
+    def test_fits_header_and_no_header_message(self):
+        from astropy.io import fits
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as folder:
+            fits_path = Path(folder) / 'header.fits'
+            primary = fits.PrimaryHDU(np.ones((2, 3), dtype=np.float32))
+            primary.header['OBSERVER'] = 'vivi'
+            fits.HDUList([primary, fits.ImageHDU(np.zeros((2, 3), dtype=np.int16), name='SCI')]).writeto(fits_path)
+            session = Session()
+            try:
+                session.handle({'op': 'open', 'path': str(fits_path)})
+                result = session.handle({'op': 'header'})
+                self.assertTrue(result['available'])
+                self.assertEqual([hdu['name'] for hdu in result['hdus']], ['PRIMARY', 'SCI'])
+                self.assertIn("OBSERVER= 'vivi", result['hdus'][0]['text'])
+                png_path = Path(folder) / 'plain.png'
+                Image.fromarray(np.zeros((2, 3), dtype=np.uint8)).save(png_path)
+                session.handle({'op': 'open', 'path': str(png_path)})
+                result = session.handle({'op': 'header'})
+                self.assertFalse(result['available'])
+                self.assertIn('No header', result['message'])
+            finally:
+                if session.source:
+                    session.source.close()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -3,7 +3,7 @@
 // First and second menu levels only. Submenu contents follow their parent toggle.
 const menuPaths = [
   'File', 'File > New', 'File > Open…', 'File > Open Recent', 'File > Import',
-  'File > Close Frame', 'File > Save As', 'File > Revert', 'File > Print…',
+  'File > Close Frame', 'File > Header', 'File > Save As', 'File > Revert', 'File > Print…',
   'Edit', 'Edit > Undo', 'Edit > Redo', 'Edit > Cut', 'Edit > Copy',
   'Edit > Paste', 'Edit > Clear Selection', 'Edit > Selection', 'Edit > Options',
   'Image', 'Image > Type', 'Image > Adjust', 'Image > Color', 'Image > Stacks',

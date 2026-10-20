@@ -1287,6 +1287,15 @@ const variants={roi:[['Rectangle','roi'],['Rounded Rectangle','rounded']],oval:[
 function showToolVariants(event,tool){setTool(tool);showPopup($('toolPopup'),event,variants[tool].map(([label,value])=>[label,()=>{toolVariant=value;toolVariants[tool]=value;const button=$(tools.find(([,kind])=>kind===tool)[0]);button.dataset.shortcutBase=label;updateShortcutTips();} ]));}
 for(const button of document.querySelectorAll('[data-variant-for]'))button.onclick=e=>showToolVariants(e,button.dataset.variantFor);
 for(const [id,tool] of tools)if(variants[tool])$(id).oncontextmenu=e=>showToolVariants(e,tool);
+$('fileHeader').onclick=async()=>{
+  const frameId=activeFileFrame,state=fileFrames.get(frameId),name=state?.metadata?.label||state?.metadata?.path?.split(/[\\/]/).pop()||'Image';
+  const dialog=openDialog('header',`Header · ${escapeHtml(name)}`,'<pre class="header-content">Loading header…</pre>'),content=dialog.querySelector('.header-content');
+  dialog.querySelector('.dialog-head strong').textContent=`Header · ${name}`;content.textContent='Loading header…';
+  try{
+    const result=await request('header',{},false,frameId);
+    content.textContent=result.available?(result.hdus||[]).map(hdu=>`HDU ${hdu.index}: ${hdu.name}\n${hdu.text}`).join('\n\n'):(result.message||'No header information is available for this file.');
+  }catch(error){content.textContent=error.message;showError(error);}
+};
 $('cmap').replaceChildren();
 for(const [value,label] of lutOptions){const option=document.createElement('option');option.value=value;option.textContent=label;$('cmap').append(option);}
 for(const button of document.querySelectorAll('.tool-button')) button.dataset.tip=button.title;
