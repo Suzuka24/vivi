@@ -1,47 +1,101 @@
-# 安装、Remote SSH 与故障排查
+# 安装、Python 环境、Remote SSH 与故障排查
+
+[English](installation.en.md) · [使用指南](usage.md) · [加载与传输](loading-and-transport.md)
 
 ## 环境要求
 
-- 桌面版 VS Code 或 Cursor。vivi 是工作区扩展，读取文件的主机就是工作区扩展主机。
-- 每台需要读取图像的主机上有 Python 3.10 或更新版本。
-- 在 `vivi.pythonPath` 指向的 Python 环境中安装 [`backend/requirements.txt`](../backend/requirements.txt) 所列依赖。视频预览还需要 OpenCV 支持对应的编解码器。
-- 主机有足够的磁盘空间存放生成的 TIFF 结果，也有足够内存容纳所设的预览缓存。原始文件留在主机上读取，编辑器连接只传输预览。
+- 桌面版 VS Code 或 Cursor；浏览器版不支持本机 Python 和 Node.js worker。
+- 每台实际读取图像的扩展主机上安装 Python 3.10 或更新版本。
+- `vivi.pythonPath` 指向的 Python 环境中安装 [`backend/requirements.txt`](../backend/requirements.txt) 的全部依赖，包括 NumPy、Pillow、Astropy、tifffile、Zarr 2、numcodecs、imagecodecs、OpenCV 和 zfpy。
+- 足够的主机内存和客户端 Webview 内存容纳完整预览。vivi 当前不对 stack 设置预览尺寸或总缓存预算。
 
-vivi 不内置 Python，也不会自动安装 Python 依赖。由于使用本机 Python 与 Node.js API，不支持浏览器版 VS Code。
+vivi 不内置 Python，也不会自动安装 Python 包。源文件在扩展主机读取；Remote SSH 时只把预览和结果传到本机。
 
 ## 安装扩展
 
-公开上架后，在 VS Code 或 Cursor 的扩展页面搜索发布者 **Suzuka24** 的 **vivi** 并安装。上架之前，可克隆本仓库，运行 `pnpm install`、`pnpm run package`，然后选择 **扩展 → … → 从 VSIX 安装**，选中 `vivi-*.vsix`。
+公开上架后，可在 VS Code/Cursor 扩展页面搜索发布者 **Suzuka24** 的 **vivi**。开发版可从仓库构建：
 
-使用 Remote SSH 时，在扩展页面选择安装到 **SSH: [服务器名]**。Python worker 在远端扩展主机运行；只在笔记本安装 vivi，无法直接访问远端文件。
+```bash
+pnpm install
+pnpm run package
+```
+
+然后选择 **扩展 → … → 从 VSIX 安装**，选中 `vivi-*.vsix`。
+
+Remote SSH 窗口中，要在扩展页面选择 **安装到 SSH: [服务器名]**。只在笔记本安装无法让远端扩展主机读取服务器路径。
 
 ## 安装 Python 后端
 
-在 vivi 即将运行的主机上执行以下命令。本地工作区在本机运行；Remote SSH 工作区在服务器上运行。进入仓库根目录后：
+在 vivi 将运行的主机执行：
 
 ```bash
 python3 -m venv ~/.venvs/vivi
+~/.venvs/vivi/bin/python -m pip install --upgrade pip
 ~/.venvs/vivi/bin/python -m pip install -r backend/requirements.txt
 ```
 
-如果是从商店安装、没有克隆仓库，请先从[源码仓库](https://github.com/Suzuka24/vivi/blob/main/backend/requirements.txt)下载 requirements 文件。Windows 可用 `py -3 -m venv .venv`，然后使用虚拟环境中的 `Scripts/python.exe`。
+Windows 示例：
 
-在 VS Code/Cursor 设置中将 `vivi.pythonPath` 设为该解释器的绝对路径。macOS/Linux 默认值是 `python3`，Windows 默认值是 `python`。在 Remote SSH 窗口中，应在 **远端 [SSH 主机]** 设置写入远端 Python 路径；本机和远端可以使用不同配置。随后从命令面板运行 **vivi: Check Python Backend**。若检查失败，查看 **vivi** Output 通道。
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
+商店或 VSIX 安装没有源码工作区时，可从[源码仓库](https://github.com/Suzuka24/vivi/blob/main/backend/requirements.txt)下载 requirements 文件。
+
+## 选择 Python 解释器
+
+在设置中搜索 **Vivi: Python Path**。`vivi.pythonPath` 默认留空，此时依次尝试旧版 `imageViewer.pythonPath`，然后尝试系统 `python3`（Windows 为 `python`）。为了避免不同终端、Conda 或 Remote SSH 会话使用不同解释器，建议填写绝对路径，例如：
+
+```text
+/Users/name/.venvs/vivi/bin/python
+/home/name/.venvs/vivi/bin/python
+C:\Users\name\venvs\vivi\Scripts\python.exe
+```
+
+设置作用域很重要：
+
+- **用户**：本地所有窗口；
+- **远程 [SSH: host]**：只作用于该服务器的扩展主机；
+- **工作区**：只作用于当前项目，并可能覆盖用户/远程值。
+
+服务器上的下拉框为空不代表 vivi 没有 Python；它表示当前作用域没有显式路径，vivi 会尝试 fallback。服务器终端中的 `conda env list` 只显示 Conda 环境，不会显示通过 `python -m venv` 创建的 `~/.venvs/vivi`。
+
+配置后运行命令面板中的 **vivi: Check Python Backend**。它会显示实际解释器、Python 版本和依赖导入结果。修改路径或安装依赖后运行 **Developer: Reload Window**。
+
+## Remote SSH 工作方式
+
+本地和每台服务器都独立安装扩展和 Python 依赖：
+
+1. 本地窗口使用本机 `vivi.pythonPath`；
+2. `SSH: hyh-batchcom2` 使用该远程作用域中的路径；
+3. 另一台 SSH 主机有自己的扩展和设置，不能继承前一台服务器的环境。
+
+如果本地可打开而某服务器报 `ModuleNotFoundError`，通常是该服务器选中的 Python 缺依赖。用诊断输出中的**同一个解释器**执行：
+
+```bash
+/path/to/python -m pip install -r backend/requirements.txt
+/path/to/python -c "import numpy, tifffile, zarr, imagecodecs, astropy"
+```
 
 ## 从开发版升级
 
-0.6.1 起发布者从 `local-science` 改为 `Suzuka24`。`local-science.vivi` 与 `Suzuka24.vivi` 是两个独立的扩展 ID。在本机和需要使用的远端都安装新版，然后卸载旧版，避免出现两个 vivi Explorer 或编辑器注册冲突。`vivi.*` 设置键不变。安装或升级后重新加载编辑器窗口。
+0.6.1 起发布者从 `local-science` 改为 `Suzuka24`。`local-science.vivi` 和 `Suzuka24.vivi` 是两个不同扩展 ID。请在每个本地/远程主机安装新版，卸载旧版，然后重载窗口。`vivi.*` 设置键保持不变。
 
 ## 故障排查
 
-- **看不到 vivi 图标或查看器：** 检查扩展是否安装并启用在正确的本机/远端，然后执行 **Developer: Reload Window**。
-- **Python 进程退出或缺包：** 运行 **vivi: Check Python Backend**，确认 `vivi.pythonPath` 指向的解释器能够导入依赖，并查看 **vivi** Output 通道。
-- **找不到远端路径：** 确认窗口已通过 Remote SSH 连接，而且 vivi 安装在该 SSH 主机。Explorer 中的路径属于扩展主机。
-- **大图移动或切片切换较慢：** FITS/TIFF 通常按区域读取；PNG/JPEG/BMP/GIF 和视频可能需要完整解码。默认像素以原始 dtype 的字节传输，可用 `vivi.losslessCompression` 切换可逆压缩，或为足够大的浮点文件开启 `vivi.lossyCompression`。ZFP 方法需要本环境安装 `zfpy`（已列入 requirements）。`vivi.maxDecodedPixels` 仍保护需要完整解码的格式。
-- **视频无法打开：** 远端 OpenCV 可能缺少对应的编解码器。可先测试支持的图像格式，或在该主机补齐编解码器。
+- **没有 vivi 图标或查看器：**确认扩展安装在当前本地/远程主机且已启用，然后运行 **Developer: Reload Window**。
+- **设置中找不到 `vivi.pythonPath`：**确认当前启用的是 `Suzuka24.vivi`，在设置搜索 `@ext:Suzuka24.vivi python`，并检查用户、远程和工作区三个标签。
+- **`ModuleNotFoundError: zarr` 或其他模块：**当前解释器没有完整安装 requirements。不要只在另一个终端环境中安装；使用诊断显示的绝对 Python 路径执行 pip。
+- **远端路径被当成本地路径：**确认当前窗口已连接 Remote SSH，且 vivi 安装在该 SSH 主机。
+- **TIFF axes 或 Zarr 相关错误：**requirements 固定兼容的 `tifffile==2025.3.30`、`zarr==2.18.3`；混装 Zarr 3 或不同 tifffile 可能改变 axes 行为，建议在独立 venv 中重装。
+- **大型图像很慢：**查看 **输出 → vivi** 的阶段计时。TIFF/FITS 通常支持区域/页面读取；PNG/JPEG/BMP/GIF/视频可能整帧解码。可按网络与误差要求调整无损/有损设置。
+- **视频打不开：**远端 OpenCV build 可能缺 codec；尝试受支持图像或在该主机安装兼容 codec。
+- **请求超时：**提高 `vivi.requestTimeoutSeconds` 后重新打开；超时会停止 worker。
 
-报告可复现的问题时，请参阅 [SUPPORT.md](../SUPPORT.md)。
+提交可复现问题前请参阅 [SUPPORT.md](../SUPPORT.md)。
 
 ## 卸载
 
-从每台安装过的主机卸载 `Suzuka24.vivi`。虚拟环境和用户数据文件仍留在主机上，如不再需要请自行移除。卸载扩展不会删除原始图像。
+在每个安装过的本地或 Remote SSH 主机卸载 `Suzuka24.vivi`。Python venv 和数据文件不会自动删除；不再需要时单独移除。vivi 卸载不会删除源图像。

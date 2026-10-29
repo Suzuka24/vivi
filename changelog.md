@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.44 (development build; not published)
+
+- Refresh the English and Chinese README, usage, installation, and ImageJ coverage documentation for the complete 0.7.x feature set.
+- Add dedicated bilingual references for every active default keyboard shortcut, mouse gesture, Explorer input, and the large-file loading, compression, streaming, cancellation, and cache pipeline.
+- Expose `File > Header` in the Settings UI menu-visibility checklist, matching the existing command and quick-pick configuration.
+
 ## 0.7.43 (development build; not published)
 
 - Resolve the Explorer's default flexible columns to one shared set of pixel widths when entering an unconfigured directory, so long names cannot independently expand a row beyond the Name header.

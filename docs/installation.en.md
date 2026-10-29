@@ -1,47 +1,101 @@
-# Installation, Remote SSH, and troubleshooting
+# Installation, Python, Remote SSH, and troubleshooting
+
+[中文](installation.md) · [Usage](usage.en.md) · [Loading and transport](loading-and-transport.en.md)
 
 ## Requirements
 
-- A desktop installation of VS Code or Cursor. vivi is a workspace extension and uses the host where the workspace extension host runs.
-- Python 3.10 or newer on each host where you want to read images.
-- The packages listed in [`backend/requirements.txt`](../backend/requirements.txt), installed in the Python environment selected by `vivi.pythonPath`. A video codec supported by OpenCV is needed for the corresponding video files.
-- Enough host disk space for generated TIFF results and enough host memory for the selected preview cache. The original file is read on the host; previews travel through the editor connection.
+- Desktop VS Code or Cursor; browser editions cannot run the local Python and Node.js workers.
+- Python 3.10 or newer on every extension host that reads images.
+- Every package in [`backend/requirements.txt`](../backend/requirements.txt) installed in the interpreter selected by `vivi.pythonPath`, including NumPy, Pillow, Astropy, tifffile, Zarr 2, numcodecs, imagecodecs, OpenCV, and zfpy.
+- Enough host and client Webview memory for complete previews. vivi currently has no stack preview-size or total-cache budget.
 
-vivi does not include Python or install its Python dependencies. It does not support VS Code for the Web because its worker uses local Python and Node.js APIs.
+vivi does not bundle Python or install Python packages automatically. Source files are read on the extension host; Remote SSH sends only previews and results to the client.
 
 ## Install the extension
 
-When the public listings are available, search for **vivi** by publisher **Suzuka24** in VS Code or Cursor Extensions and choose **Install**. Until then, clone this repository, run `pnpm install` and `pnpm run package`, then choose **Extensions → … → Install from VSIX…** and select `vivi-*.vsix`.
+When a public listing is available, search Extensions for **vivi** by publisher **Suzuka24**. To build a development VSIX:
 
-For a Remote SSH workspace, install the extension **in SSH: [your host]** in the Extensions view. The remote extension host runs the Python worker; installing vivi only on your laptop does not enable remote file access.
+```bash
+pnpm install
+pnpm run package
+```
+
+Then choose **Extensions → … → Install from VSIX…** and select `vivi-*.vsix`.
+
+In Remote SSH, choose **Install in SSH: [host]**. Installing only on the laptop does not allow the remote extension host to read server paths.
 
 ## Install the Python backend
 
-Run these commands on the host where vivi will run (locally for local workspaces, remotely for Remote SSH). In the repository root:
+Run on the host where vivi will execute:
 
 ```bash
 python3 -m venv ~/.venvs/vivi
+~/.venvs/vivi/bin/python -m pip install --upgrade pip
 ~/.venvs/vivi/bin/python -m pip install -r backend/requirements.txt
 ```
 
-If you installed from a marketplace rather than cloning the repository, download the requirements file from the [source repository](https://github.com/Suzuka24/vivi/blob/main/backend/requirements.txt) first. Windows users can create a virtual environment with `py -3 -m venv .venv` and use its `Scripts/python.exe`.
+Windows example:
 
-Set `vivi.pythonPath` to the absolute path of that interpreter in VS Code/Cursor Settings. The default is `python3` on macOS/Linux or `python` on Windows. Open a Remote SSH window and set the value in **Remote [SSH host]** settings for the remote interpreter; local and remote settings may differ. Run **vivi: Check Python Backend** from the Command Palette and inspect the **vivi** Output channel if the check reports an error.
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
+If a marketplace or VSIX install has no source checkout, download the requirements file from the [source repository](https://github.com/Suzuka24/vivi/blob/main/backend/requirements.txt).
+
+## Select the Python interpreter
+
+Search Settings for **Vivi: Python Path**. `vivi.pythonPath` defaults to empty, which tries legacy `imageViewer.pythonPath` and then system `python3` (`python` on Windows). An absolute path avoids differences between terminals, Conda activation, and Remote SSH sessions:
+
+```text
+/Users/name/.venvs/vivi/bin/python
+/home/name/.venvs/vivi/bin/python
+C:\Users\name\venvs\vivi\Scripts\python.exe
+```
+
+Settings scope matters:
+
+- **User** affects local windows;
+- **Remote [SSH: host]** affects that server's extension host;
+- **Workspace** affects one project and may override User/Remote values.
+
+An empty selector on a server does not mean no Python exists; it means that scope has no explicit path and vivi will try its fallbacks. `conda env list` shows Conda environments only, not a `python -m venv` environment such as `~/.venvs/vivi`.
+
+Run **vivi: Check Python Backend** after configuration. It reports the actual interpreter, Python version, and dependency imports. Run **Developer: Reload Window** after changing the path or packages.
+
+## Remote SSH model
+
+The local machine and every server independently need the extension and Python dependencies:
+
+1. a local window uses local `vivi.pythonPath`;
+2. `SSH: hyh-batchcom2` uses that Remote scope;
+3. another SSH host has separate extension state and settings.
+
+If local works but one server reports `ModuleNotFoundError`, the interpreter selected on that server is missing a package. Use the **same absolute interpreter** shown by diagnostics:
+
+```bash
+/path/to/python -m pip install -r backend/requirements.txt
+/path/to/python -c "import numpy, tifffile, zarr, imagecodecs, astropy"
+```
 
 ## Upgrade from development builds
 
-Version 0.6.1 changes the extension publisher from `local-science` to `Suzuka24`. The resulting extension IDs, `local-science.vivi` and `Suzuka24.vivi`, are separate installations. Install the new package on each relevant host, then uninstall `local-science.vivi` to avoid two vivi Explorer views or conflicting editor registrations. Configuration keys beginning with `vivi.` are unchanged. Reload the editor window after installation or upgrade.
+Version 0.6.1 changes the publisher from `local-science` to `Suzuka24`. `local-science.vivi` and `Suzuka24.vivi` are different extension IDs. Install the new build on every local/remote host, uninstall the old one, and reload. Existing `vivi.*` setting keys are unchanged.
 
 ## Troubleshooting
 
-- **No vivi icon or viewer:** confirm the extension is enabled on the correct local/remote host, then run **Developer: Reload Window**.
-- **Python process exits or a module is missing:** run **vivi: Check Python Backend** and verify the exact interpreter configured in `vivi.pythonPath` can import the packages. Review the **vivi** Output channel.
-- **Remote path opens locally or cannot be found:** check that the current window is connected through Remote SSH and that vivi is installed on that SSH host. Explorer paths refer to the extension host filesystem.
-- **Large image takes time to pan or scrub:** FITS and TIFF normally use host-side region reads; PNG/JPEG/BMP/GIF and video may require full decoding. Preview pixels retain the source dtype by default. `vivi.losslessCompression` toggles reversible compression, and `vivi.lossyCompression` can reduce transfers for sufficiently large floating-point files. The ZFP option requires `zfpy`, included in the requirements. `vivi.maxDecodedPixels` still guards formats requiring full-frame decoding.
-- **A video does not open:** its codec may not be available in the remote OpenCV build. Try a supported image or install a compatible codec on that host.
+- **No vivi icon or viewer:** confirm the extension is installed and enabled on the current local/remote host, then run **Developer: Reload Window**.
+- **Cannot find `vivi.pythonPath`:** confirm `Suzuka24.vivi` is enabled, search Settings for `@ext:Suzuka24.vivi python`, and inspect User, Remote, and Workspace tabs.
+- **`ModuleNotFoundError: zarr` or another package:** the selected interpreter lacks the complete requirements. Install with the absolute interpreter from diagnostics, not whichever environment happens to be active in another terminal.
+- **Remote path opens locally:** confirm the window is connected through Remote SSH and vivi is installed on that SSH host.
+- **TIFF axes or Zarr error:** requirements pin compatible `tifffile==2025.3.30` and `zarr==2.18.3`. Mixing Zarr 3 or another tifffile can change axes behavior; reinstall in a dedicated venv.
+- **Large image is slow:** inspect **Output → vivi** stage timings. TIFF/FITS usually support region/page reads; PNG/JPEG/BMP/GIF/video may require full decoding. Adjust lossless/lossy settings according to bandwidth and error requirements.
+- **Video does not open:** the remote OpenCV build may lack its codec.
+- **Request timeout:** increase `vivi.requestTimeoutSeconds` and reopen; timeout stops the worker.
 
-For reproducible bugs, see [SUPPORT.md](../SUPPORT.md).
+See [SUPPORT.md](../SUPPORT.md) before reporting a reproducible issue.
 
 ## Uninstall
 
-Uninstall `Suzuka24.vivi` from each host on which it was installed. The virtual environment and any data files remain on the host; remove them separately if you no longer need them. vivi does not delete source images when uninstalled.
+Uninstall `Suzuka24.vivi` from every local or Remote SSH host where it was installed. Python environments and data remain and must be removed separately. Uninstalling vivi never deletes source images.
