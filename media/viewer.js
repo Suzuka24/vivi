@@ -470,7 +470,7 @@ async function lutTable(name){
 async function recolorEntry(entry,args){
   if(!entry.raw)return;
   const paintVersion=entry.paintVersion=(entry.paintVersion||0)+1;
-  const limits=args.cuts==='manual'?[args.low,args.high]:args.cuts===entry.baseMode?entry.baseLimits:autoLimits(entry.raw,entry.channels,args.cuts);
+  const limits=args.cuts==='manual'?[args.low,args.high]:args.cuts===entry.baseMode?entry.baseLimits:autoLimits(entry.raw,entry.channels,args.cuts,entry.result.width,entry.result.height);
   const [low,high]=limits;
   const colorKey=JSON.stringify([low,high,args.stretch,args.cmap,args.invert,args.threshold]);
   if(entry.image&&entry.colorKey===colorKey)return;
@@ -825,7 +825,7 @@ function applyAutoCuts(mode){
   }else{
     const samples=[];
     forEachSelectionPixel(entry,Infinity,(offset,channels)=>{for(let channel=0;channel<channels;channel++)samples.push(Number(entry.raw[offset+channel]));});
-    [low,high]=autoLimits(samples,entry.channels,mode);
+    [low,high]=autoLimits(samples,entry.channels,mode,Math.max(1,Math.floor(samples.length/entry.channels)),1);
   }
   applyCutLimits(low,high);
 }
@@ -852,7 +852,7 @@ function applyStackAutoCuts(mode){
     for(const entry of entries)forEachSelectionPixel(entry,Infinity,(offset,entryChannels)=>{
       for(let channel=0;channel<entryChannels;channel++)samples.push(Number(entry.raw[offset+channel]));
     });
-    [low,high]=autoLimits(samples,channels,mode);
+    [low,high]=autoLimits(samples,channels,mode,Math.max(1,Math.floor(samples.length/channels)),1);
   }
   applyCutLimits(low,high);
 }

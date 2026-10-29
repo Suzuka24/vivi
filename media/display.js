@@ -206,7 +206,59 @@ function imageJResetLimits(raw,channels,kind='float'){
   return channels>1||kind==='byte'?[0,255]:autoLimits(raw,channels,'minmax');
 }
 
-function autoLimits(raw, channels, mode) {
+function ds9ZScale(raw,channels=1,width=Math.floor(raw.length/channels),height=1,contrast=.25,sampleSize=600,pixelsPerLine=120){
+  width=Math.max(1,Math.floor(width));height=Math.max(1,Math.floor(height));
+  const wantedPerLine=Math.max(1,Math.min(width,pixelsPerLine));
+  const columnStep=Math.max(2,Math.floor((width+wantedPerLine-1)/wantedPerLine));
+  const actualPerLine=Math.max(1,Math.floor((width+columnStep-1)/columnStep));
+  const minimumLines=Math.max(1,Math.floor(sampleSize/pixelsPerLine));
+  const wantedLines=Math.max(minimumLines,Math.min(height,Math.floor((sampleSize+actualPerLine-1)/actualPerLine)));
+  const lineStep=Math.max(2,Math.floor(height/wantedLines)),values=[];
+  for(let line=Math.floor((lineStep+1)/2);line<height+1;line+=lineStep){
+    const row=line-1;
+    for(let x=0;x<width;x+=columnStep){const value=displayPixelValue(raw,(row*width+x)*channels,channels);if(Number.isFinite(value))values.push(Math.fround(value));}
+  }
+  if(!values.length)for(let index=0;index<raw.length;index+=channels){const value=displayPixelValue(raw,index,channels);if(Number.isFinite(value))values.push(Math.fround(value));}
+  if(!values.length)return [0,1];
+  values.sort((a,b)=>a-b);
+  const count=values.length,minimum=values[0],maximum=values[count-1];
+  if(count===1||maximum<=minimum)return [minimum,maximum];
+  const center=Math.max(1,Math.floor((count+1)/2)),left=center-1;
+  const median=count%2||center>=count?values[left]:(values[left]+values[left+1])/2;
+  const xscale=2/(count-1),x=new Float64Array(count),bad=new Int8Array(count);
+  let sumX2=0,sumXZ=0,sumX=0,sumZ=0;
+  for(let index=0;index<count;index++){const xv=index*xscale-1;x[index]=xv;sumX2+=xv*xv;sumXZ+=values[index]*xv;sumZ+=values[index];}
+  let intercept=sumZ/count,slope=sumXZ/sumX2,good=count;
+  const minimumGood=Math.max(5,Math.floor(count*.5)),grow=Math.max(1,Math.floor(count*.01+.5));
+  for(let iteration=0;iteration<5;iteration++){
+    const previous=good,residual=new Float64Array(count);let acceptedCount=0,acceptedSum=0,acceptedSquareSum=0;
+    for(let index=0;index<count;index++){
+      const item=values[index]-(x[index]*slope+intercept);residual[index]=item;
+      if(bad[index]===0){acceptedCount++;acceptedSum+=item;acceptedSquareSum+=item*item;}
+    }
+    let sigma=0;
+    if(acceptedCount>1){const variance=acceptedSquareSum/(acceptedCount-1)-acceptedSum*acceptedSum/(acceptedCount*(acceptedCount-1));sigma=Math.sqrt(Math.max(0,variance));}
+    const threshold=sigma*2.5;good=count;
+    for(let index=0;index<count;index++){
+      if(bad[index]===1){good--;continue;}
+      if(residual[index]<-threshold||residual[index]>threshold){
+        for(let neighbor=Math.max(0,index-grow);neighbor<Math.min(count,index+grow);neighbor++){
+          if(bad[neighbor]===1)continue;
+          if(neighbor<=index){const xv=x[neighbor],zv=values[neighbor];sumX2-=xv*xv;sumXZ-=zv*xv;sumX-=xv;sumZ-=zv;bad[neighbor]=1;good--;}
+          else bad[neighbor]=2;
+        }
+      }
+    }
+    if(good>0&&sumX2){const rowRatio=sumX/sumX2,denominator=good-rowRatio*sumX;if(denominator){intercept=(sumZ-rowRatio*sumXZ)/denominator;slope=(sumXZ-intercept*sumX)/sumX2;}}
+    if(good>=previous||good<minimumGood)break;
+  }
+  if(good<minimumGood)return [minimum,maximum];
+  let fittedSlope=slope*xscale;if(contrast>0)fittedSlope/=contrast;
+  const low=Math.max(minimum,median-(center-1)*fittedSlope),high=Math.min(maximum,median+(count-center)*fittedSlope);
+  return high>low?[low,high]:[minimum,maximum];
+}
+
+function autoLimits(raw, channels, mode, width=Math.floor(raw.length/channels), height=1) {
   if(mode==='minmax'){
     let low=Infinity,high=-Infinity;
     for(let i=0;i<raw.length;i+=channels){
@@ -215,6 +267,7 @@ function autoLimits(raw, channels, mode) {
     }
     return Number.isFinite(low)?[low,high]:[0,1];
   }
+  if(mode==='zscale')return ds9ZScale(raw,channels,width,height);
   const values=[];
   const stride=Math.max(1,Math.floor(raw.length/channels/262144));
   for(let i=0;i<raw.length;i+=stride*channels){
@@ -225,14 +278,7 @@ function autoLimits(raw, channels, mode) {
   values.sort((a,b)=>a-b);
   if(values.length===1)return [values[0],values[0]+Math.max(1,Math.abs(values[0])*1e-6)];
   const pick=p=>{const index=p*(values.length-1),lo=Math.floor(index),t=index-lo;return values[lo]*(1-t)+values[Math.min(values.length-1,lo+1)]*t;};
-  let low,high;
-  if(mode==='zscale'){
-    const first=Math.floor(values.length*.25),last=Math.ceil(values.length*.75),slope=(values[last]-values[first])/Math.max(1,last-first),middle=pick(.5);
-    low=Math.max(values[0],middle-slope*values.length/4);high=Math.min(values.at(-1),middle+slope*values.length/4);
-  }else{
-    const coverage={p90:90,p95:95,p99:99,p999:99.9,percentile:99}[mode]??99;
-    low=pick((100-coverage)/200);high=pick((100+coverage)/200);
-  }
+  const low=pick(.005),high=pick(.995);
   return high>low?[low,high]:[low,low+Math.max(1,Math.abs(low)*1e-6)];
 }
 
@@ -334,6 +380,6 @@ async function consumeDoubleBuffered(source,consume){
   }
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
-if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,ds9ZScale,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
+if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,ds9ZScale,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
 })();

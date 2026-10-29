@@ -13,6 +13,7 @@ import zlib
 import numpy as np
 from PIL import Image, ImageDraw
 from axis_layout import make_layout, storage_indices
+from ds9_zscale import ds9_zscale
 from luts import apply_lut
 from lossy_preview import encode_lossy
 
@@ -1197,13 +1198,9 @@ class Session:
             elif not sample.size:
                 low, high = 0., 1.
             elif mode == "zscale":
-                from astropy.visualization import ZScaleInterval
-                low, high = map(float, ZScaleInterval().get_limits(sample))
+                low, high = ds9_zscale(data)
             elif mode == "minmax":
                 low, high = float(sample.min()), float(sample.max())
-            elif mode in ("p90", "p95", "p99", "p999"):
-                coverage = {"p90": 90, "p95": 95, "p99": 99, "p999": 99.9}[mode]
-                low, high = map(float, np.percentile(sample, [(100 - coverage) / 2, (100 + coverage) / 2]))
             else:
                 low, high = map(float, np.percentile(sample, [0.5, 99.5]))
             if high <= low:

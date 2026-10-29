@@ -75,6 +75,8 @@ The second toolbar row appears only when the current Frame has extra axes. It co
 
 A loading Frame shows a spinner in Layout. In HTTP mode, closing that row aborts the transfer and backend request. A completed stack appears atomically after every slice is constructed. See [loading and transport](loading-and-transport.en.md).
 
+Adjust keeps only automatic-range modes with distinct behavior: **ImageJ Auto**, **DS9 ZScale**, **Min / Max**, and **Manual**. DS9 ZScale follows DS9's menu algorithm for two-dimensional uniform sampling, iterative line fitting, and outlier rejection, with defaults contrast `0.25`, sample `600`, and line `120`.
+
 ## Toolbar, zoom, and pan
 
 The toolbar contains Rectangle, Oval, Polygon, Freehand, Line, Angle, Text, Magnifier, Hand, Pointer, Montage, Orthogonal Views, Histogram, Measure, horizontal/vertical flip, and 90° left/right rotate.

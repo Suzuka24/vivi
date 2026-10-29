@@ -10,7 +10,7 @@ vivi 是面向 VS Code 和 Cursor 的科学图像与数据查看扩展。它在�
 - **主机文件 Explorer：**访问本地或 Remote SSH 主机上任何有权限的路径。支持多选、复制、剪切、粘贴、递归删除、拖动移动、终端路径插入、隐藏文件、排序和过滤。Name、Size、Last modified 三列可拖动、双击自适应，并按目录记忆宽度；最近打开的文件或进入的子目录会保留独立高亮。
 - **Frame、stack 与平铺同步：**在一个编辑器标签页中管理多个 Frame，支持 Single/Tile、排序、复制、重命名和关闭。可对锁定 Frame 实时同步 B&C 与 LUT、View 与 Zoom、Slice、Selection；Tile 和 Orthogonal Views 中同样适用。切片支持滚轮、滑块、方向键、长按和 FPS 播放。
 - **ImageJ 风格显示与交互：**提供 Rectangle、Oval、Line、Polygon、Freehand、Angle、Text、Magnifier、Hand 和 Pointer 等工具；支持可输入缩放比例、最高 25600% 的缩放节点、以指针或图像中心缩放，以及水平/垂直平移。正交视图在 XY、XZ、YZ 间同步十字线，并可将 XZ/YZ 截面复制成 2D Frame。
-- **B&C、LUT 与选区：**Minimum/Maximum 对整个 stack 共享，Curve 的 histogram 随当前 slice 更新。Auto/Reset 可按当前帧或面积选区计算，S-Auto/S-Reset 按当前三维 stack 计算。Stretch 只改变显示映射；处理、测量和像素读数仍使用真实像素。选区可参与测量、profile、reslice 和局部图像处理。
+- **B&C、LUT 与选区：**Minimum/Maximum 对整个 stack 共享，Curve 的 histogram 随当前 slice 更新。Auto/Reset 可按当前帧或面积选区计算，S-Auto/S-Reset 按当前三维 stack 计算。自动范围菜单提供 ImageJ Auto 和一个兼容 DS9、采用标准 `0.25/600/120` 参数的 ZScale。Stretch 只改变显示映射；处理、测量和像素读数仍使用真实像素。选区可参与测量、profile、reslice 和局部图像处理。
 - **处理与分析：**Image、Process、Analyze 菜单提供类型转换、颜色通道、montage、reslice、投影、翻转/旋转、滤波、二值形态学、Math、FFT、Histogram、Measure、Statistics、Plot Profile、Z-axis Profile、Skeleton 和 ROI Manager 等功能。像素运算默认替换当前 Frame 的工作副本，可撤销十步；源文件不会被写回。FITS 可通过 **File → Header** 查看所有 HDU header；原位变换后仍保留源 Header，并在当前几何变换可能使 WCS 失配时提示。
 - **大文件加载与传输：**默认通过可取消的 HTTP 连续流传输；stack 使用单次连续响应、背压和浏览器双缓冲，全部 slice 构建完成后统一显示。预览保持源 dtype；无损默认采用 Zstandard level 1 + Byte Shuffle，有损预览可独立开启。最近三张单幅图像 payload 可在内存中短暂复用，源文件发生变化时不会误用缓存。加载完成后立即释放源文件句柄。
 - **可配置操作：**键盘与鼠标手势都可在设置中修改。默认快捷键、组合键格式和 Explorer 操作见[快捷键与鼠标操作](docs/shortcuts.md)。菜单一级、二级项目也可按需隐藏。

@@ -18,7 +18,7 @@ self.onmessage=async({data:message})=>{
     const decodeMs=performance.now()-decodeStarted,baseLimits=[result.low,result.high];let low=result.low,high=result.high,bitmap=null,pixels=null,paintMs=0;
     if(message.paint){
       const paintStarted=performance.now(),args=message.args;
-      [low,high]=args.cuts==='manual'?[args.low,args.high]:self.ViviDisplay.autoLimits(raw,result.channels,args.cuts);
+      [low,high]=args.cuts==='manual'?[args.low,args.high]:self.ViviDisplay.autoLimits(raw,result.channels,args.cuts,result.width,result.height);
       const context=self.ViviDisplay.stretchContext(raw,result.channels,args.stretch,low,high);
       pixels=self.ViviDisplay.renderPixels(raw,result.width,result.height,result.channels,{...args,low,high,stretchContext:context},message.lut);
       if(typeof OffscreenCanvas!=='undefined'){

@@ -76,6 +76,8 @@ Tile 模式中，可见且锁定的 Frame 会在同一交互过程中实时更�
 
 加载中的 Frame 在 Layout 右侧显示旋转动画。HTTP 模式下点击 Frame 的关闭按钮会中止传输和后端请求；完成的 stack 在所有 slice 构建好后一次性显示。详见[加载与传输](loading-and-transport.md)。
 
+Adjust 的自动范围菜单只保留有明确语义的模式：**ImageJ Auto**、**DS9 ZScale**、**Min / Max** 和 **Manual**。DS9 ZScale 按 DS9 菜单相同的二维均匀采样、迭代直线拟合和异常值剔除计算，默认参数为 contrast `0.25`、sample `600`、line `120`。
+
 ## 工具栏、缩放和平移
 
 工具栏包含 Rectangle、Oval、Polygon、Freehand、Line、Angle、Text、Magnifier、Hand、Pointer，以及 Montage、Orthogonal Views、Histogram、Measure、水平/垂直翻转和左右 90° 旋转。

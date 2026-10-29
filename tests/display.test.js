@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
+const {autoLimits,ds9ZScale,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -42,6 +42,16 @@ test('minmax scans every pixel in large slices and preserves constant ranges',()
   raw[599999]=-7;raw[599997]=91;
   assert.deepEqual(autoLimits(raw,1,'minmax'),[-7,91]);
   assert.deepEqual(autoLimits(new Uint16Array([42,42,42]),1,'minmax'),[42,42]);
+});
+
+test('DS9 ZScale uses the DS9 menu sampling and fit defaults',()=>{
+  const width=32,height=24,raw=new Float32Array(width*height);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++)raw[y*width+x]=x+y*.1;
+  raw[0]=100000;
+  const limits=ds9ZScale(raw,1,width,height);
+  assert.ok(Math.abs(limits[0]-0.20000000298023224)<1e-12);
+  assert.ok(Math.abs(limits[1]-80.22047767759199)<1e-10);
+  assert.deepEqual(autoLimits(raw,1,'zscale',width,height),limits);
 });
 
 test('ImageJ auto uses every histogram pixel and ignores dominant background bins',()=>{

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.46 (development build; not published)
+
+- Replace the former approximate frontend and Astropy-default backend ZScale paths with one implementation matching SAOImage DS9's menu algorithm and defaults: contrast 0.25, 600 samples, and 120 pixels per sampled line.
+- Keep one **DS9 ZScale** automatic range option and remove the unrelated DS9 90%, 95%, 99%, and 99.9% labels.
+- Add fixed Python and JavaScript regression coverage for DS9-style sampling, iterative line fitting, and outlier rejection.
+
 ## 0.7.45 (development build; not published)
 
 - Preserve a FITS frame's original Header when in-place operations replace its backing file with a temporary TIFF.
