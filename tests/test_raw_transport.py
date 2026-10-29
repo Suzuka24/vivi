@@ -107,7 +107,10 @@ class RawTransportTests(unittest.TestCase):
             fits.HDUList([primary, fits.ImageHDU(np.zeros((2, 3), dtype=np.int16), name='SCI')]).writeto(fits_path)
             session = Session()
             try:
-                session.handle({'op': 'open', 'path': str(fits_path)})
+                opened = session.handle({'op': 'open', 'path': str(fits_path)})
+                self.assertTrue(opened['sourceHeader']['available'])
+                self.assertIn("OBSERVER= 'vivi", opened['sourceHeader']['hdus'][0]['text'])
+                session.source.release()
                 result = session.handle({'op': 'header'})
                 self.assertTrue(result['available'])
                 self.assertEqual([hdu['name'] for hdu in result['hdus']], ['PRIMARY', 'SCI'])

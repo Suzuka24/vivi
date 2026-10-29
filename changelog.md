@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.45 (development build; not published)
+
+- Preserve a FITS frame's original Header when in-place operations replace its backing file with a temporary TIFF.
+- Mark transformed frames as `源文件 Header`; warn that WCS may not match only while a net flip/rotate transform remains active. Cancelling a flip or rotation back to source geometry removes the WCS warning.
+
 ## 0.7.44 (development build; not published)
 
 - Refresh the English and Chinese README, usage, installation, and ImageJ coverage documentation for the complete 0.7.x feature set.

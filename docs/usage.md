@@ -52,7 +52,7 @@ Explorer 支持常用文件管理操作：
 
 ### Header 与图像信息
 
-**File → Header** 打开可移动、缩放、最小化、置顶和关闭的窗口。FITS 会显示每个 HDU 的完整 header；没有 header 的格式会给出明确提示。**Image → Show Info…** 用于查看 vivi 识别的 shape、dtype、series/HDU 和相关元信息。
+**File → Header** 打开可移动、缩放、最小化、置顶和关闭的窗口。FITS 会显示每个 HDU 的完整 header；没有 header 的格式会给出明确提示。frame 会保留首次打开时的源 Header，因此原位处理生成临时 TIFF 后仍可查看，并标记为“源文件 Header”。当前仍有 flip/rotate 几何变换时会提示 WCS 可能不再对应；取消变换并恢复源几何后不再提示。**Image → Show Info…** 用于查看 vivi 识别的 shape、dtype、series/HDU 和相关元信息。
 
 ## Frame、Layout 与切片
 

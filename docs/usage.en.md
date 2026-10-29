@@ -52,7 +52,7 @@ An optional space-separated `H W` filter follows. Blank uses the first qualifyin
 
 ### Header and image information
 
-**File → Header** opens a movable, resizable, minimizable, pinnable, and closable window. FITS displays the complete header for every HDU; formats without headers show an explicit message. **Image → Show Info…** reports the shape, dtype, series/HDU, and metadata recognized by vivi.
+**File → Header** opens a movable, resizable, minimizable, pinnable, and closable window. FITS displays the complete header for every HDU; formats without headers show an explicit message. A frame retains the source Header captured when it is first opened, so it remains available after an in-place operation creates a temporary TIFF and is marked `源文件 Header`. A WCS warning appears only while a net flip/rotate geometry remains active and disappears after the source geometry is restored. **Image → Show Info…** reports the shape, dtype, series/HDU, and metadata recognized by vivi.
 
 ## Frames, Layout, and slices
 

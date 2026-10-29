@@ -12,6 +12,7 @@ const { menuPaths } = require('./menuVisibility');
 const { previewCompressionOptions } = require('./compressionPolicy');
 const { compactPaths, transferEntries } = require('./fileOperations');
 const { HttpPayloadTransport, packStackRecord } = require('./httpTransport');
+const { applyGeometryAction, createGeometryState, sourceHeaderResult } = require('./geometryState');
 
 function nativePath(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a path on the extension host.');
@@ -370,16 +371,17 @@ async function activate(context) {
         const worker = newBackend();
         try {
           const data = await worker.request('open', { path: file, maxPixels: worker.maxPixels, sequenceMode, ...openOptions });
+          const { sourceHeader, ...presentation } = data;
           const sourceStat = await fs.stat(file).catch(() => null);
           const sourceFileBytes = sourceStat?.isFile() ? sourceStat.size : 0;
           const sourceIdentity = sourceStat?.isFile() ? {path:path.resolve(file),size:sourceStat.size,mtimeMs:sourceStat.mtimeMs,ctimeMs:sourceStat.ctimeMs,ino:Number(sourceStat.ino)||0} : null;
           const id = ++nextId;
           label = uniqueFrameLabel(label || path.basename(file), [...frames.values()].map(frame => frame.label || path.basename(frame.file)));
-          frames.set(id, { id, file, label, worker, generated, sequenceMode, openOptions, pathOptions:new Map([[file,openOptions]]), sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], flipState: {horizontal:false,vertical:false}, undoFlipStates:[], redoFlipStates:[], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
+          frames.set(id, { id, file, sourceFile:file, sourceHeader, label, worker, generated, sequenceMode, openOptions, pathOptions:new Map([[file,openOptions]]), sourceFileBytes, undoPaths: [], redoPaths: [], undoActions: [], redoActions: [], flipState: {horizontal:false,vertical:false}, undoFlipStates:[], redoFlipStates:[], geometryState:createGeometryState(), undoGeometryStates:[], redoGeometryStates:[], transformQueue: Promise.resolve(), latestPng: null, lastResult: null });
           activeId = id;
           panel.title = frames.size === 1 ? (label || path.basename(file)) : `vivi · ${frames.size} frames`;
-          panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...data,
-            maxSize: Math.max(...data.datasets.map(item => Math.max(item.width, item.height))),
+          panel.webview.postMessage({ type: 'frameAdded', frameId: id, label, initialSelection, canUndo: false, canRedo: false, ...presentation,
+            maxSize: Math.max(...presentation.datasets.map(item => Math.max(item.width, item.height))),
             menuVisibility: menuVisibility(),
             keyboardShortcuts: config().get('keyboardShortcuts', {}), mouseShortcuts: mouseShortcuts(), defaultFps:config().get('defaultFps', 24),
             recentCacheSeconds:config().get('recentCacheSeconds',20),sourceIdentity,flipState:frames.get(id).flipState });
@@ -528,17 +530,23 @@ async function activate(context) {
               frame.undoActions.pop();
               frame.redoFlipStates.push(frame.flipState);
               frame.flipState=frame.undoFlipStates.pop() || {horizontal:false,vertical:false};
+              frame.redoGeometryStates.push(frame.geometryState);
+              frame.geometryState=frame.undoGeometryStates.pop() || createGeometryState();
               frame.redoPaths = [...frame.redoPaths, previous].slice(-10);
               frame.redoActions = [...frame.redoActions, historyAction].slice(-10);
             } else {
               if (action === 'redo') { frame.redoPaths.pop(); frame.redoActions.pop(); }
-              else { frame.redoPaths = []; frame.redoActions = []; frame.redoFlipStates=[]; }
+              else { frame.redoPaths = []; frame.redoActions = []; frame.redoFlipStates=[]; frame.redoGeometryStates=[]; }
               frame.undoFlipStates.push(frame.flipState);
               frame.undoFlipStates=frame.undoFlipStates.slice(-10);
+              frame.undoGeometryStates.push(frame.geometryState);
+              frame.undoGeometryStates=frame.undoGeometryStates.slice(-10);
               if(action==='redo')frame.flipState=frame.redoFlipStates.pop() || frame.flipState;
               else if(action==='flipHorizontal')frame.flipState={...frame.flipState,horizontal:!frame.flipState.horizontal};
               else if(action==='flipVertical')frame.flipState={...frame.flipState,vertical:!frame.flipState.vertical};
               else if(action==='rotateLeft'||action==='rotateRight')frame.flipState={horizontal:frame.flipState.vertical,vertical:frame.flipState.horizontal};
+              if(action==='redo')frame.geometryState=frame.redoGeometryStates.pop() || frame.geometryState;
+              else frame.geometryState=applyGeometryAction(frame.geometryState,action,msg.args);
               frame.undoPaths = [...frame.undoPaths, previous].slice(-10);
               frame.undoActions = [...frame.undoActions, historyAction].slice(-10);
             }
@@ -548,8 +556,9 @@ async function activate(context) {
             frame.generated = true;
             frame.latestPng = null;
             frame.lastResult = null;
+            const {sourceHeader: ignoredHeader, ...presentation}=data;
             panel.webview.postMessage({type:'frameUpdated',frameId:frame.id,label:frame.label,
-              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,displayTransform,flipState:frame.flipState,...data});
+              canUndo:frame.undoPaths.length>0,canRedo:frame.redoPaths.length>0,displayTransform,flipState:frame.flipState,...presentation});
           };
           const queued = frame.transformQueue.then(update);
           frame.transformQueue = queued.catch(() => {});
@@ -613,7 +622,11 @@ async function activate(context) {
               await panel.webview.postMessage({type:'stream',id:msg.id,event:'httpStack',result:{httpStack:stackStream.descriptor}});
               await stackStream.ready;
             }
-            result=msg.op==='renderStack'
+            const sourceHeaderShown=msg.op==='header'&&frame.sourceHeader?.available;
+            if(sourceHeaderShown){
+              const transformed=path.resolve(frame.file)!==path.resolve(frame.sourceFile);
+              result=sourceHeaderResult(frame.sourceHeader,transformed,frame.geometryState);
+            }else result=msg.op==='renderStack'
               ? await frame.worker.requestStream(msg.op,args,event=>{
                   if(disposed||frames.get(msg.fileFrame)!==frame)return;
                   if(stackStream&&event.streamEvent==='frame')return stackStream.write(packStackRecord({frame:event.frame,total:event.total,result:event.result}));

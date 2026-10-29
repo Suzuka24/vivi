@@ -252,6 +252,16 @@ class Source:
     def dataset(self, key=0):
         return next((d for d in self.datasets if d["id"] == int(key)), self.datasets[0])
 
+    def header_info(self):
+        if self.kind != "fits":
+            return {"available": False, "message": "No header information is available for this file."}
+        self.ensure_open()
+        hdus = []
+        for index, hdu in enumerate(self.file):
+            hdus.append({"index": index, "name": hdu.name or "HDU",
+                         "text": hdu.header.tostring(sep="\n", endcard=False, padding=False)})
+        return {"available": True, "hdus": hdus}
+
     @staticmethod
     def source_channels(d):
         return d['shape'][d['channel']] if d['channel'] is not None else 1
@@ -525,7 +535,8 @@ class Session:
                                  req.get("sequenceMode","2d"), req.get("sequenceSize"),
                                  req.get("axisLayouts"))
             return dict(path=self.source.path, kind=self.source.kind, datasets=self.source.datasets,
-                        warning=self.source.warning, sliceLabels=self.source.slice_labels)
+                        warning=self.source.warning, sliceLabels=self.source.slice_labels,
+                        sourceHeader=self.source.header_info())
         if not self.source:
             raise ValueError("Open an image first")
         self.source.ensure_open()
@@ -533,13 +544,7 @@ class Session:
         frame = int(req.get("frame", 0))
         box = bounds(d, req.get("box"))
         if op == "header":
-            if self.source.kind != "fits":
-                return {"available": False, "message": "No header information is available for this file."}
-            hdus = []
-            for index, hdu in enumerate(self.source.file):
-                hdus.append({"index": index, "name": hdu.name or "HDU",
-                             "text": hdu.header.tostring(sep="\n", endcard=False, padding=False)})
-            return {"available": True, "hdus": hdus}
+            return self.source.header_info()
         if op == "orthogonalDuplicate":
             import tifffile
             plane = req.get("plane")

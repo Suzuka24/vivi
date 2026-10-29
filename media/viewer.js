@@ -1293,7 +1293,10 @@ $('fileHeader').onclick=async()=>{
   dialog.querySelector('.dialog-head strong').textContent=`Header · ${name}`;content.textContent='Loading header…';
   try{
     const result=await request('header',{},false,frameId);
-    content.textContent=result.available?(result.hdus||[]).map(hdu=>`HDU ${hdu.index}: ${hdu.name}\n${hdu.text}`).join('\n\n'):(result.message||'No header information is available for this file.');
+    if(result.available){
+      dialog.querySelector('.dialog-head strong').textContent=result.sourceHeader?`源文件 Header · ${name}`:`Header · ${name}`;
+      content.textContent=[result.wcsWarning,(result.hdus||[]).map(hdu=>`HDU ${hdu.index}: ${hdu.name}\n${hdu.text}`).join('\n\n')].filter(Boolean).join('\n\n');
+    }else content.textContent=result.message||'No header information is available for this file.';
   }catch(error){content.textContent=error.message;showError(error);}
 };
 $('cmap').replaceChildren();
