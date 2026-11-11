@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.47 (development build; not published)
+
+- Update the lower-left image-coordinate and pixel-value readout continuously during pointer movement by sampling the already decoded frame cache synchronously.
+- Keep a latest-position-only backend fallback for the brief interval in which a decoded frame cache is unavailable, avoiding stale or queued hover results.
+
 ## 0.7.46 (development build; not published)
 
 - Replace the former approximate frontend and Astropy-default backend ZScale paths with one implementation matching SAOImage DS9's menu algorithm and defaults: contrast 0.25, 600 samples, and 120 pixels per sampled line.

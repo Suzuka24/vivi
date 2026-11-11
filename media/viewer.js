@@ -3,7 +3,7 @@ const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const windowMemory={...(vscode.getState()?.windowMemory||{})};
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,samplePixel,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered} = window.ViviDisplay;
 const recentPayloadCache = new window.ViviRecentPayloadCache.RecentPayloadCache();
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
@@ -57,7 +57,7 @@ let imageJAutoThreshold=0,imageJStackAutoThreshold=0;
 let spaceHeld=false;
 let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
 const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
-let renderRunning = false, renderWanted = false, renderTimer, pixelTimer, pixelRunning = false;
+let renderRunning = false, renderWanted = false, renderTimer, pixelRunning = false, pixelRequestLatest = null, pixelReadoutSerial = 0;
 let playing = false, playbackTimer, analysisRunning = false, blinking = false, blinkTimer;
 const pending = new Map();
 let imageTaskSerial=0;
@@ -756,6 +756,27 @@ function currentRawEntry(){
   const frame=Number($('frame').value)-1;
   return [...frameCache.values()].find(entry=>entry.sourceDataset===dataset.id&&entry.sourceFrame===frame&&entry.raw);
 }
+function showPixelReadout(x,y,value){
+  $('pixel').textContent=`x=${formatValue(x*calibration.factor)} (${formatValue(x)}), y=${formatValue(y*calibration.factor)} (${formatValue(y)}), value=${Array.isArray(value)?value.map(formatValue).join(', '):formatValue(value)}`;
+}
+async function drainPixelRequests(){
+  if(pixelRunning)return;
+  pixelRunning=true;
+  try{
+    while(pixelRequestLatest){
+      const item=pixelRequestLatest;pixelRequestLatest=null;
+      try{const result=await request('pixel',{...item.base,x:item.x,y:item.y});if(item.serial===pixelReadoutSerial&&item.revision===revision)showPixelReadout(result.x,result.y,result.value);}
+      catch{/* main actions report worker errors */}
+    }
+  }finally{pixelRunning=false;}
+}
+function updatePixelReadout(point){
+  const x=Math.floor(point[0]),y=Math.floor(point[1]),serial=++pixelReadoutSerial;
+  if(x<0||y<0||x>=dataset.width||y>=dataset.height){$('pixel').textContent='';pixelRequestLatest=null;return;}
+  const entry=currentRawEntry(),value=entry&&samplePixel(entry.raw,entry.result.width,entry.result.height,entry.channels,x,y,entry.result.box);
+  if(value!==undefined){showPixelReadout(x,y,value);pixelRequestLatest=null;return;}
+  pixelRequestLatest={serial,revision,x,y,base:base()};drainPixelRequests();
+}
 function forEachSelectionPixel(entry,maxPixels,callback){
   const width=entry.result.width,height=entry.result.height,channels=entry.channels||1,box=entry.result.box,pixels=width*height;
   const areaSelection=selection&&['roi','oval','polygon','freehand'].includes(selection.type);
@@ -1250,6 +1271,7 @@ canvas.onpointermove=e=>{
   if(!dataset)return;
   if(drag?.tool==='orthogonal'){if(tileMode)tileOrthogonalPoint(drag.orthogonalName,e);else orthogonalPoint('xy',e);return;}
   const p=position(e);
+  updatePixelReadout(p);
   if(drag){const dx=e.clientX-drag.screen[0],dy=e.clientY-drag.screen[1];
     if(drag.tool==='editHandle'||drag.tool==='editMove'){dragEditedSelection(e,roiGeometry.pixelPoint(p,dataset.width,dataset.height));return;}
     if(drag.tool==='pan'){cx=drag.cx-dx/drag.pixelsPerImage;cy=drag.cy-dy/drag.pixelsPerImage;clampCenter();commitFrameChange('view');scheduleRender(100);}
@@ -1261,8 +1283,6 @@ canvas.onpointermove=e=>{
       $('region').textContent=selectionStatus(selection);commitFrameChange('selection');draw();}
     return;
   }
-  clearTimeout(pixelTimer);const stamp=revision,b=base();
-  pixelTimer=setTimeout(async()=>{if(pixelRunning||p[0]<0||p[1]<0||p[0]>=dataset.width||p[1]>=dataset.height)return;pixelRunning=true;try{const r=await request('pixel',{...b,x:Math.floor(p[0]),y:Math.floor(p[1])});if(stamp===revision)$('pixel').textContent=`x=${formatValue(r.x*calibration.factor)} (${formatValue(r.x)}), y=${formatValue(r.y*calibration.factor)} (${formatValue(r.y)}), value=${Array.isArray(r.value)?r.value.map(formatValue).join(', '):formatValue(r.value)}`;}catch{/* main actions report worker errors */}finally{pixelRunning=false;}},100);
 };
 canvas.onpointerup=e=>{if(!drag)return;if(selection&&['roi','oval','freehand','line'].includes(drag.tool)){if(Math.hypot(e.clientX-drag.screen[0],e.clientY-drag.screen[1])<3){selection=null;refreshSelection();}else finishSelection(drag.tool,selection.points);}else if(['editHandle','editMove'].includes(drag.tool))refreshSelection();drag=null;canvas.releasePointerCapture(e.pointerId);draw();};
 canvas.onpointercancel=()=>{drag=null;};

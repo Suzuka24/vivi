@@ -87,6 +87,7 @@ The toolbar contains Rectangle, Oval, Polygon, Freehand, Line, Angle, Text, Magn
 - `Command+wheel` on macOS or `Ctrl+wheel` on Windows/Linux zooms around image center;
 - on an enlarged image, `Space+wheel` pans vertically and `Alt+wheel` horizontally using ImageJ-style distances;
 - middle-button drag pans, and `Alt+right-drag` changes B&C;
+- the lower-left image coordinates and pixel value track the pointer continuously while it moves;
 - canvas double-click is intentionally not bound to Fit.
 
 See [shortcuts and mouse controls](shortcuts.en.md) for every default and editing syntax.

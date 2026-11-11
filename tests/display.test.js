@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,ds9ZScale,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
+const {autoLimits,ds9ZScale,samplePixel,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -11,6 +11,14 @@ test('raw pixels can be recolored repeatedly without changing their values',()=>
   assert.deepEqual([...adjusted.filter((_,index)=>index%4===0)],[0,0,255,255]);
   assert.deepEqual([...raw],[0,1,2,3]);
   assert.deepEqual(autoLimits(raw,1,'minmax'),[0,3]);
+});
+
+test('pixel readout samples cached scalar and color pixels by image coordinate',()=>{
+  assert.equal(samplePixel(new Uint16Array([10,11,12,13]),2,2,1,1,0),11);
+  assert.deepEqual(samplePixel(new Uint8Array([1,2,3,4,5,6]),2,1,3,1,0),[4,5,6]);
+  assert.equal(samplePixel(new Float32Array([1,NaN]),2,1,1,1,0),null);
+  assert.equal(samplePixel(new Uint8Array([7,8,9,10]),2,2,1,15,25,[10,20,20,30]),10);
+  assert.equal(samplePixel(new Uint8Array([1]),1,1,1,-1,0),undefined);
 });
 
 test('in-place preview transforms preserve the raw values and box geometry',()=>{
