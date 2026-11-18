@@ -27,7 +27,7 @@
 .viewer .transfer-panel{position:absolute;right:10px;bottom:10px;z-index:6;width:194px;padding:5px;border-radius:4px;background:var(--vscode-editorWidget-background,#242b35);border:1px solid #66778877;box-shadow:0 4px 15px #0007}
 .viewer .transfer-head{display:flex;align-items:center;justify-content:space-between;font-size:11px}
 .viewer .transfer-head button{border:0;background:transparent;padding:0 5px}
-.viewer #transferCurve{display:block;width:180px;height:94px;margin-top:3px}
+.viewer #transferCurve{display:block;width:180px;height:94px;margin-top:3px;touch-action:none}
 .viewer .transfer-panel.minimized{width:80px}
 .viewer .transfer-panel.minimized canvas{display:none}
 .viewer #analysisPane{display:flex;flex-direction:column;width:520px;min-width:340px;max-width:calc(100% - 20px);max-height:calc(100% - 20px);z-index:7;overflow:hidden;resize:both;box-sizing:border-box}

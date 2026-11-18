@@ -134,6 +134,14 @@ function samplePixel(raw,width,height,channels,x,y,box=[0,0,width,height]){
   return channels===1?values[0]:values;
 }
 
+function curveDragLimits(handle,pointerX,width,start,end,low,high){
+  if(!['low','high'].includes(handle)||!Number.isFinite(pointerX)||!(width>0)||!Number.isFinite(start)||!Number.isFinite(end)||!(end>start)||!Number.isFinite(low)||!Number.isFinite(high))return [low,high];
+  const ratio=Math.max(0,Math.min(1,pointerX/width)),value=start+(end-start)*ratio;
+  const magnitude=Math.max(1,Math.abs(start),Math.abs(end),Math.abs(low),Math.abs(high));
+  const gap=Math.max(Number.MIN_VALUE,(end-start)*1e-12,Number.EPSILON*magnitude*16);
+  return handle==='low'?[Math.min(value,high-gap),high]:[low,Math.max(value,low+gap)];
+}
+
 function histogramCdf(counts){
   const cdf=Float64Array.from(counts);
   let sum=0,cdfMinimum=0,seen=false;
@@ -391,6 +399,6 @@ async function consumeDoubleBuffered(source,consume){
   }
 }
 
-if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,ds9ZScale,samplePixel,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
-if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,ds9ZScale,samplePixel,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
+if(typeof module!=='undefined')module.exports={decodeRawPayload,autoLimits,ds9ZScale,samplePixel,curveDragLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
+if(typeof globalThis!=='undefined')globalThis.ViviDisplay={decodeRawPayload,autoLimits,ds9ZScale,samplePixel,curveDragLimits,imageJAutoLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered};
 })();

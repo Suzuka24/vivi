@@ -78,6 +78,8 @@ Tile 模式中，可见且锁定的 Frame 会在同一交互过程中实时更�
 
 Adjust 的自动范围菜单只保留有明确语义的模式：**ImageJ Auto**、**DS9 ZScale**、**Min / Max** 和 **Manual**。DS9 ZScale 按 DS9 菜单相同的二维均匀采样、迭代直线拟合和异常值剔除计算，默认参数为 contrast `0.25`、sample `600`、line `120`。
 
+Curve 曲线的下端和上端分别对应 Minimum、Maximum，不额外显示控制图标。靠近端点左右拖动可实时修改对应值并更新图像；两点可以在视觉上靠到同一条竖线，但不能交叉，因此 Maximum 不会小于 Minimum。
+
 ## 工具栏、缩放和平移
 
 工具栏包含 Rectangle、Oval、Polygon、Freehand、Line、Angle、Text、Magnifier、Hand、Pointer，以及 Montage、Orthogonal Views、Histogram、Measure、水平/垂直翻转和左右 90° 旋转。

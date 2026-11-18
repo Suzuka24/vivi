@@ -77,6 +77,8 @@ A loading Frame shows a spinner in Layout. In HTTP mode, closing that row aborts
 
 Adjust keeps only automatic-range modes with distinct behavior: **ImageJ Auto**, **DS9 ZScale**, **Min / Max**, and **Manual**. DS9 ZScale follows DS9's menu algorithm for two-dimensional uniform sampling, iterative line fitting, and outlier rejection, with defaults contrast `0.25`, sample `600`, and line `120`.
 
+The lower and upper Curve endpoints control Minimum and Maximum without extra visible handle icons. Drag near either endpoint horizontally to update Adjust and the image in real time. The endpoints may visually meet on one vertical line but cannot cross, so Maximum never becomes smaller than Minimum.
+
 ## Toolbar, zoom, and pan
 
 The toolbar contains Rectangle, Oval, Polygon, Freehand, Line, Angle, Text, Magnifier, Hand, Pointer, Montage, Orthogonal Views, Histogram, Measure, horizontal/vertical flip, and 90° left/right rotate.

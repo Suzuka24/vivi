@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {autoLimits,ds9ZScale,samplePixel,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
+const {autoLimits,ds9ZScale,samplePixel,curveDragLimits,imageJAutoLimits,imageJResetLimits,stretchContext,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta}=require('../media/display');
 
 test('raw pixels can be recolored repeatedly without changing their values',()=>{
   const raw=new Float32Array([0,1,2,3]);
@@ -19,6 +19,15 @@ test('pixel readout samples cached scalar and color pixels by image coordinate',
   assert.equal(samplePixel(new Float32Array([1,NaN]),2,1,1,1,0),null);
   assert.equal(samplePixel(new Uint8Array([7,8,9,10]),2,2,1,15,25,[10,20,20,30]),10);
   assert.equal(samplePixel(new Uint8Array([1]),1,1,1,-1,0),undefined);
+});
+
+test('Curve handles change one limit and cannot cross each other',()=>{
+  assert.deepEqual(curveDragLimits('low',25,100,0,100,10,80),[25,80]);
+  assert.deepEqual(curveDragLimits('high',75,100,0,100,10,80),[10,75]);
+  const lowAtMaximum=curveDragLimits('low',100,100,0,100,10,80);
+  const highAtMinimum=curveDragLimits('high',0,100,0,100,10,80);
+  assert.ok(lowAtMaximum[0]<lowAtMaximum[1]);assert.ok(lowAtMaximum[1]===80);
+  assert.ok(highAtMinimum[1]>highAtMinimum[0]);assert.ok(highAtMinimum[0]===10);
 });
 
 test('in-place preview transforms preserve the raw values and box geometry',()=>{

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.48 (2026-11-18)
+
+- Make the lower and upper Curve endpoints horizontally draggable without adding visible handle icons. Dragging either endpoint updates Adjust and the rendered image in real time.
+- Prevent Curve endpoints from crossing while allowing them to meet visually on the same vertical line, with enlarged pointer hit areas and horizontal-resize cursor feedback.
+
 ## 0.7.47 (development build; not published)
 
 - Update the lower-left image-coordinate and pixel-value readout continuously during pointer movement by sampling the already decoded frame cache synchronously.

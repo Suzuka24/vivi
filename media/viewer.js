@@ -3,7 +3,7 @@ const vscode = acquireVsCodeApi();
 const $ = id => document.getElementById(id);
 const windowMemory={...(vscode.getState()?.windowMemory||{})};
 const formatValue = window.ViviNumberFormat.formatNumber;
-const {decodeRawPayload,autoLimits,samplePixel,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered} = window.ViviDisplay;
+const {decodeRawPayload,autoLimits,samplePixel,curveDragLimits,imageJAutoLimitsFromPixels,imageJResetLimits,stretchContext,stretchContextFromHistogram,stretchIntensity,renderPixels,transformRaw,transformBox,preloadFrameOrder,selectedStackFrameIndices,reorderedEntries,sliceDisplayRange,imageJWheelPanDelta,consumeDoubleBuffered} = window.ViviDisplay;
 const recentPayloadCache = new window.ViviRecentPayloadCache.RecentPayloadCache();
 const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const roiGeometry = window.ViviRoiGeometry;
@@ -55,6 +55,7 @@ let mouseShortcuts={slice:'wheel',zoomAtPointer:'shift+wheel',zoomAtCenter:'mod+
 let defaultFps=24,transformsRunning=0;
 let imageJAutoThreshold=0,imageJStackAutoThreshold=0;
 let spaceHeld=false;
+let transferDrag=null;
 let roi = null, line = null, selection = null, annotations = [], overlays = [], roiManager = [], vertices = [], drag = null, serial = 0, revision = 0, renderedRevision = -1;
 const selectionDefaults={stroke:'#72ebc4',strokeWidth:1.5};
 let renderRunning = false, renderWanted = false, renderTimer, pixelRunning = false, pixelRequestLatest = null, pixelReadoutSerial = 0;
@@ -749,8 +750,27 @@ function drawTransferCurve(){
   const context=transferStretchContext($('stretch').value,low,high),y=value=>h-stretchIntensity((value-low)/span,context)*h;
   g.strokeStyle='#586673';g.strokeRect(.5,.5,w-1,h-1);g.strokeStyle='#72d4b5';g.lineWidth=2;g.beginPath();
   for(let point=0;point<=128;point++){const value=start+extent*point/128,px=point*w/128,py=y(value);if(point)g.lineTo(px,py);else g.moveTo(px,py);}g.stroke();
-  g.fillStyle='#d5e4e7';for(const value of [low,high]){const px=x(value);g.fillRect(Math.max(0,Math.min(w-1,px)),h-5,1,5);}
+  const handles={low:{x:x(low),y:h},high:{x:x(high),y:0}};
+  canvas._curveHandles={...handles,start,end,extent};
   $('transferLow').textContent=formatValue(low);$('transferHigh').textContent=formatValue(high);
+}
+function transferCanvasPoint(event){
+  const canvas=$('transferCurve'),rect=canvas.getBoundingClientRect();
+  return {x:(event.clientX-rect.left)*canvas.width/Math.max(1,rect.width),y:(event.clientY-rect.top)*canvas.height/Math.max(1,rect.height)};
+}
+function transferHandleAt(event){
+  const canvas=$('transferCurve'),handles=canvas._curveHandles;if(!handles)return null;
+  const point=transferCanvasPoint(event);let nearest=null,distance=Infinity;
+  for(const name of ['low','high']){const handle=handles[name],value=Math.hypot(point.x-handle.x,point.y-handle.y);if(value<distance){distance=value;nearest=name;}}
+  return distance<=9?nearest:null;
+}
+function dragTransferHandle(event){
+  if(!transferDrag)return;
+  const canvas=$('transferCurve'),geometry=canvas._curveHandles;if(!geometry)return;
+  const point=transferCanvasPoint(event),low=Number($('low').value),high=Number($('high').value);
+  const limits=curveDragLimits(transferDrag,point.x,canvas.width,geometry.start,geometry.end,low,high);
+  if(limits[0]===low&&limits[1]===high)return;
+  applyCutLimits(...limits);
 }
 function currentRawEntry(){
   const frame=Number($('frame').value)-1;
@@ -1789,6 +1809,11 @@ for(const [id,delta] of [['viewerSlicePrev',-1],['viewerSliceNext',1]]){
 if($('viewerSlicePlay'))$('viewerSlicePlay').onclick=()=>{$('play').click();syncViewerToolbar();};
 if($('viewerSliceFps'))$('viewerSliceFps').onchange=()=>{$('fps').value=$('viewerSliceFps').value;publishSidebar();};
 $('minimizeTransfer').onclick=()=>{const panel=$('transferPanel');panel.classList.toggle('minimized');$('minimizeTransfer').textContent=panel.classList.contains('minimized')?'+':'−';$('minimizeTransfer').title=panel.classList.contains('minimized')?'Show curve':'Minimize curve';};
+const transferCurve=$('transferCurve');
+transferCurve.onpointerdown=event=>{if(event.button!==0)return;const handle=transferHandleAt(event);if(!handle)return;event.preventDefault();transferDrag=handle;transferCurve.setPointerCapture(event.pointerId);dragTransferHandle(event);};
+transferCurve.onpointermove=event=>{if(transferDrag){dragTransferHandle(event);return;}transferCurve.style.cursor=transferHandleAt(event)?'ew-resize':'default';};
+transferCurve.onpointerup=event=>{if(!transferDrag)return;dragTransferHandle(event);transferDrag=null;if(transferCurve.hasPointerCapture(event.pointerId))transferCurve.releasePointerCapture(event.pointerId);transferCurve.style.cursor=transferHandleAt(event)?'ew-resize':'default';};
+transferCurve.onpointercancel=event=>{transferDrag=null;if(transferCurve.hasPointerCapture(event.pointerId))transferCurve.releasePointerCapture(event.pointerId);transferCurve.style.cursor='default';};
 function histogramOptions(){
   document.querySelector('[data-dialog="histogram-options"]')?.remove();
   const dialog=openDialog('histogram-options','Histogram',`<label>Bins <input class="hist-bins" type="number" min="2" max="4096" value="256"></label><label><input class="hist-auto" type="checkbox" checked> Use pixel value range</label><label>X min <input class="hist-min" type="number" step="any" disabled></label><label>X max <input class="hist-max" type="number" step="any" disabled></label><label>Y max <input class="hist-ymax" type="number" step="any" placeholder="Auto"></label><div class="roi-dialog-error" role="alert"></div><div class="dialog-actions"><button class="hist-cancel">Cancel</button><button class="hist-run">OK</button></div>`);
